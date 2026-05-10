@@ -86,7 +86,7 @@ export class BotPlayer {
   static shouldCallShow(state: GameState, botPlayerId: string): boolean {
     const bot = state.players.find(p => p.id === botPlayerId)!;
     const total = DeckManager.calculateHandTotal(bot.hand);
-    return total <= 3;
+    return total <= 1;
   }
 
   /**

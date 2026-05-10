@@ -8,6 +8,7 @@
 import { Server, Socket } from 'socket.io';
 import { Room } from '../../models/Room';
 import { Game } from '../../models/Game';
+import { User } from '../../models/User';
 import { GameEngine, GameConfig } from '../../engine/GameEngine';
 import { BotPlayer } from '../../engine/BotPlayer';
 import { ScoreEngine } from '../../engine/ScoreEngine';
@@ -264,10 +265,14 @@ function handleMatchEnd(io: Server, state: GameState) {
     return acc;
   }, {});
 
+  // Resolve in-game UUID → userId for the winner
+  const winnerPlayer = state.players.find(p => p.id === matchResult.winnerId);
+  const winnerUserId = winnerPlayer?.userId ?? matchResult.winnerId;
+
   Game.findOne({ roomId: state.roomId, status: 'playing' }).then(game => {
     if (!game) return;
     game.status = 'finished';
-    game.winnerId = matchResult.winnerId;
+    game.winnerId = winnerUserId;
     game.winnerUsername = matchResult.winnerUsername;
     game.endedAt = new Date();
     for (const player of game.players) {
@@ -283,11 +288,19 @@ function handleMatchEnd(io: Server, state: GameState) {
     { status: 'finished' }
   ).catch(console.error);
 
-  // Update user stats
-  state.players.filter(p => !p.isBot).forEach(p => {
+  // Update user stats for all human players
+  const humanPlayers = state.players.filter(p => !p.isBot);
+  const roundsInMatch = state.roundNumber;
+  for (const p of humanPlayers) {
     const isWinner = p.id === matchResult.winnerId;
-    // Would import User model and update stats here
-  });
+    User.findByIdAndUpdate(p.userId, {
+      $inc: {
+        'stats.gamesPlayed': 1,
+        'stats.gamesWon': isWinner ? 1 : 0,
+        'stats.roundsPlayed': roundsInMatch,
+      },
+    }).catch(console.error);
+  }
 
   activeGames.delete(state.id);
   roomToGame.delete(state.roomId);

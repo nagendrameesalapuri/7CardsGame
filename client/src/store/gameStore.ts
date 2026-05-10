@@ -187,7 +187,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     unsubs.push(on('game:state', (incoming) => {
       const isMyTurn = incoming.players[incoming.currentPlayerIndex]?.id === incoming.myPlayerId;
       const handTotal = calculateHandTotal(incoming.myHand);
-      const canShow = isMyTurn && handTotal <= 5 &&
+      const canShow = isMyTurn && incoming.hasDrawnThisTurn && handTotal <= 5 &&
         !(incoming.attackChain?.targetPlayerIndex === incoming.players.findIndex(p => p.id === incoming.myPlayerId));
       const underAttack = !!(incoming.attackChain &&
         incoming.players[incoming.attackChain.targetPlayerIndex]?.id === incoming.myPlayerId);

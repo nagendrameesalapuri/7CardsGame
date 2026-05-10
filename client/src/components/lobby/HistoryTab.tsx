@@ -102,7 +102,7 @@ export function HistoryTab() {
                     {iWon ? 'Victory' : 'Defeat'}
                   </p>
                   <p className="text-dark-muted text-xs">
-                    {game.roundsPlayed}/{game.roundCount} rounds · {timeAgo(game.endedAt)}
+                    {game.roundsPlayed}{game.roundCount ? `/${game.roundCount}` : ''} rounds · {timeAgo(game.endedAt)}
                   </p>
                 </div>
               </div>
