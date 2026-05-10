@@ -16,6 +16,9 @@ export class ScoreEngine {
   static calculateRoundResult(state: GameState, showPlayerId: string): RoundResult {
     const activePlayers = state.players.filter(p => !p.isEliminated);
 
+    // Minimum scoreable total is 2 (a total of 1 is rounded up to 2)
+    const scoreableTotal = (n: number) => (n === 1 ? 2 : n);
+
     const totals = activePlayers.map(p => ({
       player: p,
       handTotal: DeckManager.calculateHandTotal(p.hand),
@@ -25,16 +28,17 @@ export class ScoreEngine {
     const showPlayerEntry = totals.find(t => t.player.id === showPlayerId)!;
     const showPlayerTotal = showPlayerEntry.handTotal;
 
+    // Show caller wins on tie — they declared first so they get the edge
     const showPlayerWon = showPlayerTotal <= minTotal;
 
     const winnerEntry = showPlayerWon
       ? showPlayerEntry
       : totals.find(t => t.handTotal === minTotal)!;
 
-    // Penalty for failed show = sum of all other active players' hand totals
+    // Penalty for failed show = sum of all other active players' scoreable totals
     const opponentSum = totals
       .filter(t => t.player.id !== showPlayerId)
-      .reduce((sum, t) => sum + t.handTotal, 0);
+      .reduce((sum, t) => sum + scoreableTotal(t.handTotal), 0);
 
     const playerResults: PlayerRoundResult[] = state.players.map(p => {
       if (p.isEliminated) {
@@ -53,7 +57,7 @@ export class ScoreEngine {
       } else if (!showPlayerWon && p.id === showPlayerId) {
         roundPoints = opponentSum;
       } else {
-        roundPoints = totals.find(t => t.player.id === p.id)!.handTotal;
+        roundPoints = scoreableTotal(totals.find(t => t.player.id === p.id)!.handTotal);
       }
 
       return {
