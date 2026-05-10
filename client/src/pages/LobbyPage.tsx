@@ -127,24 +127,21 @@ export function LobbyPage() {
             </div>
           </div>
 
-          {/* Round count picker */}
+          {/* Round count input */}
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-sm text-dark-muted font-medium">Rounds:</span>
-            <div className="flex gap-2">
-              {[3, 5, 7, 10].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setAiRounds(n)}
-                  className={`px-3 py-1 rounded-lg text-sm font-bold transition-all ${
-                    aiRounds === n
-                      ? 'bg-neon-green text-dark-bg'
-                      : 'bg-dark-surface border border-dark-border text-dark-muted hover:border-neon-green/50 hover:text-dark-text'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+            <label className="text-sm text-dark-muted font-medium whitespace-nowrap">How many rounds?</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={aiRounds}
+              onChange={e => {
+                const v = Math.max(1, Math.min(20, parseInt(e.target.value) || 1));
+                setAiRounds(v);
+              }}
+              className="w-20 bg-dark-surface border border-dark-border rounded-lg px-3 py-1 text-sm font-bold text-dark-text text-center focus:outline-none focus:border-neon-green"
+            />
+            <span className="text-xs text-dark-muted">(1 – 20)</span>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
