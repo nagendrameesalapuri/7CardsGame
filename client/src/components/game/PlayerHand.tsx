@@ -68,10 +68,10 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         )}
       </AnimatePresence>
 
-      {/* Cards — single row, no wrap, slight overlap */}
+      {/* Cards — single row, no wrap, overlap more on mobile */}
       <div
-        className="flex items-end justify-center"
-        style={{ minHeight: '140px', overflowX: 'auto', padding: '8px 12px 0' }}
+        className="flex items-end justify-center w-full"
+        style={{ minHeight: '120px', overflowX: 'auto', padding: '8px 8px 0', scrollbarWidth: 'none' }}
       >
         <AnimatePresence>
           {[...hand]
@@ -82,17 +82,19 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
             })
             .map((card, i) => {
               const isSelected = selectedCardIds.includes(card.id);
-              const rot = (i - (hand.length - 1) / 2) * 3;
+              const rot = (i - (hand.length - 1) / 2) * 2;
+              const isMobile = window.innerWidth < 640;
+              const overlap = isMobile ? (hand.length > 5 ? '-22px' : '-14px') : '-10px';
               return (
                 <motion.div
                   key={card.id}
                   initial={{ opacity: 0, y: -50 }}
-                  animate={{ opacity: 1, y: 0, rotate: rot }}
+                  animate={{ opacity: 1, y: isSelected ? -16 : 0, rotate: rot }}
                   exit={{ opacity: 0, y: 50, scale: 0.8 }}
-                  transition={{ delay: i * 0.06, type: 'spring', stiffness: 280, damping: 22 }}
+                  transition={{ delay: i * 0.05, type: 'spring', stiffness: 280, damping: 22 }}
                   style={{
                     transformOrigin: 'bottom center',
-                    marginLeft: i === 0 ? 0 : '-10px',
+                    marginLeft: i === 0 ? 0 : overlap,
                     opacity: isMyTurn ? 1 : 0.78,
                     cursor: isMyTurn ? 'pointer' : 'default',
                     zIndex: isSelected ? 20 : (hand.length - i),
@@ -105,7 +107,7 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
                     card={card}
                     isSelected={isSelected}
                     isPlayable={isMyTurn}
-                    size="lg"
+                    size={window.innerWidth < 640 ? 'md' : 'lg'}
                   />
                 </motion.div>
               );

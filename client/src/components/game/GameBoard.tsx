@@ -56,16 +56,16 @@ export function GameBoard() {
     <div className="relative w-full h-full min-h-screen bg-felt bg-felt-pattern overflow-hidden flex flex-col">
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
+        <div className="flex items-center gap-2">
           <button
             onClick={leaveRoom}
             className="text-dark-muted hover:text-neon-red transition-colors text-sm flex items-center gap-1"
           >
             ← Leave
           </button>
-          <span className="text-dark-muted text-sm">
-            Round <span className="text-dark-text font-bold">{game.roundNumber}</span>
+          <span className="text-dark-muted text-xs sm:text-sm">
+            R<span className="text-dark-text font-bold">{game.roundNumber}</span>
             <span className="text-dark-muted">/{game.roundCount}</span>
           </span>
         </div>
@@ -80,16 +80,36 @@ export function GameBoard() {
         <ChatPanel messages={game.chatMessages} />
       </div>
 
+      {/* ── Mobile scores bar ───────────────────────────────────────────────── */}
+      <div className="sm:hidden flex items-center gap-2 px-3 py-1.5 bg-black/50 border-b border-white/5 overflow-x-auto z-10">
+        {[...game.players]
+          .sort((a, b) => a.totalScore - b.totalScore)
+          .map((p, rank) => (
+            <div key={p.id} className={clsx(
+              'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0',
+              p.id === game.myPlayerId
+                ? 'bg-neon-green/20 text-neon-green border border-neon-green/30'
+                : 'bg-white/5 text-dark-muted',
+            )}>
+              <span>{rank === 0 ? '👑' : `#${rank + 1}`}</span>
+              <span>{p.id === game.myPlayerId ? 'You' : p.username}</span>
+              <span className="font-bold">{p.totalScore}pt</span>
+            </div>
+          ))}
+      </div>
+
       {/* ── Main game area ───────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-between p-4 gap-4 relative">
 
-        {/* Live score leaderboard */}
-        <LiveScorePanel
-          players={game.players}
-          myPlayerId={game.myPlayerId}
-          roundNumber={game.roundNumber}
-          roundCount={game.roundCount}
-        />
+        {/* Live score leaderboard — desktop only */}
+        <div className="hidden sm:block">
+          <LiveScorePanel
+            players={game.players}
+            myPlayerId={game.myPlayerId}
+            roundNumber={game.roundNumber}
+            roundCount={game.roundCount}
+          />
+        </div>
 
         {/* Top opponents */}
         <div className="flex gap-8 justify-center flex-wrap">
@@ -229,10 +249,10 @@ function ActionToast() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 30 }}
-          className="fixed bottom-36 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 bg-dark-surface/90 border border-dark-border rounded-full text-dark-text text-sm font-medium shadow-xl backdrop-blur"
+          exit={{ opacity: 0, y: -20 }}
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 bg-dark-surface/90 border border-dark-border rounded-full text-dark-text text-sm font-medium shadow-xl backdrop-blur"
         >
           {msg}
         </motion.div>
