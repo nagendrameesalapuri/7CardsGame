@@ -363,10 +363,6 @@ export class GameEngine {
     const err = GameEngine.validateTurn(state, playerId);
     if (err) return fail(err, state);
 
-    if (!state.hasDrawnThisTurn) {
-      return fail('Must draw a card before calling SHOW', state);
-    }
-
     if (state.attackChain?.targetPlayerIndex === state.currentPlayerIndex) {
       return fail('Cannot SHOW while under a 7 attack', state);
     }
