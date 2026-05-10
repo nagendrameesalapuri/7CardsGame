@@ -261,19 +261,19 @@ function ActionToast() {
     <AnimatePresence>
       {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          initial={{ opacity: 0, y: 8, scale: 0.93 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+          exit={{ opacity: 0, y: 8, scale: 0.93 }}
           className={clsx(
-            'fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-2',
-            'px-4 py-2 bg-dark-surface/95 border rounded-2xl shadow-xl backdrop-blur-sm',
-            'text-sm font-medium max-w-[90vw] text-center',
+            'fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-3',
+            'px-5 py-3 bg-dark-surface/98 border-2 rounded-2xl shadow-2xl backdrop-blur-sm',
+            'max-w-[92vw] text-center',
             style.border,
           )}
           style={{ bottom: '260px' }}
         >
-          <span className="text-base flex-shrink-0">{style.icon}</span>
-          <span className={style.text}>{action.message}</span>
+          <span className="text-2xl flex-shrink-0">{style.icon}</span>
+          <span className={clsx('text-base font-bold tracking-wide', style.text)}>{action.message}</span>
         </motion.div>
       )}
     </AnimatePresence>

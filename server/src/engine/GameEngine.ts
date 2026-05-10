@@ -154,7 +154,9 @@ export class GameEngine {
       playerId,
       source,
       cards: [drawnCard],
-      message: `${player.username} drew from ${source === 'deck' ? 'the deck' : 'discard pile'}`,
+      message: source === 'deck'
+        ? `${player.username} drew from the deck`
+        : `${player.username} picked up ${drawnCard.rank}${DeckManager.suitSymbol(drawnCard.suit)} from discard`,
       timestamp: new Date().toISOString(),
     }];
 
@@ -219,7 +221,15 @@ export class GameEngine {
       type: 'discard',
       playerId,
       cards: cardsToDiscard,
-      message: `${player.username} discarded ${cardsToDiscard.map(c => `${c.rank}${DeckManager.suitSymbol(c.suit)}`).join(', ')}`,
+      message: (() => {
+        const count = cardsToDiscard.length;
+        const rank = cardsToDiscard[0].rank;
+        const countWord = count === 1 ? 'one' : count === 2 ? 'two' : count === 3 ? 'three' : `${count}`;
+        const cardLabel = count === 1
+          ? `${rank}${DeckManager.suitSymbol(cardsToDiscard[0].suit)}`
+          : `${countWord} ${rank}s`;
+        return `${player.username} discarded ${cardLabel}`;
+      })(),
       timestamp: new Date().toISOString(),
     }];
 
@@ -300,7 +310,7 @@ export class GameEngine {
         playerId,
         cards: validSevens,
         targetPlayerIds: [s.players[nextTarget].id],
-        message: `${player.username} counters with ${validSevens.length} seven(s)! Penalty is now ${newSevenCount * 2} cards!`,
+        message: `${player.username} counters with ${validSevens.length === 1 ? 'a 7' : `${validSevens.length} 7s`}! Penalty grows to ${newSevenCount * 2} cards!`,
         timestamp: new Date().toISOString(),
       });
 
@@ -332,7 +342,7 @@ export class GameEngine {
         playerId,
         penaltyCount,
         cards: penaltyCards,
-        message: `${player.username} takes ${penaltyCount} penalty card(s) — must now discard a card`,
+        message: `${player.username} takes ${penaltyCount} penalty card${penaltyCount > 1 ? 's' : ''}!`,
         timestamp: new Date().toISOString(),
       });
     }
@@ -380,7 +390,7 @@ export class GameEngine {
     const actions: GameAction[] = [{
       type: 'show',
       playerId,
-      message: `${player.username} calls SHOW! Hand total: ${handTotal}`,
+      message: `${player.username} calls SHOW! (${handTotal} pts)`,
       timestamp: new Date().toISOString(),
     }];
 
@@ -567,7 +577,7 @@ export class GameEngine {
       type: 'attack',
       playerId: attackerId,
       targetPlayerIds: [state.players[targetIndex].id],
-      message: `${attacker.username} attacks with ${sevenCount} seven(s)! ${sevenCount * 2} penalty cards on the line!`,
+      message: `${attacker.username} attacks with ${sevenCount === 1 ? 'a 7' : `${sevenCount} 7s`}! Take ${sevenCount * 2} cards or counter!`,
       timestamp: new Date().toISOString(),
     });
 
@@ -608,7 +618,7 @@ export class GameEngine {
       targetPlayerIds: skipped.map(name =>
         state.players.find(p => p.username === name)?.id ?? ''
       ),
-      message: `${player.username} plays ${jCount} J — ${skipped.join(', ')} skipped!`,
+      message: `${player.username} plays ${jCount === 1 ? 'a J' : `${jCount} Js`} — ${skipped.join(' & ')} skipped!`,
       timestamp: new Date().toISOString(),
     });
 
