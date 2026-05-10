@@ -75,6 +75,9 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error('[Server] Failed to start:', err);
+  console.error('[Server] Failed to start:', err?.message ?? err);
+  if (err?.message?.includes('MONGODB') || err?.message?.includes('mongo') || err?.message?.includes('connect')) {
+    console.error('[Server] → Check your MONGODB_URI environment variable in Render');
+  }
   process.exit(1);
 });
