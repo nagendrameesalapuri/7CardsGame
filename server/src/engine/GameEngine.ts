@@ -472,6 +472,19 @@ export class GameEngine {
       timestamp: new Date().toISOString(),
     }];
 
+    // Under attack → auto-take penalty so the attack chain resolves cleanly
+    const myIdx = state.currentPlayerIndex;
+    if (state.attackChain && state.attackChain.targetPlayerIndex === myIdx) {
+      const takeResult = GameEngine.processAttackResponse(state, player.id, 'take');
+      if (takeResult.success) {
+        return {
+          ...takeResult,
+          state: { ...takeResult.state, consecutiveTimeouts: timeouts },
+          actions: [...actions, ...takeResult.actions],
+        };
+      }
+    }
+
     let s = { ...state, consecutiveTimeouts: timeouts };
 
     if (!state.hasDrawnThisTurn) {

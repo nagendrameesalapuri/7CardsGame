@@ -314,6 +314,11 @@ function startTurnTimer(io: Server, gameId: string) {
       return;
     }
 
+    if (result.state.status === 'match_end') {
+      handleMatchEnd(io, result.state);
+      return;
+    }
+
     broadcastGameState(io, result.state);
     startTurnTimer(io, gameId);
     scheduleBotTurnIfNeeded(io, result.state);

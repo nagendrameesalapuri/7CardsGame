@@ -232,29 +232,48 @@ export function GameBoard() {
   );
 }
 
+const ACTION_STYLE: Record<string, { icon: string; border: string; text: string }> = {
+  draw:    { icon: '🃏', border: 'border-neon-blue/50',   text: 'text-neon-blue' },
+  discard: { icon: '♠️', border: 'border-dark-border',    text: 'text-dark-text' },
+  skip:    { icon: '⏭️', border: 'border-yellow-500/50',  text: 'text-yellow-400' },
+  attack:  { icon: '⚔️', border: 'border-neon-red/50',    text: 'text-neon-red' },
+  penalty: { icon: '💀', border: 'border-neon-red/50',    text: 'text-neon-red' },
+  show:    { icon: '🎉', border: 'border-neon-green/50',  text: 'text-neon-green' },
+  system:  { icon: 'ℹ️', border: 'border-dark-border',    text: 'text-dark-muted' },
+};
+
 function ActionToast() {
   const { lastAction } = useGameStore();
   const [visible, setVisible] = React.useState(false);
-  const [msg, setMsg] = React.useState('');
+  const [action, setAction] = React.useState<typeof lastAction>(null);
 
   React.useEffect(() => {
     if (!lastAction?.message) return;
-    setMsg(lastAction.message);
+    setAction(lastAction);
     setVisible(true);
-    const t = setTimeout(() => setVisible(false), 2500);
+    const t = setTimeout(() => setVisible(false), 2800);
     return () => clearTimeout(t);
   }, [lastAction]);
 
+  const style = ACTION_STYLE[action?.type ?? 'system'] ?? ACTION_STYLE.system;
+
   return (
     <AnimatePresence>
-      {visible && (
+      {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 bg-dark-surface/90 border border-dark-border rounded-full text-dark-text text-sm font-medium shadow-xl backdrop-blur"
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+          className={clsx(
+            'fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-2',
+            'px-4 py-2 bg-dark-surface/95 border rounded-2xl shadow-xl backdrop-blur-sm',
+            'text-sm font-medium max-w-[90vw] text-center',
+            style.border,
+          )}
+          style={{ bottom: 'calc(50% - 20px)' }}
         >
-          {msg}
+          <span className="text-base flex-shrink-0">{style.icon}</span>
+          <span className={style.text}>{action.message}</span>
         </motion.div>
       )}
     </AnimatePresence>

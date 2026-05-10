@@ -89,6 +89,7 @@ type EventMap = {
   'game:round_end': ClientGameState['roundResult'];
   'game:match_end': MatchResult;
   'game:error': string;
+  'game:can_resume': { roomCode: string };
   'chat:received': ChatMessage;
 };
 

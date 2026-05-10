@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, Card } from '../types';
-import { socketRoom, socketGame, socketChat, on } from '../services/socket';
+import { socketRoom, socketGame, socketChat, on, getSocket } from '../services/socket';
 import { soundService } from '../services/sound';
 
 interface GameStore {
@@ -162,6 +162,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   subscribeToEvents: () => {
     const unsubs: Array<() => void> = [];
+
+    // Auto-rejoin game room when socket reconnects (handles mobile background → foreground)
+    const handleConnect = () => {
+      const { game } = get();
+      if (game) socketGame.reconnect(game.roomId);
+    };
+    const s = getSocket();
+    s.on('connect', handleConnect);
+    unsubs.push(() => s.off('connect', handleConnect));
 
     unsubs.push(on('game:can_resume', ({ roomCode }: { roomCode: string }) => {
       set({ resumeRoomCode: roomCode });
