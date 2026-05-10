@@ -23,13 +23,14 @@ export function LobbyPage() {
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
+  const [aiRounds, setAiRounds] = useState(5);
 
   const startAiGame = (botCount: number) => {
     setAiLoading(true);
     createRoom({
       name: `${user?.username ?? 'My'}'s AI Game`,
       maxPlayers: botCount + 1,
-      roundCount: 5,
+      roundCount: aiRounds,
       isPrivate: true,
       botCount,
     });
@@ -125,6 +126,27 @@ export function LobbyPage() {
               <p className="text-dark-muted text-sm">Jump in instantly — no waiting for other players</p>
             </div>
           </div>
+
+          {/* Round count picker */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-sm text-dark-muted font-medium">Rounds:</span>
+            <div className="flex gap-2">
+              {[3, 5, 7, 10].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setAiRounds(n)}
+                  className={`px-3 py-1 rounded-lg text-sm font-bold transition-all ${
+                    aiRounds === n
+                      ? 'bg-neon-green text-dark-bg'
+                      : 'bg-dark-surface border border-dark-border text-dark-muted hover:border-neon-green/50 hover:text-dark-text'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-3">
             {[
               { bots: 1, label: '1 Bot', desc: '2 players total', icon: '🤖' },
