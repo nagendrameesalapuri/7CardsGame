@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { usersApi } from '../services/api';
@@ -10,6 +10,8 @@ import toast from 'react-hot-toast';
 export function ProfilePage() {
   const { user, loadMe } = useAuthStore();
   const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => { loadMe(); }, []);
   const [username, setUsername] = useState(user?.username ?? '');
   const [selectedAvatar, setSelectedAvatar] = useState(user?.avatar ?? 'avatar_1');
   const [isSaving, setIsSaving] = useState(false);
@@ -30,11 +32,15 @@ export function ProfilePage() {
     }
   };
 
+  const gamesPlayed = user.stats?.gamesPlayed ?? 0;
+  const gamesWon = user.stats?.gamesWon ?? 0;
+  const winRate = gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0;
+
   const stats = [
-    { label: 'Games Played', value: user.stats?.gamesPlayed ?? 0 },
-    { label: 'Games Won', value: user.stats?.gamesWon ?? 0 },
-    { label: 'Win Rate', value: `${user.stats?.winRate ?? 0}%` },
-    { label: 'Rounds Won', value: user.stats?.roundsWon ?? 0 },
+    { label: 'Games Played', value: gamesPlayed },
+    { label: 'Games Won', value: gamesWon },
+    { label: 'Win Rate', value: `${winRate}%` },
+    { label: 'Rounds Played', value: user.stats?.roundsPlayed ?? 0 },
   ];
 
   return (
