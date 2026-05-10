@@ -88,10 +88,27 @@ export function HistoryTab() {
   return (
     <div className="space-y-3">
       {games.map((game, i) => {
+        // Derive final scores from the last round's accumulated totals when available.
+        // game.players[].totalScore can be stale (missing the last round) due to a
+        // server-side timing bug — roundResult.playerResults is always correct.
+        const lastRound = game.rounds.length > 0 ? game.rounds[game.rounds.length - 1] : null;
+        const finalScoreMap: Record<string, number> = {};
+        if (lastRound) {
+          for (const pr of lastRound.playerResults) {
+            finalScoreMap[pr.username] = pr.totalScore;
+          }
+        }
+
+        const playersWithFinalScore = game.players.map(p => ({
+          ...p,
+          totalScore: finalScoreMap[p.username] ?? p.totalScore,
+        }));
+
         const iWon = game.winnerId === user?.id ||
           game.players.some(p => p.userId === user?.id && p.isWinner);
-        const myScore = game.myResult?.totalScore ?? null;
-        const sorted = [...game.players].sort((a, b) => a.totalScore - b.totalScore);
+        const myPlayer = playersWithFinalScore.find(p => p.userId === user?.id);
+        const myScore = myPlayer?.totalScore ?? game.myResult?.totalScore ?? null;
+        const sorted = [...playersWithFinalScore].sort((a, b) => a.totalScore - b.totalScore);
         const isExpanded = expandedGame === game.id;
 
         return (
