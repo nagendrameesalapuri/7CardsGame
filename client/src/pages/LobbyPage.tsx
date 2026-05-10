@@ -15,7 +15,7 @@ import { HistoryTab } from '../components/lobby/HistoryTab';
 type Tab = 'play' | 'history';
 
 export function LobbyPage() {
-  const { room, game, subscribeToEvents, createRoom } = useGameStore();
+  const { room, game, subscribeToEvents, createRoom, resumeRoomCode, clearResume, joinRoom } = useGameStore();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
@@ -80,6 +80,32 @@ export function LobbyPage() {
             </button>
           ))}
         </div>
+
+        {/* ── Resume game banner ───────────────────────────────────────── */}
+        {resumeRoomCode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 bg-yellow-500/10 border border-yellow-500/40 rounded-2xl p-4 flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎮</span>
+              <div>
+                <p className="font-bold text-yellow-400">Game in progress!</p>
+                <p className="text-dark-muted text-sm">You have an active game — room {resumeRoomCode}</p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <Button variant="primary" size="sm" onClick={() => {
+                clearResume();
+                joinRoom(resumeRoomCode);
+              }}>
+                ▶ Resume
+              </Button>
+              <button onClick={clearResume} className="text-dark-muted hover:text-dark-text text-sm px-2">✕</button>
+            </div>
+          </motion.div>
+        )}
 
         {activeTab === 'history' && <HistoryTab />}
 

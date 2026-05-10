@@ -28,6 +28,16 @@ export function getActiveGame(roomCode: string): GameState | undefined {
   return gid ? activeGames.get(gid) : undefined;
 }
 
+export function getActiveGameByUserId(userId: string): { game: GameState; roomCode: string } | undefined {
+  for (const [roomCode, gameId] of roomToGame.entries()) {
+    const game = activeGames.get(gameId);
+    if (game && game.players.some(p => p.userId === userId && !p.isEliminated)) {
+      return { game, roomCode };
+    }
+  }
+  return undefined;
+}
+
 export function registerGameHandlers(io: Server, socket: Socket) {
   const userId: string = (socket as any).userId;
 
@@ -159,7 +169,14 @@ function handlePlayerAction(
     return;
   }
 
-  activeGames.set(result.state.id, result.state);
+  // Reset consecutive timeout count for the acting player
+  const actingPlayerId = findPlayerIdByUserId(result.state, userId);
+  const stateAfterReset = actingPlayerId
+    ? GameEngine.resetTimeouts(result.state, actingPlayerId)
+    : result.state;
+
+  activeGames.set(stateAfterReset.id, stateAfterReset);
+  (result as any).state = stateAfterReset;
 
   // Broadcast action to all players in room
   for (const action of result.actions) {

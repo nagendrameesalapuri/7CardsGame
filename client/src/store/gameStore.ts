@@ -23,6 +23,10 @@ interface GameStore {
   underAttack: boolean;
   handTotal: number;
 
+  // Resume game
+  resumeRoomCode: string | null;
+  clearResume: () => void;
+
   // Actions
   createRoom: (data: Parameters<typeof socketRoom.create>[0]) => void;
   joinRoom: (code: string) => void;
@@ -58,6 +62,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   gameError: null,
   lastAction: null,
+  resumeRoomCode: null,
+  clearResume: () => set({ resumeRoomCode: null }),
   matchResult: null,
   selectedCardIds: [],
   showConfirmVisible: false,
@@ -156,6 +162,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   subscribeToEvents: () => {
     const unsubs: Array<() => void> = [];
+
+    unsubs.push(on('game:can_resume', ({ roomCode }: { roomCode: string }) => {
+      set({ resumeRoomCode: roomCode });
+    }));
 
     unsubs.push(on('room:joined', (room) => set({ room, roomError: null })));
     unsubs.push(on('room:updated', (room) => set({ room })));

@@ -2,7 +2,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { registerRoomHandlers } from './handlers/roomHandler';
-import { registerGameHandlers, getActiveGame } from './handlers/gameHandler';
+import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './handlers/gameHandler';
 import { registerChatHandlers } from './handlers/chatHandler';
 
 export function initSocketIO(io: Server) {
@@ -46,6 +46,13 @@ export function initSocketIO(io: Server) {
     registerRoomHandlers(io, socket);
     registerGameHandlers(io, socket);
     registerChatHandlers(io, socket);
+
+    // Notify client if they have an active game they can resume
+    const uid = (socket as any).userId as string;
+    const active = getActiveGameByUserId(uid);
+    if (active) {
+      socket.emit('game:can_resume', { roomCode: active.roomCode });
+    }
 
     // Reconnection: restore game state
     socket.on('game:reconnect', async (roomCode: string) => {

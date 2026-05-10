@@ -68,52 +68,61 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         )}
       </AnimatePresence>
 
-      {/* Cards — single row, no wrap, overlap more on mobile */}
-      <div
-        className="flex items-end justify-center w-full"
-        style={{ minHeight: '120px', overflowX: 'auto', padding: '8px 8px 0', scrollbarWidth: 'none' }}
-      >
-        <AnimatePresence>
-          {[...hand]
-            .sort((a, b) => {
-              if (a.isJoker && !b.isJoker) return -1;
-              if (!a.isJoker && b.isJoker) return 1;
-              return a.value - b.value;
-            })
-            .map((card, i) => {
-              const isSelected = selectedCardIds.includes(card.id);
-              const rot = (i - (hand.length - 1) / 2) * 2;
-              const isMobile = window.innerWidth < 640;
-              const overlap = isMobile ? (hand.length > 5 ? '-22px' : '-14px') : '-10px';
-              return (
-                <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, y: -50 }}
-                  animate={{ opacity: 1, y: isSelected ? -16 : 0, rotate: rot }}
-                  exit={{ opacity: 0, y: 50, scale: 0.8 }}
-                  transition={{ delay: i * 0.05, type: 'spring', stiffness: 280, damping: 22 }}
-                  style={{
-                    transformOrigin: 'bottom center',
-                    marginLeft: i === 0 ? 0 : overlap,
-                    opacity: isMyTurn ? 1 : 0.78,
-                    cursor: isMyTurn ? 'pointer' : 'default',
-                    zIndex: isSelected ? 20 : (hand.length - i),
-                    flexShrink: 0,
-                  }}
-                  whileHover={isMyTurn ? { y: -12, zIndex: 30 } : {}}
-                  onClick={() => isMyTurn && toggleCardSelection(card.id)}
-                >
-                  <Card
-                    card={card}
-                    isSelected={isSelected}
-                    isPlayable={isMyTurn}
-                    size={window.innerWidth < 640 ? 'md' : 'lg'}
-                  />
-                </motion.div>
-              );
-            })}
-        </AnimatePresence>
-      </div>
+      {/* Cards — fan layout, two rows when 9+ cards */}
+      {(() => {
+        const sorted = [...hand].sort((a, b) => {
+          if (a.isJoker && !b.isJoker) return -1;
+          if (!a.isJoker && b.isJoker) return 1;
+          return a.value - b.value;
+        });
+        const isMobile = window.innerWidth < 640;
+        const isMany = sorted.length >= 9;
+        const cardSize = isMany ? 'sm' : isMobile ? 'md' : 'lg';
+        const row1 = isMany ? sorted.slice(0, Math.ceil(sorted.length / 2)) : sorted;
+        const row2 = isMany ? sorted.slice(Math.ceil(sorted.length / 2)) : [];
+
+        const renderRow = (cards: typeof sorted, rowOffset = 0) => (
+          <div className="flex items-end justify-center" style={{ overflowX: 'auto', scrollbarWidth: 'none' as const }}>
+            <AnimatePresence>
+              {cards.map((card, i) => {
+                const globalI = rowOffset + i;
+                const isSelected = selectedCardIds.includes(card.id);
+                const rot = (i - (cards.length - 1) / 2) * 2;
+                const overlap = isMany ? '-18px' : isMobile && hand.length > 5 ? '-22px' : '-10px';
+                return (
+                  <motion.div
+                    key={card.id}
+                    initial={{ opacity: 0, y: -40 }}
+                    animate={{ opacity: 1, y: isSelected ? -12 : 0, rotate: rot }}
+                    exit={{ opacity: 0, y: 40, scale: 0.8 }}
+                    transition={{ delay: globalI * 0.04, type: 'spring', stiffness: 280, damping: 22 }}
+                    style={{
+                      transformOrigin: 'bottom center',
+                      marginLeft: i === 0 ? 0 : overlap,
+                      opacity: isMyTurn ? 1 : 0.78,
+                      cursor: isMyTurn ? 'pointer' : 'default',
+                      zIndex: isSelected ? 20 : (cards.length - i),
+                      flexShrink: 0,
+                    }}
+                    whileHover={isMyTurn ? { y: -10, zIndex: 30 } : {}}
+                    onClick={() => isMyTurn && toggleCardSelection(card.id)}
+                  >
+                    <Card card={card} isSelected={isSelected} isPlayable={isMyTurn} size={cardSize} />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        );
+
+        return (
+          <div className="flex flex-col gap-1 w-full" style={{ minHeight: isMany ? '180px' : '120px', padding: '4px 8px 0' }}>
+            {renderRow(row1, 0)}
+            {row2.length > 0 && renderRow(row2, row1.length)}
+          </div>
+        );
+      })()}
+
 
       {/* Hint when not your turn */}
       {!isMyTurn && !underAttack && (

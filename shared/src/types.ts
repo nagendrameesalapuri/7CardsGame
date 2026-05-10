@@ -61,6 +61,7 @@ export interface GameState {
   showPlayerId: string | null;
   roundResult: RoundResult | null;
   chatMessages: ChatMessage[];
+  consecutiveTimeouts: Record<string, number>; // playerId → consecutive timeout count
 }
 
 export interface RoundResult {

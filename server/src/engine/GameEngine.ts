@@ -89,6 +89,7 @@ export class GameEngine {
       showPlayerId: null,
       roundResult: null,
       chatMessages: [],
+      consecutiveTimeouts: {},
     };
   }
 
@@ -425,6 +426,7 @@ export class GameEngine {
       hasDrawnThisTurn: false,
       showPlayerId: null,
       roundResult: null,
+      consecutiveTimeouts: {},
     };
   }
 
@@ -432,17 +434,47 @@ export class GameEngine {
 
   static processTimeout(state: GameState): ActionResult {
     const player = state.players[state.currentPlayerIndex];
+    const newCount = (state.consecutiveTimeouts[player.id] ?? 0) + 1;
+    const timeouts = { ...state.consecutiveTimeouts, [player.id]: newCount };
+
+    // After 3 consecutive timeouts, remove the player from the game
+    if (newCount >= 3 && !player.isBot) {
+      const actions: GameAction[] = [{
+        type: 'system',
+        playerId: player.id,
+        message: `${player.username} was removed for being inactive 3 turns in a row`,
+        timestamp: new Date().toISOString(),
+      }];
+
+      const discardPile = [...state.discardPile, ...player.hand];
+      let s: GameState = {
+        ...state,
+        consecutiveTimeouts: { ...timeouts, [player.id]: 0 },
+        discardPile,
+        players: state.players.map(p =>
+          p.id === player.id ? { ...p, isEliminated: true, hand: [], handCount: 0 } : p
+        ),
+      };
+
+      const active = s.players.filter(p => !p.isEliminated);
+      if (active.length <= 1) {
+        return { success: true, state: { ...s, status: 'match_end' }, actions };
+      }
+
+      s = GameEngine.advanceTurn(s);
+      return { success: true, state: s, actions };
+    }
+
     const actions: GameAction[] = [{
       type: 'system',
       playerId: player.id,
-      message: `${player.username}'s turn timed out — auto-action applied`,
+      message: `${player.username}'s turn timed out (${newCount}/3) — auto-action applied`,
       timestamp: new Date().toISOString(),
     }];
 
-    let s = state;
+    let s = { ...state, consecutiveTimeouts: timeouts };
 
     if (!state.hasDrawnThisTurn) {
-      // Auto draw from deck
       s = GameEngine.refillDeckIfNeeded(s);
       if (s.deck.length > 0) {
         const drawnCard = s.deck[0];
@@ -460,7 +492,7 @@ export class GameEngine {
       }
     }
 
-    // Auto-discard: highest-value non-joker card (or first card)
+    // Auto-discard: highest-value non-joker card
     const p = s.players.find(pl => pl.id === player.id)!;
     if (p.hand.length > 0) {
       const sorted = [...p.hand].sort((a, b) => DeckManager.getCardValue(b) - DeckManager.getCardValue(a));
@@ -479,6 +511,12 @@ export class GameEngine {
 
     s = GameEngine.advanceTurn(s);
     return { success: true, state: s, actions };
+  }
+
+  // Reset timeout count when a player takes a real action
+  static resetTimeouts(state: GameState, playerId: string): GameState {
+    if (!state.consecutiveTimeouts[playerId]) return state;
+    return { ...state, consecutiveTimeouts: { ...state.consecutiveTimeouts, [playerId]: 0 } };
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
