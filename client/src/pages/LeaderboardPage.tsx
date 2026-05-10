@@ -9,6 +9,7 @@ interface LeaderEntry {
   id: string;
   username: string;
   avatar: string;
+  isGuest: boolean;
   gamesWon: number;
   gamesPlayed: number;
   winRate: number;
@@ -34,6 +35,11 @@ export function LeaderboardPage() {
 
         {isLoading ? (
           <div className="text-center py-16 text-dark-muted animate-pulse">Loading...</div>
+        ) : leaders.length === 0 ? (
+          <div className="text-center py-16 border border-dashed border-dark-border rounded-2xl text-dark-muted">
+            <p className="text-4xl mb-3">🏆</p>
+            <p>No games played yet — be the first on the board!</p>
+          </div>
         ) : (
           <div className="space-y-2">
             {leaders.map((l, i) => (
@@ -51,7 +57,10 @@ export function LeaderboardPage() {
                 </div>
                 <Avatar avatar={l.avatar} size="md" />
                 <div className="flex-1">
-                  <p className="font-bold text-dark-text">{l.username}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-dark-text">{l.username}</p>
+                    {l.isGuest && <span className="text-xs text-dark-muted border border-dark-border rounded px-1">Guest</span>}
+                  </div>
                   <p className="text-dark-muted text-xs">{l.gamesPlayed} games played</p>
                 </div>
                 <div className="text-right">

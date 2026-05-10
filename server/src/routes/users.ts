@@ -8,9 +8,9 @@ const router = Router();
 // Leaderboard
 router.get('/leaderboard', async (_req: Request, res: Response) => {
   try {
-    const users = await User.find({ isGuest: false })
-      .select('username avatar stats')
-      .sort({ 'stats.gamesWon': -1 })
+    const users = await User.find({ 'stats.gamesPlayed': { $gt: 0 } })
+      .select('username avatar stats isGuest')
+      .sort({ 'stats.gamesWon': -1, 'stats.gamesPlayed': -1 })
       .limit(50)
       .lean();
 
@@ -19,6 +19,7 @@ router.get('/leaderboard', async (_req: Request, res: Response) => {
       id: u._id,
       username: u.username,
       avatar: u.avatar,
+      isGuest: u.isGuest,
       gamesWon: u.stats.gamesWon,
       gamesPlayed: u.stats.gamesPlayed,
       winRate: u.stats.gamesPlayed > 0
