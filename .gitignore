@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+shared/node_modules/
+
+# Build output
+client/dist/
+server/dist/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude Code session files
+.claude/
+.agent.md
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Vite cache
+client/.vite/

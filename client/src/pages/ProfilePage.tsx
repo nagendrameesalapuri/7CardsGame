@@ -1,0 +1,119 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useAuthStore } from '../store/authStore';
+import { usersApi } from '../services/api';
+import { Layout } from '../components/layout/Layout';
+import { Avatar, AVATARS } from '../components/ui/Avatar';
+import { Button } from '../components/ui/Button';
+import toast from 'react-hot-toast';
+
+export function ProfilePage() {
+  const { user, loadMe } = useAuthStore();
+  const [editMode, setEditMode] = useState(false);
+  const [username, setUsername] = useState(user?.username ?? '');
+  const [selectedAvatar, setSelectedAvatar] = useState(user?.avatar ?? 'avatar_1');
+  const [isSaving, setIsSaving] = useState(false);
+
+  if (!user) return null;
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await usersApi.updateMe({ username, avatar: selectedAvatar });
+      await loadMe();
+      setEditMode(false);
+      toast.success('Profile updated!');
+    } catch {
+      toast.error('Failed to save profile');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const stats = [
+    { label: 'Games Played', value: user.stats?.gamesPlayed ?? 0 },
+    { label: 'Games Won', value: user.stats?.gamesWon ?? 0 },
+    { label: 'Win Rate', value: `${user.stats?.winRate ?? 0}%` },
+    { label: 'Rounds Won', value: user.stats?.roundsWon ?? 0 },
+  ];
+
+  return (
+    <Layout>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto">
+        <h1 className="text-3xl font-bold font-game text-dark-text mb-8">Your Profile</h1>
+
+        {/* Profile card */}
+        <div className="bg-dark-surface border border-dark-border rounded-2xl p-6 mb-6">
+          <div className="flex items-start gap-6">
+            {/* Avatar */}
+            <div className="flex flex-col items-center gap-3">
+              <Avatar avatar={selectedAvatar} size="xl" username={user.username} />
+              {editMode && (
+                <div className="grid grid-cols-5 gap-2">
+                  {AVATARS.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedAvatar(`avatar_${i + 1}`)}
+                      className={`w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-blue-500 flex items-center justify-center text-sm transition-all ${
+                        selectedAvatar === `avatar_${i + 1}` ? 'ring-2 ring-neon-green scale-110' : 'opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      {AVATARS[i]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1">
+              {editMode ? (
+                <input
+                  value={username}
+                  onChange={e => setUsername(e.target.value.slice(0, 20))}
+                  className="w-full bg-dark-bg border-2 border-neon-green rounded-xl px-4 py-2 text-dark-text text-xl font-bold focus:outline-none mb-3"
+                />
+              ) : (
+                <h2 className="text-2xl font-bold text-dark-text mb-1">{user.username}</h2>
+              )}
+
+              <p className="text-dark-muted text-sm mb-1">
+                {user.isGuest ? '👤 Guest Account' : '🟢 Registered'}
+              </p>
+              {user.email && <p className="text-dark-muted text-sm">{user.email}</p>}
+
+              <div className="flex gap-3 mt-4">
+                {editMode ? (
+                  <>
+                    <Button size="sm" onClick={() => setEditMode(false)} variant="ghost">Cancel</Button>
+                    <Button size="sm" onClick={handleSave} loading={isSaving}>Save</Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setEditMode(true)}>
+                    ✏️ Edit Profile
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {stats.map((s, i) => (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="bg-dark-surface border border-dark-border rounded-xl p-4 text-center"
+            >
+              <p className="text-2xl font-bold text-neon-green">{s.value}</p>
+              <p className="text-dark-muted text-xs mt-1">{s.label}</p>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </Layout>
+  );
+}

@@ -1,0 +1,54 @@
+version: '3.9'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: seven-cards-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: seven-cards-show
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - app-net
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: seven-cards-server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/seven-cards-show
+      CLIENT_URL: http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    networks:
+      - app-net
+    volumes:
+      - ./server/src:/app/src   # dev hot-reload
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: seven-cards-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    networks:
+      - app-net
+
+volumes:
+  mongo_data:
+
+networks:
+  app-net:
+    driver: bridge

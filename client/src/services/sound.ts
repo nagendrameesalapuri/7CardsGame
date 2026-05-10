@@ -1,0 +1,97 @@
+/**
+ * SoundService — lightweight Web Audio API wrapper.
+ * Falls back silently if audio is not supported.
+ * Sound files should be placed in /public/sounds/ as .mp3 or .ogg.
+ */
+
+type SoundName =
+  | 'card_deal'
+  | 'card_draw'
+  | 'card_discard'
+  | 'card_flip'
+  | 'power_seven'
+  | 'power_jack'
+  | 'show_call'
+  | 'win'
+  | 'lose'
+  | 'tick'
+  | 'chat'
+  | 'join';
+
+const SOUND_FILES: Record<SoundName, string> = {
+  card_deal: '/sounds/card_deal.mp3',
+  card_draw: '/sounds/card_draw.mp3',
+  card_discard: '/sounds/card_discard.mp3',
+  card_flip: '/sounds/card_flip.mp3',
+  power_seven: '/sounds/power_seven.mp3',
+  power_jack: '/sounds/power_jack.mp3',
+  show_call: '/sounds/show_call.mp3',
+  win: '/sounds/win.mp3',
+  lose: '/sounds/lose.mp3',
+  tick: '/sounds/tick.mp3',
+  chat: '/sounds/chat.mp3',
+  join: '/sounds/join.mp3',
+};
+
+class SoundService {
+  private cache = new Map<string, AudioBuffer>();
+  private ctx: AudioContext | null = null;
+  private enabled = true;
+  private volume = 0.7;
+
+  private getContext(): AudioContext | null {
+    if (!this.ctx) {
+      try {
+        this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      } catch {
+        return null;
+      }
+    }
+    return this.ctx;
+  }
+
+  async preload(names: SoundName[]): Promise<void> {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    await Promise.allSettled(
+      names.map(async (name) => {
+        if (this.cache.has(name)) return;
+        try {
+          const res = await fetch(SOUND_FILES[name]);
+          const buf = await res.arrayBuffer();
+          const decoded = await ctx.decodeAudioData(buf);
+          this.cache.set(name, decoded);
+        } catch { /* sound file missing — fail silently */ }
+      })
+    );
+  }
+
+  play(name: SoundName): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    // Resume suspended context (required after user gesture)
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const buffer = this.cache.get(name);
+    if (!buffer) return;
+
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    gain.gain.value = this.volume;
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+  }
+
+  setEnabled(v: boolean) { this.enabled = v; }
+  setVolume(v: number) { this.volume = Math.max(0, Math.min(1, v)); }
+  isEnabled() { return this.enabled; }
+  getVolume() { return this.volume; }
+}
+
+export const soundService = new SoundService();
+export type { SoundName };
