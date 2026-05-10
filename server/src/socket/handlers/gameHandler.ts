@@ -259,11 +259,20 @@ function handleMatchEnd(io: Server, state: GameState) {
 
   io.to(state.roomId).emit('game:match_end', matchResult);
 
-  // Persist final result with player scores
-  const playerScoreUpdates = state.players.reduce<Record<string, number>>((acc, p) => {
-    acc[p.userId] = p.totalScore;
-    return acc;
-  }, {});
+  // Persist final result with player scores.
+  // Use roundResult.playerResults when available — state.players[].totalScore
+  // hasn't been updated yet for the last round at the time handleMatchEnd is called.
+  const playerScoreUpdates: Record<string, number> = {};
+  if (state.roundResult) {
+    for (const pr of state.roundResult.playerResults) {
+      const player = state.players.find(p => p.id === pr.playerId);
+      if (player) playerScoreUpdates[player.userId] = pr.totalScore;
+    }
+  } else {
+    for (const p of state.players) {
+      playerScoreUpdates[p.userId] = p.totalScore;
+    }
+  }
 
   // Resolve in-game UUID → userId for the winner
   const winnerPlayer = state.players.find(p => p.id === matchResult.winnerId);
