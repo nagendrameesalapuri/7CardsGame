@@ -30,6 +30,7 @@ interface GameStore {
   // Actions
   createRoom: (data: Parameters<typeof socketRoom.create>[0]) => void;
   joinRoom: (code: string) => void;
+  resumeGame: (code: string) => void;
   leaveRoom: () => void;
   toggleReady: () => void;
   startGame: () => void;
@@ -82,6 +83,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   joinRoom: (code) => {
     set({ roomError: null });
     socketRoom.join(code);
+  },
+
+  resumeGame: (code) => {
+    set({ resumeRoomCode: null });
+    socketGame.reconnect(code);
   },
 
   leaveRoom: () => {

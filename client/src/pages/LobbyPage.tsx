@@ -15,7 +15,7 @@ import { HistoryTab } from '../components/lobby/HistoryTab';
 type Tab = 'play' | 'history';
 
 export function LobbyPage() {
-  const { room, game, subscribeToEvents, createRoom, resumeRoomCode, clearResume, joinRoom } = useGameStore();
+  const { room, game, subscribeToEvents, createRoom, resumeRoomCode, clearResume, joinRoom, resumeGame } = useGameStore();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
@@ -97,8 +97,8 @@ export function LobbyPage() {
             </div>
             <div className="flex gap-2 flex-shrink-0">
               <Button variant="primary" size="sm" onClick={() => {
-                clearResume();
-                joinRoom(resumeRoomCode);
+                resumeGame(resumeRoomCode);
+                navigate('/game');
               }}>
                 ▶ Resume
               </Button>

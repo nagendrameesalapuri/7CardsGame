@@ -64,9 +64,14 @@ export class GameEngine {
       isReady: true,
     }));
 
-    // First card of remaining deck becomes the open/discard pile seed
+    // First card of remaining deck becomes the open/discard pile seed.
+    // 7 and J cannot be the starting open card — keep drawing until we get a valid one.
     const d = [...deckAfterDeal];
-    const firstDiscard = d.shift()!;
+    let firstDiscard = d.shift()!;
+    while (firstDiscard.rank === '7' || firstDiscard.rank === 'J') {
+      d.push(firstDiscard); // put it back at the bottom
+      firstDiscard = d.shift()!;
+    }
 
     return {
       id: uuidv4(),
@@ -409,7 +414,11 @@ export class GameEngine {
     });
 
     const d = [...deckAfterDeal];
-    const firstDiscard = d.shift()!;
+    let firstDiscard = d.shift()!;
+    while (firstDiscard.rank === '7' || firstDiscard.rank === 'J') {
+      d.push(firstDiscard);
+      firstDiscard = d.shift()!;
+    }
     const winnerSeat = newPlayers.findIndex(p => p.id === previousResult.winnerId);
     const startIndex = winnerSeat >= 0 ? winnerSeat : 0;
 
