@@ -18,7 +18,7 @@ router.get('/', requireAuth, async (_req: Request, res: Response) => {
       name: r.name,
       playerCount: r.players.length,
       maxPlayers: r.config.maxPlayers,
-      matchPointLimit: r.config.matchPointLimit,
+      roundCount: r.config.roundCount,
       createdAt: r.createdAt,
     })) });
   } catch {
