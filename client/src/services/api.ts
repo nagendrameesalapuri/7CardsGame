@@ -28,7 +28,7 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  googleLogin: () => { window.location.href = '/api/auth/google'; },
+  googleLogin: () => { window.location.href = `${BACKEND}/api/auth/google`; },
   guestLogin: (username: string) =>
     api.post<{ token: string; guestToken: string; user: any }>('/auth/guest', { username }),
   getMe: () => api.get<{ user: any }>('/auth/me'),
