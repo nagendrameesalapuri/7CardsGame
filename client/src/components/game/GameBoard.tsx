@@ -270,7 +270,7 @@ function ActionToast() {
             'text-sm font-medium max-w-[90vw] text-center',
             style.border,
           )}
-          style={{ bottom: '210px' }}
+          style={{ bottom: '260px' }}
         >
           <span className="text-base flex-shrink-0">{style.icon}</span>
           <span className={style.text}>{action.message}</span>
