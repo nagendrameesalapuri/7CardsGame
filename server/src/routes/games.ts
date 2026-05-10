@@ -32,6 +32,17 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
         isBot: p.isBot,
         isWinner: p.userId === g.winnerId,
       })),
+      rounds: g.rounds.map(r => ({
+        roundNumber: r.roundNumber,
+        jokerRank: r.jokerRank,
+        showPlayerWon: r.showPlayerWon,
+        playerResults: r.playerResults.map((pr: any) => ({
+          playerId: pr.playerId,
+          username: pr.username,
+          roundPoints: pr.roundPoints,
+          totalScore: pr.totalScore,
+        })),
+      })),
       roundsPlayed: g.rounds.length,
       startedAt: g.startedAt,
       endedAt: g.endedAt,
