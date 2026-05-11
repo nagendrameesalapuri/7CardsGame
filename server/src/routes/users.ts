@@ -5,6 +5,31 @@ import { Game } from '../models/Game';
 
 const router = Router();
 
+// Admin: reset all user stats (clears leaderboard)
+// Call: POST /api/users/admin/reset-stats  with header  x-admin-key: <ADMIN_SECRET env var>
+router.post('/admin/reset-stats', async (req: Request, res: Response) => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret || req.headers['x-admin-key'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    const result = await User.updateMany({}, {
+      $set: {
+        'stats.gamesPlayed': 0,
+        'stats.gamesWon': 0,
+        'stats.roundsPlayed': 0,
+        'stats.roundsWon': 0,
+        'stats.totalPointsEarned': 0,
+        'stats.showAttempts': 0,
+        'stats.showSuccesses': 0,
+      },
+    });
+    res.json({ message: `Cleared stats for ${result.modifiedCount} users` });
+  } catch {
+    res.status(500).json({ error: 'Failed to reset stats' });
+  }
+});
+
 // Leaderboard
 router.get('/leaderboard', async (_req: Request, res: Response) => {
   try {

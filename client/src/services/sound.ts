@@ -2,6 +2,10 @@
  * SoundService — lightweight Web Audio API wrapper.
  * Falls back silently if audio is not supported.
  * Sound files should be placed in /public/sounds/ as .mp3 or .ogg.
+ *
+ * iOS rule: AudioContext must be CREATED inside a user-gesture call stack.
+ * So we defer context creation to the first warmup() call (touchstart/click).
+ * preload() just queues names; actual decoding happens after warmup().
  */
 
 type SoundName =
@@ -38,33 +42,19 @@ class SoundService {
   private ctx: AudioContext | null = null;
   private enabled = true;
   private volume = 0.7;
+  private pendingPreload: SoundName[] = [];
 
-  private getContext(): AudioContext | null {
-    if (!this.ctx) {
-      try {
-        this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      } catch {
-        return null;
-      }
-    }
-    return this.ctx;
-  }
-
-  /** Ensure context is running, then execute callback. Safe on iOS/Android. */
-  private withRunningContext(cb: (ctx: AudioContext) => void): void {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => cb(ctx)).catch(() => {});
-    } else {
-      cb(ctx);
+  private createContext(): AudioContext | null {
+    if (this.ctx) return this.ctx;
+    try {
+      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      return this.ctx;
+    } catch {
+      return null;
     }
   }
 
-  async preload(names: SoundName[]): Promise<void> {
-    const ctx = this.getContext();
-    if (!ctx) return;
-
+  private async _loadBuffers(ctx: AudioContext, names: SoundName[]): Promise<void> {
     await Promise.allSettled(
       names.map(async (name) => {
         if (this.cache.has(name)) return;
@@ -78,12 +68,21 @@ class SoundService {
     );
   }
 
+  /** Queue sound names for loading. Actual decode runs after first warmup(). */
+  preload(names: SoundName[]): void {
+    this.pendingPreload = [...names];
+    // If context already exists (warmup already ran), decode immediately
+    if (this.ctx) this._loadBuffers(this.ctx, names);
+  }
+
   play(name: SoundName): void {
     if (!this.enabled) return;
     const buffer = this.cache.get(name);
     if (!buffer) return;
+    const ctx = this.ctx; // never create context here — must come from warmup
+    if (!ctx) return;
 
-    this.withRunningContext((ctx) => {
+    const doPlay = () => {
       try {
         const source = ctx.createBufferSource();
         const gain = ctx.createGain();
@@ -93,14 +92,26 @@ class SoundService {
         gain.connect(ctx.destination);
         source.start();
       } catch { /* ignore */ }
-    });
+    };
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(doPlay).catch(() => {});
+    } else {
+      doPlay();
+    }
   }
 
   /** Short beep to alert the player it's their turn. Also vibrates on Android. */
   playBeep(): void {
     try { navigator.vibrate?.(120); } catch { /* ignore */ }
     if (!this.enabled) return;
-    this.withRunningContext((ctx) => this._beepOsc(ctx));
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => this._beepOsc(ctx)).catch(() => {});
+      return;
+    }
+    this._beepOsc(ctx);
   }
 
   private _beepOsc(ctx: AudioContext): void {
@@ -119,15 +130,26 @@ class SoundService {
   }
 
   /**
-   * Call from any user-gesture handler to unlock AudioContext on iOS/Android.
-   * Plays a silent buffer AFTER resume resolves — this is required for iOS to fully unlock.
+   * Must be called from a user-gesture handler (touchstart / click / visibilitychange).
+   * Creates the AudioContext for the first time (iOS requires this to happen inside
+   * a gesture), loads any pending sound buffers, then resumes if suspended.
    */
   warmup(): void {
-    const ctx = this.getContext();
+    // Create context inside user gesture — the ONLY way iOS unlocks audio
+    const ctx = this.createContext();
     if (!ctx) return;
+
+    // Decode pending sounds now that we have a valid context
+    if (this.pendingPreload.length > 0) {
+      const toLoad = this.pendingPreload;
+      this.pendingPreload = [];
+      this._loadBuffers(ctx, toLoad);
+    }
+
     if (ctx.state !== 'suspended') return;
+
+    // Resume + play a silent buffer to fully unlock iOS audio session
     ctx.resume().then(() => {
-      // Silent 1-frame buffer forces iOS to fully unlock the audio session
       try {
         const buf = ctx.createBuffer(1, 1, 22050);
         const src = ctx.createBufferSource();
