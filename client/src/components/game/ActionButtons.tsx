@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { Card as CardType } from '../../types';
 import { useGameStore } from '../../store/gameStore';
+import { useShortScreen } from '../../hooks/useShortScreen';
 
 interface ActionButtonsProps {
   hand: CardType[];
@@ -14,6 +15,10 @@ interface ActionButtonsProps {
 
 export function ActionButtons({ hand, isMyTurn, hasDrawnThisTurn, underAttack, className }: ActionButtonsProps) {
   const { selectedCardIds, discardCards, respondToAttack, game } = useGameStore();
+  const isShort = useShortScreen();
+  const btnCls = isShort
+    ? 'px-4 py-1.5 font-bold rounded-xl active:scale-95 transition-all text-xs whitespace-nowrap'
+    : 'px-5 py-2.5 font-bold rounded-xl shadow-lg active:scale-95 transition-all text-sm whitespace-nowrap';
 
   const isRealSeven = (c: CardType) => c.rank === '7' && !c.isJoker;
   const topDiscard = game?.discardPile[game.discardPile.length - 1];
@@ -42,37 +47,25 @@ export function ActionButtons({ hand, isMyTurn, hasDrawnThisTurn, underAttack, c
         className={clsx('flex gap-2 flex-wrap justify-center items-center', className)}
       >
         {canDiscard && (
-          <button
-            onClick={discardCards}
-            className="px-5 py-2.5 bg-neon-green text-dark-bg font-bold rounded-xl shadow-lg active:scale-95 transition-all text-sm whitespace-nowrap"
-          >
+          <button onClick={discardCards} className={clsx(btnCls, 'bg-neon-green text-dark-bg')}>
             Discard {selectedCardIds.length > 1 ? `${selectedCardIds.length} Cards` : 'Card'}
           </button>
         )}
 
         {canCut && (
-          <button
-            onClick={discardCards}
-            className="px-5 py-2.5 bg-yellow-500 text-dark-bg font-bold rounded-xl active:scale-95 transition-all text-sm whitespace-nowrap"
-          >
+          <button onClick={discardCards} className={clsx(btnCls, 'bg-yellow-500 text-dark-bg')}>
             ✂️ Cut! ({selectedCardIds.length})
           </button>
         )}
 
         {canAttackThrow && (
-          <button
-            onClick={() => respondToAttack('throw')}
-            className="px-5 py-2.5 bg-yellow-500 text-dark-bg font-bold rounded-xl active:scale-95 transition-all text-sm whitespace-nowrap"
-          >
+          <button onClick={() => respondToAttack('throw')} className={clsx(btnCls, 'bg-yellow-500 text-dark-bg')}>
             ⚔️ Throw {sevensToThrow} Seven{sevensToThrow > 1 ? 's' : ''}
           </button>
         )}
 
         {canAttackTake && (
-          <button
-            onClick={() => respondToAttack('take')}
-            className="px-5 py-2.5 bg-neon-red/80 text-white font-bold rounded-xl active:scale-95 transition-all text-sm whitespace-nowrap"
-          >
+          <button onClick={() => respondToAttack('take')} className={clsx(btnCls, 'bg-neon-red/80 text-white')}>
             🃏 Take Penalty
           </button>
         )}

@@ -37,15 +37,16 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
 
       {/* Hand total badge */}
       <div className={clsx(
-        'flex items-center gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-sm font-bold',
+        'flex items-center gap-1.5 rounded-full font-bold',
+        isShort ? 'px-2 py-0.5 text-xs' : 'px-3 sm:px-4 py-1 sm:py-1.5 text-sm',
         handTotal <= 5
           ? 'bg-neon-green/20 text-neon-green border border-neon-green/40'
           : 'bg-dark-surface border border-dark-border text-dark-muted'
       )}>
-        <span className="text-xs sm:text-sm">Your Hand:</span>
-        <span className="text-base sm:text-lg font-bold">{handTotal} pts</span>
-        {handTotal <= 5 && isMyTurn && <span className="text-xs opacity-80 animate-pulse">✓ SHOW now!</span>}
-        {handTotal <= 5 && !isMyTurn && <span className="text-xs opacity-80">✓ Ready to SHOW</span>}
+        <span className={isShort ? 'text-[10px]' : 'text-xs sm:text-sm'}>Hand:</span>
+        <span className={clsx('font-bold', isShort ? 'text-sm' : 'text-base sm:text-lg')}>{handTotal}pt</span>
+        {handTotal <= 5 && isMyTurn && <span className={clsx('opacity-80 animate-pulse', isShort ? 'text-[10px]' : 'text-xs')}>✓ SHOW!</span>}
+        {handTotal <= 5 && !isMyTurn && !isShort && <span className="text-xs opacity-80">✓ Ready</span>}
       </div>
 
       {/* Attack warning — compact on mobile to save vertical space */}
@@ -73,14 +74,13 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         });
         const isMobile = window.innerWidth < 640;
         const isMany = sorted.length >= 9;
-        // Use sm cards on mobile during attack to fit all elements on screen without clipping
-        const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : (isMobile || isShort) ? 'md' : 'lg';
+        // sm=56px, md=96px, lg=112px
+        const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : isShort ? 'sm' : isMobile ? 'md' : 'lg';
         const row1 = isMany ? sorted.slice(0, Math.ceil(sorted.length / 2)) : sorted;
         const row2 = isMany ? sorted.slice(Math.ceil(sorted.length / 2)) : [];
 
-        const overlapPx = isMany ? 14 : (isMobile && underAttack) ? 8 : (isMobile || isShort) && hand.length > 5 ? 18 : 8;
-        // sm card height = h-14 = 56px, md = h-24 = 96px, lg = h-28 = 112px
-        const minH = isMany ? '180px' : (isMobile && underAttack) ? '64px' : (isMobile || isShort) ? '96px' : '120px';
+        const overlapPx = isMany ? 14 : (isMobile && underAttack) ? 8 : (isMobile || isShort) && hand.length > 5 ? 16 : 8;
+        const minH = isMany ? '180px' : (isMobile && underAttack) ? '64px' : isShort ? '60px' : isMobile ? '96px' : '120px';
 
         const renderRow = (cards: typeof sorted, rowOffset = 0) => (
           <div
