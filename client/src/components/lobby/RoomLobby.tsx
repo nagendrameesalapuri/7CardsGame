@@ -5,7 +5,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
-import toast from 'react-hot-toast';
+import { notify } from '../../services/notify';
 
 export function RoomLobby() {
   const { room, toggleReady, startGame, leaveRoom, subscribeToEvents, setBots } = useGameStore();
@@ -27,7 +27,7 @@ export function RoomLobby() {
 
   const copyCode = () => {
     navigator.clipboard.writeText(room.code);
-    toast.success('Room code copied!');
+    notify.success('Room code copied!');
   };
 
   return (

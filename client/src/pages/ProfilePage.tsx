@@ -5,7 +5,7 @@ import { usersApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
 import { Avatar, AVATARS } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
-import toast from 'react-hot-toast';
+import { notify } from '../services/notify';
 
 export function ProfilePage() {
   const { user, loadMe } = useAuthStore();
@@ -43,9 +43,9 @@ export function ProfilePage() {
       await usersApi.updateMe({ username, avatar: selectedAvatar });
       await loadMe();
       setEditMode(false);
-      toast.success('Profile updated!');
+      notify.success('Profile updated!');
     } catch {
-      toast.error('Failed to save profile');
+      notify.error('Failed to save profile');
     } finally {
       setIsSaving(false);
     }

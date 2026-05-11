@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import toast from 'react-hot-toast';
+import { notify } from '../services/notify';
 import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, Card } from '../types';
 import { socketRoom, socketGame, socketChat, on, getSocket } from '../services/socket';
 import { soundService } from '../services/sound';
@@ -214,7 +214,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     unsubs.push(on('room:left', () => set({ room: null })));
     unsubs.push(on('room:error', (msg) => {
       set({ roomError: msg });
-      toast.error(msg);
+      notify.error(msg);
     }));
 
     unsubs.push(on('game:state', (incoming) => {
@@ -234,11 +234,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (player.handCount <= 3) {
             if (lowCardAlerted.get(player.id) !== player.handCount) {
               lowCardAlerted.set(player.id, player.handCount);
-              const emoji = player.handCount === 1 ? '🚨' : '⚠️';
-              toast(
-                `${emoji} ${player.username} has only ${player.handCount} card${player.handCount === 1 ? '' : 's'}!`,
-                { duration: 4500, id: `low-cards-${player.id}` }
-              );
+              const msg = `${player.username} has only ${player.handCount} card${player.handCount === 1 ? '' : 's'}!`;
+              notify.warning(msg, { duration: 4500, id: `low-cards-${player.id}` });
             }
           } else {
             lowCardAlerted.delete(player.id);
@@ -298,7 +295,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ gameError: msg });
       // Suppress transient reconnect errors that fire before socket re-joins the room
       if (msg === 'No active game' && get().game) return;
-      toast.error(msg);
+      notify.error(msg);
     }));
 
     unsubs.push(on('chat:received', (msg) => {
