@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
 import { RoundResult, ClientPlayerState, Card as CardType } from '../../types';
@@ -39,12 +39,23 @@ function CardBadge({ card }: { card: CardType }) {
   );
 }
 
+const MATCH_END_DELAY_S = 15; // must match server setTimeout (15 000 ms)
+
 export function ScoreBoard({
   roundResult, players, roundNumber, roundCount,
   myUserId, roundReadyUpdate, onReady,
 }: ScoreBoardProps) {
   const winner = players.find(p => p.id === roundResult.winnerId);
   const isFinalRound = roundNumber >= roundCount;
+
+  // Countdown for final round — starts at MATCH_END_DELAY_S and ticks to 0
+  const [countdown, setCountdown] = useState(MATCH_END_DELAY_S);
+  useEffect(() => {
+    if (!isFinalRound) return;
+    setCountdown(MATCH_END_DELAY_S);
+    const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [isFinalRound]);
 
   const myPlayer = players.find(p => p.userId === myUserId);
   const iHaveClicked = !!(myPlayer && roundReadyUpdate?.readyUserIds.includes(myUserId));
@@ -233,7 +244,30 @@ export function ScoreBoard({
           )}
 
           {isFinalRound && (
-            <p className="text-xs text-dark-muted text-center">Match results coming up...</p>
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-3">
+                <motion.span
+                  key={countdown}
+                  initial={{ scale: 1.4, opacity: 0.6 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-3xl font-bold text-yellow-400 w-10 text-center"
+                >
+                  {countdown}
+                </motion.span>
+                <p className="text-sm text-dark-muted">
+                  {countdown > 0 ? 'seconds until match results…' : 'Showing results…'}
+                </p>
+              </div>
+              {/* Progress bar */}
+              <div className="w-full max-w-xs h-1.5 bg-dark-border rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-yellow-400 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${(countdown / MATCH_END_DELAY_S) * 100}%` }}
+                  transition={{ duration: 1, ease: 'linear' }}
+                />
+              </div>
+            </div>
           )}
         </div>
       </motion.div>

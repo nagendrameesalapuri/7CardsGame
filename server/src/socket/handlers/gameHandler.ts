@@ -257,8 +257,8 @@ function handleRoundEnd(io: Server, state: GameState) {
 
   const matchResult = ScoreEngine.checkMatchOver(state);
   if (matchResult) {
-    // Brief delay so players can see the final round's scoreboard before match-end overlay
-    setTimeout(() => handleMatchEnd(io, state), 2500);
+    // 15 seconds: ShowDeclaredOverlay runs 3s, then ScoreBoard visible for ~12s before winner screen
+    setTimeout(() => handleMatchEnd(io, state), 15000);
     return;
   }
 
