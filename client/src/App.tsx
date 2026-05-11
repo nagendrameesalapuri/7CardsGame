@@ -87,16 +87,18 @@ export function App() {
         </Routes>
 
         <Toaster
-          position="top-right"
+          position="top-center"
           toastOptions={{
             style: {
               background: '#161b22',
               color: '#e6edf3',
               border: '1px solid #30363d',
-              borderRadius: '12px',
+              borderRadius: '10px',
+              fontSize: '14px',
+              padding: '10px 16px',
             },
-            success: { iconTheme: { primary: '#00ff88', secondary: '#0d1117' } },
-            error: { iconTheme: { primary: '#ff3b5c', secondary: '#0d1117' } },
+            success: { icon: null },
+            error: { icon: null },
           }}
         />
       </BrowserRouter>

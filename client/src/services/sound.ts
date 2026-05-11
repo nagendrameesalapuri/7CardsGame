@@ -50,6 +50,17 @@ class SoundService {
     return this.ctx;
   }
 
+  /** Ensure context is running, then execute callback. Safe on iOS/Android. */
+  private withRunningContext(cb: (ctx: AudioContext) => void): void {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => cb(ctx)).catch(() => {});
+    } else {
+      cb(ctx);
+    }
+  }
+
   async preload(names: SoundName[]): Promise<void> {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -69,38 +80,27 @@ class SoundService {
 
   play(name: SoundName): void {
     if (!this.enabled) return;
-    const ctx = this.getContext();
-    if (!ctx) return;
-
-    // Resume suspended context (required after user gesture)
-    if (ctx.state === 'suspended') ctx.resume();
-
     const buffer = this.cache.get(name);
     if (!buffer) return;
 
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
-    gain.gain.value = this.volume;
-    source.buffer = buffer;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    source.start();
+    this.withRunningContext((ctx) => {
+      try {
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        gain.gain.value = this.volume;
+        source.buffer = buffer;
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        source.start();
+      } catch { /* ignore */ }
+    });
   }
 
-  /** Short beep to alert the player that it's their turn. Uses oscillator — no file needed.
-   *  Also vibrates on Android. iOS requires warmup() called from a prior user gesture. */
+  /** Short beep to alert the player it's their turn. Also vibrates on Android. */
   playBeep(): void {
-    // Vibrate on Android (ignored on iOS/desktop)
     try { navigator.vibrate?.(120); } catch { /* ignore */ }
-
     if (!this.enabled) return;
-    const ctx = this.getContext();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => this._beepOsc(ctx));
-      return;
-    }
-    this._beepOsc(ctx);
+    this.withRunningContext((ctx) => this._beepOsc(ctx));
   }
 
   private _beepOsc(ctx: AudioContext): void {
@@ -118,21 +118,24 @@ class SoundService {
     } catch { /* ignore if context closed */ }
   }
 
-  /** Call this from any user-gesture handler to pre-warm the AudioContext on iOS.
-   *  Safe to call repeatedly — only does work when context is suspended. */
+  /**
+   * Call from any user-gesture handler to unlock AudioContext on iOS/Android.
+   * Plays a silent buffer AFTER resume resolves — this is required for iOS to fully unlock.
+   */
   warmup(): void {
     const ctx = this.getContext();
     if (!ctx) return;
     if (ctx.state !== 'suspended') return;
-    ctx.resume().catch(() => {});
-    // Play a silent buffer — forces iOS to fully unlock the audio context
-    try {
-      const buf = ctx.createBuffer(1, 1, 22050);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(ctx.destination);
-      src.start(0);
-    } catch { /* ignore */ }
+    ctx.resume().then(() => {
+      // Silent 1-frame buffer forces iOS to fully unlock the audio session
+      try {
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+      } catch { /* ignore */ }
+    }).catch(() => {});
   }
 
   setEnabled(v: boolean) { this.enabled = v; }
