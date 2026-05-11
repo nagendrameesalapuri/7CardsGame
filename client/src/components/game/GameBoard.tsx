@@ -328,8 +328,7 @@ function ActionToast() {
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
-          className="fixed left-0 right-0 z-30 px-2 sm:px-4"
-          style={{ top: '82px' }}
+          className="fixed left-0 right-0 z-30 px-2 sm:px-4 top-[116px] sm:top-[80px]"
         >
           <div
             style={{

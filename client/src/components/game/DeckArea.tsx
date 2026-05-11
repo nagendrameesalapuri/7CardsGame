@@ -78,10 +78,21 @@ export function DeckArea({
 
           {/* Discard Pile */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-dark-muted text-[10px] sm:text-xs uppercase tracking-wider">
-              Discard ({discardPile.length})
-            </span>
-            <div className="relative group">
+            <div className="flex items-center gap-1.5">
+              <span className="text-dark-muted text-[10px] sm:text-xs uppercase tracking-wider">
+                Discard ({discardPile.length})
+              </span>
+              {discardPile.length > 0 && (
+                <button
+                  onClick={() => setShowPileModal(true)}
+                  className="text-dark-muted hover:text-dark-text text-[10px] sm:text-xs bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded-full transition-colors leading-none"
+                >
+                  👁
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
               <motion.div
                 whileHover={canDrawFromDiscard ? { scale: 1.06, y: -3 } : {}}
                 whileTap={canDrawFromDiscard ? { scale: 0.95 } : {}}
@@ -102,18 +113,6 @@ export function DeckArea({
                 )}
               </motion.div>
 
-              {/* View all overlay */}
-              {discardPile.length > 0 && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowPileModal(true); }}
-                  className="absolute inset-0 flex items-end justify-center pb-1 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg bg-black/50"
-                >
-                  <span className="text-white text-[9px] font-bold bg-black/70 px-1.5 py-0.5 rounded-full">
-                    👁 View all
-                  </span>
-                </button>
-              )}
-
               {topDiscardIsSpecial && canDraw && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 rounded-lg pointer-events-none">
                   <span className="text-neon-red text-base font-bold">🚫</span>
@@ -123,6 +122,7 @@ export function DeckArea({
                 </div>
               )}
             </div>
+
             {topDiscard && (
               <span className="text-dark-muted text-[9px] sm:text-xs text-center leading-tight">
                 {topDiscard.rank === 'Joker' ? 'Printed Joker' : `${topDiscard.rank}${topDiscard.suit !== 'none' ? ' ' + topDiscard.suit[0].toUpperCase() : ''}`}
