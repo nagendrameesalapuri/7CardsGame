@@ -14,6 +14,7 @@ import { ChatPanel } from './ChatPanel';
 import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
+import { Avatar } from '../ui/Avatar';
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -55,6 +56,7 @@ export function GameBoard() {
     opponents.length >= 3 ? [opponents[2] ?? opponents[opponents.length - 1]] : [];
 
   const myHand = game?.myHand ?? [];
+  const allOpponents = game.players.filter(p => p.id !== game.myPlayerId && !p.isEliminated);
 
   return (
     <div className="relative w-full h-[100dvh] bg-felt bg-felt-pattern overflow-hidden flex flex-col">
@@ -115,8 +117,20 @@ export function GameBoard() {
           />
         </div>
 
-        {/* Top opponents */}
-        <div className="flex gap-8 justify-center flex-wrap">
+        {/* ── MOBILE: compact opponent strip (all opponents in one row) ── */}
+        <div className="sm:hidden flex gap-2 justify-center overflow-x-auto w-full px-1 flex-shrink-0">
+          {allOpponents.map(opp => (
+            <MiniOpponent
+              key={opp.id}
+              player={opp}
+              isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
+              isAttackTarget={!!(game.attackChain && game.players[game.attackChain.targetPlayerIndex]?.id === opp.id)}
+            />
+          ))}
+        </div>
+
+        {/* ── DESKTOP: top opponents ── */}
+        <div className="hidden sm:flex gap-8 justify-center flex-wrap">
           {topOpponents.map(opp => (
             <OpponentHand
               key={opp.id}
@@ -131,8 +145,8 @@ export function GameBoard() {
 
         {/* Middle row: left, center, right */}
         <div className="flex-1 w-full flex items-center justify-between gap-4 max-w-4xl mx-auto">
-          {/* Left opponents */}
-          <div className="flex flex-col gap-4">
+          {/* Left opponents — desktop only */}
+          <div className="hidden sm:flex flex-col gap-4">
             {leftOpponents.map(opp => (
               <OpponentHand
                 key={opp.id}
@@ -145,7 +159,7 @@ export function GameBoard() {
             ))}
           </div>
 
-          {/* Center: deck area */}
+          {/* Center: deck area — full width on mobile */}
           <div className="flex-1 flex items-center justify-center">
             <DeckArea
               deckCount={game.deckCount}
@@ -158,8 +172,8 @@ export function GameBoard() {
             />
           </div>
 
-          {/* Right opponents */}
-          <div className="flex flex-col gap-4">
+          {/* Right opponents — desktop only */}
+          <div className="hidden sm:flex flex-col gap-4">
             {rightOpponents.map(opp => (
               <OpponentHand
                 key={opp.id}
@@ -258,6 +272,46 @@ const ACTION_STYLE: Record<string, { icon: string; iconBg: string; bg: string; b
   system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.95)', border: 'rgba(29,78,216,0.35)' },
 };
 
+function MiniOpponent({
+  player,
+  isCurrentTurn,
+  isAttackTarget,
+}: {
+  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean };
+  isCurrentTurn: boolean;
+  isAttackTarget: boolean;
+}) {
+  return (
+    <div className={clsx(
+      'flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border flex-shrink-0 min-w-[64px] max-w-[80px]',
+      isCurrentTurn ? 'border-neon-green/60 bg-neon-green/10' :
+      isAttackTarget ? 'border-neon-red/60 bg-neon-red/10' :
+      'border-white/10 bg-black/30',
+    )}>
+      <div className="relative">
+        <Avatar avatar={player.avatar ?? 'avatar_1'} size="sm" username={player.username} />
+        {isCurrentTurn && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-neon-green border border-black" />
+        )}
+      </div>
+      <span className="text-dark-text text-[10px] font-medium truncate w-full text-center leading-tight">
+        {player.username.length > 7 ? player.username.slice(0, 6) + '…' : player.username}
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-dark-muted text-[10px]">🃏{player.handCount}</span>
+        {player.handCount <= 3 && !player.isEliminated && (
+          <motion.span
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ repeat: Infinity, duration: 0.7 }}
+            className="text-yellow-400 text-[10px]"
+          >⚠️</motion.span>
+        )}
+      </div>
+      <span className="text-dark-muted text-[9px]">{player.totalScore}pt</span>
+    </div>
+  );
+}
+
 function ActionToast() {
   const { lastAction } = useGameStore();
   const [visible, setVisible] = React.useState(false);
@@ -280,7 +334,7 @@ function ActionToast() {
           initial={{ opacity: 0, y: 10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          className="fixed left-1/2 -translate-x-1/2 z-30 top-[44%] sm:top-auto sm:bottom-[280px]"
+          className="fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]"
           style={{
             display: 'flex',
             alignItems: 'center',
