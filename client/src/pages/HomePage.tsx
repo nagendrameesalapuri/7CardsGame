@@ -11,6 +11,10 @@ export function HomePage() {
   const [guestError, setGuestError] = useState('');
   const [mode, setMode] = useState<'home' | 'guest'>('home');
 
+  // Show error if redirected back from server with google_not_configured
+  const urlError = new URLSearchParams(window.location.search).get('error');
+  const googleNotConfigured = urlError === 'google_not_configured';
+
   if (isAuthenticated) {
     navigate('/lobby');
     return null;
@@ -70,6 +74,11 @@ export function HomePage() {
         <div className="bg-dark-surface border border-dark-border rounded-2xl p-8 shadow-2xl">
           {mode === 'home' ? (
             <div className="space-y-4">
+              {googleNotConfigured && (
+                <p className="text-yellow-400 text-xs text-center bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
+                  Google login not configured on this server. Use Guest login instead.
+                </p>
+              )}
               <Button
                 variant="primary"
                 fullWidth

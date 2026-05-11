@@ -14,11 +14,30 @@ function generateToken(userId: string): string {
 
 // ── Google OAuth ───────────────────────────────────────────────────────────────
 
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+const googleConfigured = !!(
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_ID !== 'your-google-client-id' &&
+  process.env.GOOGLE_CLIENT_SECRET &&
+  process.env.GOOGLE_CLIENT_SECRET !== 'your-google-client-secret'
+);
+
+router.get('/google', (req: Request, res: Response, next) => {
+  if (!googleConfigured) {
+    const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:3000';
+    return res.redirect(`${clientUrl}/?error=google_not_configured`);
+  }
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed` }),
+  (req: Request, res: Response, next) => {
+    if (!googleConfigured) return res.redirect('/');
+    passport.authenticate('google', {
+      session: false,
+      failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed`,
+    })(req, res, next);
+  },
   (req: Request, res: Response) => {
     const user = req.user as any;
     const token = generateToken(user.id);
