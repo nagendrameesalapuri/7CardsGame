@@ -5,6 +5,7 @@ import { Card as CardType } from '../../types';
 import { Card } from './Card';
 import { ActionButtons } from './ActionButtons';
 import { useGameStore } from '../../store/gameStore';
+import { useShortScreen } from '../../hooks/useShortScreen';
 
 interface PlayerHandProps {
   hand: CardType[];
@@ -16,6 +17,7 @@ interface PlayerHandProps {
 
 export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, handTotal }: PlayerHandProps) {
   const { selectedCardIds, toggleCardSelection, game } = useGameStore();
+  const isShort = useShortScreen();
 
   const isRealSeven = (c: CardType) => c.rank === '7' && !c.isJoker;
   const topDiscard = game?.discardPile[game.discardPile.length - 1];
@@ -70,7 +72,6 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
           return RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
         });
         const isMobile = window.innerWidth < 640;
-        const isShort = window.innerHeight < 480; // landscape phone
         const isMany = sorted.length >= 9;
         // Use sm cards on mobile during attack to fit all elements on screen without clipping
         const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : (isMobile || isShort) ? 'md' : 'lg';
@@ -149,14 +150,16 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         )}
       </div>
 
-      {/* Desktop action buttons — hidden on mobile (mobile uses fixed bar in GameBoard) */}
-      <ActionButtons
-        hand={hand}
-        isMyTurn={isMyTurn}
-        hasDrawnThisTurn={hasDrawnThisTurn}
-        underAttack={underAttack}
-        className="hidden sm:flex"
-      />
+      {/* Desktop action buttons — hidden on mobile/short (those use the bar above cards in GameBoard) */}
+      {!isShort && (
+        <ActionButtons
+          hand={hand}
+          isMyTurn={isMyTurn}
+          hasDrawnThisTurn={hasDrawnThisTurn}
+          underAttack={underAttack}
+          className="hidden sm:flex"
+        />
+      )}
     </div>
   );
 }

@@ -40,6 +40,7 @@ export function GameBoard() {
   } = useGameStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
   const isPortraitPhone = usePortraitPhone();
+  const isShort = useShortScreen();
 
   useEffect(() => {
     const unsub = subscribeToEvents();
@@ -229,8 +230,8 @@ export function GameBoard() {
             </AnimatePresence>
           </div>
 
-          {/* Mobile action bar — always visible above cards, hidden on desktop */}
-          <div className="sm:hidden w-full px-3">
+          {/* Action bar: shown on portrait mobile AND landscape phones (short screens) */}
+          <div className={clsx('w-full', isShort ? 'px-2 block' : 'sm:hidden px-3')}>
             <ActionButtons
               hand={myHand}
               isMyTurn={isMyTurn}
