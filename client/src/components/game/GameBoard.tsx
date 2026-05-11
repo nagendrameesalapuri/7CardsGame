@@ -16,6 +16,20 @@ import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { Avatar } from '../ui/Avatar';
 
+function usePortraitPhone() {
+  const [is, setIs] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(orientation: portrait) and (max-width: 639px)').matches;
+  });
+  React.useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait) and (max-width: 639px)');
+    const handler = (e: MediaQueryListEvent) => setIs(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return is;
+}
+
 export function GameBoard() {
   const { user } = useAuthStore();
   const {
@@ -24,6 +38,7 @@ export function GameBoard() {
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
+  const isPortraitPhone = usePortraitPhone();
 
   useEffect(() => {
     const unsub = subscribeToEvents();
@@ -60,6 +75,24 @@ export function GameBoard() {
 
   return (
     <div className="relative w-full h-[100dvh] bg-felt bg-felt-pattern overflow-hidden flex flex-col">
+
+      {/* ── Portrait phone overlay — rotate prompt ───────────────────────────── */}
+      {isPortraitPhone && (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-dark-bg gap-5">
+          <div style={{ fontSize: 72 }}>📱</div>
+          <motion.div
+            animate={{ rotate: [0, 90, 0] }}
+            transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+            style={{ fontSize: 48 }}
+          >↻</motion.div>
+          <div className="text-center px-10">
+            <p className="text-dark-text text-xl font-bold mb-2">Rotate to play</p>
+            <p className="text-dark-muted text-sm leading-relaxed">
+              Turn your phone to landscape mode for the best card game experience
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
@@ -105,10 +138,10 @@ export function GameBoard() {
       </div>
 
       {/* ── Main game area ───────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 gap-2 sm:gap-4 relative overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-between p-1 sm:p-4 short:p-1 gap-1 sm:gap-4 short:gap-1 relative overflow-hidden">
 
-        {/* Live score leaderboard — desktop only */}
-        <div className="hidden sm:block">
+        {/* Live score leaderboard — desktop only, hidden on landscape phones (short height) */}
+        <div className="hidden sm:block short:hidden">
           <LiveScorePanel
             players={game.players}
             myPlayerId={game.myPlayerId}
@@ -130,7 +163,7 @@ export function GameBoard() {
         </div>
 
         {/* ── DESKTOP: top opponents ── */}
-        <div className="hidden sm:flex gap-8 justify-center flex-wrap">
+        <div className="hidden sm:flex short:gap-2 gap-8 justify-center flex-wrap">
           {topOpponents.map(opp => (
             <OpponentHand
               key={opp.id}
@@ -144,7 +177,7 @@ export function GameBoard() {
         </div>
 
         {/* Middle row: left, center, right */}
-        <div className="flex-1 w-full flex items-center justify-between gap-4 max-w-4xl mx-auto">
+        <div className="flex-1 w-full flex items-center justify-between gap-1 sm:gap-4 max-w-4xl mx-auto">
           {/* Left opponents — desktop only */}
           <div className="hidden sm:flex flex-col gap-4">
             {leftOpponents.map(opp => (
@@ -188,8 +221,8 @@ export function GameBoard() {
         </div>
 
         {/* Player section: SHOW button + hand */}
-        <div className="w-full flex flex-col items-center gap-2">
-          <div className="flex items-center gap-4">
+        <div className="w-full flex flex-col items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-2 sm:gap-4">
             <AnimatePresence>
               {canShow && <ShowButton key="show-btn" />}
             </AnimatePresence>
@@ -205,7 +238,7 @@ export function GameBoard() {
             />
           </div>
 
-          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-3 sm:p-4 border border-white/10">
+          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-2 sm:p-4 short:p-1.5 border border-white/10">
             <PlayerHand
               hand={myHand}
               isMyTurn={isMyTurn}

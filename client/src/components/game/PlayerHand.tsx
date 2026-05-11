@@ -31,7 +31,7 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
     hand.some(c => c.rank === topDiscard.rank && !isRealSeven(c));
 
   return (
-    <div className={clsx('flex flex-col items-center', underAttack ? 'gap-1.5 sm:gap-3' : 'gap-3')}>
+    <div className={clsx('flex flex-col items-center', underAttack ? 'gap-1 sm:gap-3' : 'gap-1 sm:gap-3')}>
 
       {/* Hand total badge */}
       <div className={clsx(
@@ -70,15 +70,16 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
           return RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
         });
         const isMobile = window.innerWidth < 640;
+        const isShort = window.innerHeight < 480; // landscape phone
         const isMany = sorted.length >= 9;
         // Use sm cards on mobile during attack to fit all elements on screen without clipping
-        const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : isMobile ? 'md' : 'lg';
+        const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : (isMobile || isShort) ? 'md' : 'lg';
         const row1 = isMany ? sorted.slice(0, Math.ceil(sorted.length / 2)) : sorted;
         const row2 = isMany ? sorted.slice(Math.ceil(sorted.length / 2)) : [];
 
-        const overlapPx = isMany ? 14 : (isMobile && underAttack) ? 8 : isMobile && hand.length > 5 ? 18 : 8;
+        const overlapPx = isMany ? 14 : (isMobile && underAttack) ? 8 : (isMobile || isShort) && hand.length > 5 ? 18 : 8;
         // sm card height = h-14 = 56px, md = h-24 = 96px, lg = h-28 = 112px
-        const minH = isMany ? '180px' : (isMobile && underAttack) ? '64px' : isMobile ? '104px' : '120px';
+        const minH = isMany ? '180px' : (isMobile && underAttack) ? '64px' : (isMobile || isShort) ? '96px' : '120px';
 
         const renderRow = (cards: typeof sorted, rowOffset = 0) => (
           <div
@@ -127,11 +128,11 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
 
       {/* Hint when not your turn */}
       {!isMyTurn && !underAttack && (
-        <p className="text-dark-muted text-xs">Waiting for your turn…</p>
+        <p className="text-dark-muted text-xs short:hidden">Waiting for your turn…</p>
       )}
 
       {/* Context hints */}
-      <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-col items-center gap-1 short:hidden">
         {isMyTurn && hasDrawnThisTurn && selectedCardIds.length === 0 && !underAttack && (
           <p className="text-dark-muted text-xs text-center">Tap a card to select, then discard · Same rank = discard multiple</p>
         )}
