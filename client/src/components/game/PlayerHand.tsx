@@ -33,17 +33,28 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
   return (
     <div className={clsx('flex flex-col items-center', underAttack ? 'gap-1.5 sm:gap-3' : 'gap-3')}>
 
-      {/* Hand total badge */}
-      <div className={clsx(
-        'flex items-center gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-sm font-bold',
-        handTotal <= 5
-          ? 'bg-neon-green/20 text-neon-green border border-neon-green/40'
-          : 'bg-dark-surface border border-dark-border text-dark-muted'
-      )}>
-        <span className="text-xs sm:text-sm">Your Hand:</span>
-        <span className="text-base sm:text-lg font-bold">{handTotal} pts</span>
-        {handTotal <= 5 && isMyTurn && <span className="text-xs opacity-80 animate-pulse">✓ SHOW now!</span>}
-        {handTotal <= 5 && !isMyTurn && <span className="text-xs opacity-80">✓ Ready to SHOW</span>}
+      {/* Hand total row */}
+      <div className="flex items-center justify-between w-full px-1">
+        <div className={clsx(
+          'flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold',
+          handTotal <= 5
+            ? 'bg-neon-green/20 text-neon-green border border-neon-green/40'
+            : 'bg-dark-surface border border-dark-border text-dark-muted'
+        )}>
+          <span className="text-xs">Your Hand:</span>
+          <span className="text-base font-black">{handTotal} pts</span>
+        </div>
+
+        {handTotal <= 5 && (
+          <div className={clsx(
+            'flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold',
+            isMyTurn
+              ? 'bg-neon-green text-dark-bg animate-pulse'
+              : 'bg-neon-green/20 text-neon-green border border-neon-green/40',
+          )}>
+            ✓ {isMyTurn ? 'SHOW now!' : 'Ready to SHOW'}
+          </div>
+        )}
       </div>
 
       {/* Attack warning */}

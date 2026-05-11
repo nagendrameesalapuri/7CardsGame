@@ -12,21 +12,21 @@ export function ShowButton() {
   return (
     <>
       <motion.button
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0, opacity: 0 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 8 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
         onClick={() => setShowConfirmVisible(true)}
         className={clsx(
-          'relative px-8 py-3 rounded-2xl font-bold text-xl shadow-xl transition-all',
-          'bg-gradient-to-r from-yellow-400 to-orange-400 text-dark-bg',
+          'relative w-full py-3 sm:py-3.5 rounded-2xl font-black text-xl shadow-xl transition-all',
+          'bg-gradient-to-r from-yellow-400 via-orange-400 to-yellow-400 text-dark-bg',
           'border-2 border-yellow-300 shadow-neon-gold',
           'animate-pulse-neon'
         )}
       >
-        <span className="relative z-10">🎯 SHOW!</span>
-        <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-300/30 to-transparent" />
+        <span className="relative z-10 tracking-wide">🎯 SHOW!</span>
+        <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-200/20 via-transparent to-yellow-200/20" />
       </motion.button>
 
       <Modal

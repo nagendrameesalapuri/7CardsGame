@@ -13,7 +13,6 @@ import { ChatPanel } from './ChatPanel';
 import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
-import { Avatar } from '../ui/Avatar';
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -57,10 +56,11 @@ export function GameBoard() {
           >
             ← Leave
           </button>
-          <span className="text-dark-muted text-xs sm:text-sm">
-            R<span className="text-dark-text font-bold">{game.roundNumber}</span>
-            <span className="text-dark-muted">/{game.roundCount}</span>
-          </span>
+          <div className="flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-full">
+            <span className="text-dark-muted text-[10px] uppercase tracking-wider">Round</span>
+            <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
+            <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
+          </div>
         </div>
 
         <TurnTimer
@@ -129,16 +129,10 @@ export function GameBoard() {
           />
         </div>
 
-        {/* Player section: SHOW button + action bar + hand */}
-        <div className="w-full flex flex-col items-center gap-2">
-          <div className="flex items-center gap-4">
-            <AnimatePresence>
-              {canShow && <ShowButton key="show-btn" />}
-            </AnimatePresence>
-          </div>
-
+        {/* Player section: action bar + hand + SHOW button */}
+        <div className="w-full flex flex-col gap-2">
           {/* Mobile action bar */}
-          <div className="sm:hidden w-full px-3">
+          <div className="sm:hidden w-full px-1">
             <ActionButtons
               hand={myHand}
               isMyTurn={isMyTurn}
@@ -147,7 +141,7 @@ export function GameBoard() {
             />
           </div>
 
-          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-3 sm:p-4 border border-white/10">
+          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-2 sm:p-4 border border-white/10">
             <PlayerHand
               hand={myHand}
               isMyTurn={isMyTurn}
@@ -156,6 +150,11 @@ export function GameBoard() {
               handTotal={handTotal}
             />
           </div>
+
+          {/* SHOW button — full width at bottom */}
+          <AnimatePresence>
+            {canShow && <ShowButton key="show-btn" />}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -205,14 +204,29 @@ export function GameBoard() {
 }
 
 const ACTION_STYLE: Record<string, { icon: string; iconBg: string; bg: string; border: string }> = {
-  draw:    { icon: '🃏', iconBg: '#2563eb', bg: 'rgba(5,10,30,0.95)',  border: 'rgba(37,99,235,0.35)' },
-  discard: { icon: '♠️', iconBg: '#475569', bg: 'rgba(10,10,15,0.95)', border: 'rgba(71,85,105,0.35)' },
-  skip:    { icon: '⏭️', iconBg: '#d97706', bg: 'rgba(25,18,5,0.95)',  border: 'rgba(217,119,6,0.35)' },
-  attack:  { icon: '⚔️', iconBg: '#dc2626', bg: 'rgba(30,5,5,0.95)',   border: 'rgba(220,38,38,0.35)' },
-  penalty: { icon: '💀', iconBg: '#b91c1c', bg: 'rgba(30,5,5,0.95)',   border: 'rgba(220,38,38,0.35)' },
-  show:    { icon: '🎉', iconBg: '#16a34a', bg: 'rgba(5,25,10,0.95)',  border: 'rgba(22,163,74,0.35)' },
-  system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.95)', border: 'rgba(29,78,216,0.35)' },
+  draw:    { icon: '🃏', iconBg: '#2563eb', bg: 'rgba(5,10,30,0.97)',  border: 'rgba(37,99,235,0.5)' },
+  discard: { icon: '♠️', iconBg: '#475569', bg: 'rgba(10,10,15,0.97)', border: 'rgba(71,85,105,0.5)' },
+  skip:    { icon: '⏭️', iconBg: '#d97706', bg: 'rgba(25,18,5,0.97)',  border: 'rgba(217,119,6,0.5)' },
+  attack:  { icon: '⚔️', iconBg: '#dc2626', bg: 'rgba(30,5,5,0.97)',   border: 'rgba(220,38,38,0.5)' },
+  penalty: { icon: '💀', iconBg: '#b91c1c', bg: 'rgba(30,5,5,0.97)',   border: 'rgba(220,38,38,0.5)' },
+  show:    { icon: '🎉', iconBg: '#16a34a', bg: 'rgba(5,25,10,0.97)',  border: 'rgba(22,163,74,0.5)' },
+  system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.97)', border: 'rgba(29,78,216,0.5)' },
 };
+
+const CHIP_COLORS = [
+  'from-purple-500 to-indigo-600',
+  'from-blue-500 to-cyan-600',
+  'from-emerald-500 to-teal-600',
+  'from-orange-500 to-amber-600',
+  'from-rose-500 to-pink-600',
+  'from-violet-500 to-purple-700',
+];
+
+function getChipColor(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  return CHIP_COLORS[Math.abs(hash) % CHIP_COLORS.length];
+}
 
 function OpponentChip({
   player,
@@ -223,41 +237,70 @@ function OpponentChip({
   isCurrentTurn: boolean;
   isAttackTarget: boolean;
 }) {
+  const color = getChipColor(player.username);
+  const initials = player.username.slice(0, 2).toUpperCase();
+
   return (
     <div className={clsx(
-      'flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border flex-shrink-0 min-w-[68px] sm:min-w-[88px]',
-      isCurrentTurn ? 'border-neon-green/70 bg-neon-green/10' :
-      isAttackTarget ? 'border-neon-red/70 bg-neon-red/10' :
-      'border-white/10 bg-black/30',
+      'flex flex-col items-center gap-1 px-2 sm:px-3 py-2 rounded-2xl border flex-shrink-0 min-w-[72px] sm:min-w-[92px] transition-all duration-200',
+      isCurrentTurn
+        ? 'border-neon-green/80 bg-neon-green/10 shadow-neon-green'
+        : isAttackTarget
+        ? 'border-neon-red/80 bg-neon-red/10'
+        : 'border-white/10 bg-black/30',
     )}>
       {isCurrentTurn && (
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ repeat: Infinity, duration: 0.9 }}
-          className="text-neon-green text-[9px] font-bold"
-        >🎯 TURN</motion.span>
+        <motion.div
+          animate={{ opacity: [1, 0.2, 1] }}
+          transition={{ repeat: Infinity, duration: 0.75 }}
+          className="bg-neon-green text-dark-bg text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none"
+        >
+          TURN
+        </motion.div>
       )}
       {isAttackTarget && (
-        <span className="text-neon-red text-[9px] font-bold animate-pulse">⚔️ ATK</span>
+        <div className="bg-neon-red text-white text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none animate-pulse">
+          ⚔️ ATK
+        </div>
       )}
-      <Avatar avatar={player.avatar ?? 'avatar_1'} size="sm" username={player.username} isBot={player.isBot} />
-      <span className="text-dark-text text-[10px] sm:text-xs font-medium truncate w-full text-center leading-tight">
+
+      {/* Colored initials circle */}
+      <div className={clsx(
+        'w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br flex items-center justify-center font-black text-white shadow-md',
+        color,
+        isCurrentTurn && 'ring-2 ring-neon-green ring-offset-1 ring-offset-black/50',
+        isAttackTarget && 'ring-2 ring-neon-red ring-offset-1 ring-offset-black/50',
+      )}>
+        {player.isBot
+          ? <span className="text-[10px] font-black">AI</span>
+          : <span className="text-sm">{initials}</span>
+        }
+      </div>
+
+      <span className="text-dark-text text-[10px] sm:text-xs font-semibold truncate w-full text-center leading-tight">
         {player.username.length > 8 ? player.username.slice(0, 7) + '…' : player.username}
       </span>
+
       <div className="flex items-center gap-0.5">
-        <span className="text-dark-muted text-[10px] sm:text-xs">🃏{player.handCount}</span>
+        <span className="text-dark-muted text-[10px] sm:text-xs">🃏 {player.handCount}</span>
         {player.handCount <= 3 && !player.isEliminated && (
           <motion.span
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ repeat: Infinity, duration: 0.7 }}
+            animate={{ scale: [1, 1.3, 1] }}
+            transition={{ repeat: Infinity, duration: 0.6 }}
             className="text-yellow-400 text-[10px]"
           >⚠️</motion.span>
         )}
       </div>
+
       {player.isEliminated ? (
-        <span className="text-neon-red text-[9px] font-bold">OUT</span>
+        <span className="bg-neon-red/20 text-neon-red text-[9px] font-bold px-2 py-0.5 rounded-full">OUT</span>
       ) : (
-        <span className="text-dark-muted text-[9px] sm:text-[10px]">{player.totalScore}pt</span>
+        <span className={clsx(
+          'text-[10px] sm:text-[11px] font-bold',
+          player.totalScore > 80 ? 'text-neon-red' : player.totalScore > 50 ? 'text-yellow-400' : 'text-dark-muted',
+        )}>
+          {player.totalScore} pts
+        </span>
       )}
     </div>
   );
@@ -282,40 +325,42 @@ function ActionToast() {
     <AnimatePresence>
       {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          className="fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: style.bg,
-            border: `1px solid ${style.border}`,
-            borderRadius: 14,
-            padding: '9px 14px 9px 9px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(14px)',
-            maxWidth: '88vw',
-            minWidth: 220,
-          }}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          className="fixed left-0 right-0 z-30 px-2 sm:px-4"
+          style={{ top: '82px' }}
         >
-          <div style={{
-            background: style.iconBg,
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            fontSize: 16,
-          }}>
-            {style.icon}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: style.bg,
+              border: `1px solid ${style.border}`,
+              borderRadius: 12,
+              padding: '8px 14px 8px 10px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(16px)',
+            }}
+          >
+            <div style={{
+              background: style.iconBg,
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              fontSize: 14,
+            }}>
+              {style.icon}
+            </div>
+            <span style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 500, lineHeight: 1.4, flex: 1 }}>
+              {action.message}
+            </span>
           </div>
-          <span style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
-            {action.message}
-          </span>
         </motion.div>
       )}
     </AnimatePresence>
