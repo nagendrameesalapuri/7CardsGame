@@ -4,7 +4,6 @@ import { clsx } from 'clsx';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
 import { PlayerHand } from './PlayerHand';
-import { OpponentHand } from './OpponentHand';
 import { DeckArea } from './DeckArea';
 import { TurnTimer } from './TurnTimer';
 import { ShowButton } from './ShowButton';
@@ -15,21 +14,6 @@ import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { Avatar } from '../ui/Avatar';
-import { useShortScreen } from '../../hooks/useShortScreen';
-
-function usePortraitPhone() {
-  const [is, setIs] = React.useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(orientation: portrait) and (max-width: 639px)').matches;
-  });
-  React.useEffect(() => {
-    const mq = window.matchMedia('(orientation: portrait) and (max-width: 639px)');
-    const handler = (e: MediaQueryListEvent) => setIs(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return is;
-}
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -39,15 +23,12 @@ export function GameBoard() {
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
-  const isPortraitPhone = usePortraitPhone();
-  const isShort = useShortScreen();
 
   useEffect(() => {
     const unsub = subscribeToEvents();
     return unsub;
   }, [subscribeToEvents]);
 
-  // When SHOW is declared, show the announcement overlay before revealing cards
   useEffect(() => {
     if (game?.showPlayerId && game.status === 'show_called') {
       setShowAnnouncing(true);
@@ -60,44 +41,15 @@ export function GameBoard() {
     </div>
   );
 
-  const myPlayerIndex = game.players.findIndex(p => p.id === game.myPlayerId);
   const currentPlayer = game.players[game.currentPlayerIndex];
-
-  // Arrange opponents: top (opposite), left, right
-  const opponents = game.players.filter(p => p.id !== game.myPlayerId && !p.isEliminated);
-  const topOpponents = opponents.length === 1 ? [opponents[0]] :
-    opponents.length === 2 ? [opponents[0], opponents[1]] :
-    [opponents[1]]; // center top
-  const leftOpponents = opponents.length >= 3 ? [opponents[0]] : [];
-  const rightOpponents = opponents.length >= 4 ? [opponents[2]] :
-    opponents.length >= 3 ? [opponents[2] ?? opponents[opponents.length - 1]] : [];
-
   const myHand = game?.myHand ?? [];
   const allOpponents = game.players.filter(p => p.id !== game.myPlayerId && !p.isEliminated);
 
   return (
     <div className="relative w-full h-[100dvh] bg-felt bg-felt-pattern overflow-hidden flex flex-col">
 
-      {/* ── Portrait phone overlay — rotate prompt ───────────────────────────── */}
-      {isPortraitPhone && (
-        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-dark-bg gap-5">
-          <div style={{ fontSize: 72 }}>📱</div>
-          <motion.div
-            animate={{ rotate: [0, 90, 0] }}
-            transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
-            style={{ fontSize: 48 }}
-          >↻</motion.div>
-          <div className="text-center px-10">
-            <p className="text-dark-text text-xl font-bold mb-2">Rotate to play</p>
-            <p className="text-dark-muted text-sm leading-relaxed">
-              Turn your phone to landscape mode for the best card game experience
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 short:py-1 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
+      <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
         <div className="flex items-center gap-2">
           <button
             onClick={leaveRoom}
@@ -140,10 +92,10 @@ export function GameBoard() {
       </div>
 
       {/* ── Main game area ───────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-between p-1 sm:p-4 short:p-1 gap-1 sm:gap-4 short:gap-1 relative overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 gap-2 sm:gap-3 relative overflow-hidden">
 
-        {/* Live score leaderboard — desktop only, hidden on landscape phones (short height) */}
-        <div className="hidden sm:block short:hidden">
+        {/* Live score leaderboard — desktop only */}
+        <div className="hidden sm:block">
           <LiveScorePanel
             players={game.players}
             myPlayerId={game.myPlayerId}
@@ -152,10 +104,10 @@ export function GameBoard() {
           />
         </div>
 
-        {/* ── MOBILE: compact opponent strip (all opponents in one row) ── */}
-        <div className="sm:hidden flex gap-2 justify-center overflow-x-auto w-full px-1 flex-shrink-0">
+        {/* ── All opponents side by side — always visible, no card fans ── */}
+        <div className="flex gap-2 sm:gap-3 justify-center overflow-x-auto w-full px-1 flex-shrink-0 py-0.5">
           {allOpponents.map(opp => (
-            <MiniOpponent
+            <OpponentChip
               key={opp.id}
               player={opp}
               isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
@@ -164,74 +116,29 @@ export function GameBoard() {
           ))}
         </div>
 
-        {/* ── DESKTOP: top opponents ── */}
-        <div className="hidden sm:flex short:gap-2 gap-8 justify-center flex-wrap">
-          {topOpponents.map(opp => (
-            <OpponentHand
-              key={opp.id}
-              player={opp}
-              isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
-              isAttackTarget={game.attackChain?.targetPlayerIndex === game.players.indexOf(opp)}
-              jokerRank={game.jokerRank}
-              position="top"
-            />
-          ))}
+        {/* Deck area — full width center */}
+        <div className="flex-1 flex items-center justify-center">
+          <DeckArea
+            deckCount={game.deckCount}
+            discardPile={game.discardPile}
+            jokerRank={game.jokerRank}
+            jokerCard={game.jokerCard}
+            isMyTurn={isMyTurn}
+            hasDrawnThisTurn={game.hasDrawnThisTurn}
+            underAttack={underAttack}
+          />
         </div>
 
-        {/* Middle row: left, center, right */}
-        <div className="flex-1 w-full flex items-center justify-between gap-1 sm:gap-4 max-w-4xl mx-auto">
-          {/* Left opponents — desktop only */}
-          <div className="hidden sm:flex flex-col gap-4">
-            {leftOpponents.map(opp => (
-              <OpponentHand
-                key={opp.id}
-                player={opp}
-                isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
-                isAttackTarget={game.attackChain?.targetPlayerIndex === game.players.indexOf(opp)}
-                jokerRank={game.jokerRank}
-                position="left"
-              />
-            ))}
-          </div>
-
-          {/* Center: deck area — full width on mobile */}
-          <div className="flex-1 flex items-center justify-center">
-            <DeckArea
-              deckCount={game.deckCount}
-              discardPile={game.discardPile}
-              jokerRank={game.jokerRank}
-              jokerCard={game.jokerCard}
-              isMyTurn={isMyTurn}
-              hasDrawnThisTurn={game.hasDrawnThisTurn}
-              underAttack={underAttack}
-            />
-          </div>
-
-          {/* Right opponents — desktop only */}
-          <div className="hidden sm:flex flex-col gap-4">
-            {rightOpponents.map(opp => (
-              <OpponentHand
-                key={opp.id}
-                player={opp}
-                isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
-                isAttackTarget={game.attackChain?.targetPlayerIndex === game.players.indexOf(opp)}
-                jokerRank={game.jokerRank}
-                position="right"
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Player section: SHOW button + hand */}
-        <div className="w-full flex flex-col items-center gap-1 sm:gap-2">
-          <div className="flex items-center gap-2 sm:gap-4">
+        {/* Player section: SHOW button + action bar + hand */}
+        <div className="w-full flex flex-col items-center gap-2">
+          <div className="flex items-center gap-4">
             <AnimatePresence>
               {canShow && <ShowButton key="show-btn" />}
             </AnimatePresence>
           </div>
 
-          {/* Action bar: shown on portrait mobile AND landscape phones (short screens) */}
-          <div className={clsx('w-full', isShort ? 'px-2 block' : 'sm:hidden px-3')}>
+          {/* Mobile action bar */}
+          <div className="sm:hidden w-full px-3">
             <ActionButtons
               hand={myHand}
               isMyTurn={isMyTurn}
@@ -240,7 +147,7 @@ export function GameBoard() {
             />
           </div>
 
-          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-2 sm:p-4 short:p-1.5 border border-white/10">
+          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-3 sm:p-4 border border-white/10">
             <PlayerHand
               hand={myHand}
               isMyTurn={isMyTurn}
@@ -307,33 +214,38 @@ const ACTION_STYLE: Record<string, { icon: string; iconBg: string; bg: string; b
   system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.95)', border: 'rgba(29,78,216,0.35)' },
 };
 
-function MiniOpponent({
+function OpponentChip({
   player,
   isCurrentTurn,
   isAttackTarget,
 }: {
-  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean };
+  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean; isBot?: boolean };
   isCurrentTurn: boolean;
   isAttackTarget: boolean;
 }) {
   return (
     <div className={clsx(
-      'flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border flex-shrink-0 min-w-[64px] max-w-[80px]',
-      isCurrentTurn ? 'border-neon-green/60 bg-neon-green/10' :
-      isAttackTarget ? 'border-neon-red/60 bg-neon-red/10' :
+      'flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border flex-shrink-0 min-w-[68px] sm:min-w-[88px]',
+      isCurrentTurn ? 'border-neon-green/70 bg-neon-green/10' :
+      isAttackTarget ? 'border-neon-red/70 bg-neon-red/10' :
       'border-white/10 bg-black/30',
     )}>
-      <div className="relative">
-        <Avatar avatar={player.avatar ?? 'avatar_1'} size="sm" username={player.username} />
-        {isCurrentTurn && (
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-neon-green border border-black" />
-        )}
-      </div>
-      <span className="text-dark-text text-[10px] font-medium truncate w-full text-center leading-tight">
-        {player.username.length > 7 ? player.username.slice(0, 6) + '…' : player.username}
+      {isCurrentTurn && (
+        <motion.span
+          animate={{ opacity: [1, 0.3, 1] }}
+          transition={{ repeat: Infinity, duration: 0.9 }}
+          className="text-neon-green text-[9px] font-bold"
+        >🎯 TURN</motion.span>
+      )}
+      {isAttackTarget && (
+        <span className="text-neon-red text-[9px] font-bold animate-pulse">⚔️ ATK</span>
+      )}
+      <Avatar avatar={player.avatar ?? 'avatar_1'} size="sm" username={player.username} isBot={player.isBot} />
+      <span className="text-dark-text text-[10px] sm:text-xs font-medium truncate w-full text-center leading-tight">
+        {player.username.length > 8 ? player.username.slice(0, 7) + '…' : player.username}
       </span>
-      <div className="flex items-center gap-1">
-        <span className="text-dark-muted text-[10px]">🃏{player.handCount}</span>
+      <div className="flex items-center gap-0.5">
+        <span className="text-dark-muted text-[10px] sm:text-xs">🃏{player.handCount}</span>
         {player.handCount <= 3 && !player.isEliminated && (
           <motion.span
             animate={{ scale: [1, 1.2, 1] }}
@@ -342,7 +254,11 @@ function MiniOpponent({
           >⚠️</motion.span>
         )}
       </div>
-      <span className="text-dark-muted text-[9px]">{player.totalScore}pt</span>
+      {player.isEliminated ? (
+        <span className="text-neon-red text-[9px] font-bold">OUT</span>
+      ) : (
+        <span className="text-dark-muted text-[9px] sm:text-[10px]">{player.totalScore}pt</span>
+      )}
     </div>
   );
 }
@@ -351,7 +267,6 @@ function ActionToast() {
   const { lastAction } = useGameStore();
   const [visible, setVisible] = React.useState(false);
   const [action, setAction] = React.useState<typeof lastAction>(null);
-  const isShort = useShortScreen();
 
   React.useEffect(() => {
     if (!lastAction?.message) return;
@@ -363,11 +278,6 @@ function ActionToast() {
 
   const style = ACTION_STYLE[action?.type ?? 'system'] ?? ACTION_STYLE.system;
 
-  // portrait mobile: below scores bar; desktop: above player hand; landscape phone: just below top bar
-  const positionClass = isShort
-    ? 'fixed left-1/2 -translate-x-1/2 z-30 top-[42px]'
-    : 'fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]';
-
   return (
     <AnimatePresence>
       {visible && action && (
@@ -375,7 +285,7 @@ function ActionToast() {
           initial={{ opacity: 0, y: 10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          className={positionClass}
+          className="fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -390,7 +300,6 @@ function ActionToast() {
             minWidth: 220,
           }}
         >
-          {/* Colored icon square */}
           <div style={{
             background: style.iconBg,
             width: 32,

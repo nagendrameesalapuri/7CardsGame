@@ -3,11 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { useGameStore } from '../../store/gameStore';
 import { Modal } from '../ui/Modal';
-import { useShortScreen } from '../../hooks/useShortScreen';
 
 export function ShowButton() {
   const { canShow, showConfirmVisible, setShowConfirmVisible, callShow, handTotal } = useGameStore();
-  const isShort = useShortScreen();
 
   if (!canShow) return null;
 
@@ -21,10 +19,10 @@ export function ShowButton() {
         whileTap={{ scale: 0.95 }}
         onClick={() => setShowConfirmVisible(true)}
         className={clsx(
-          'relative rounded-2xl font-bold shadow-xl transition-all',
-          isShort ? 'px-4 py-1.5 text-sm' : 'px-8 py-3 text-xl',
+          'relative px-8 py-3 rounded-2xl font-bold text-xl shadow-xl transition-all',
           'bg-gradient-to-r from-yellow-400 to-orange-400 text-dark-bg',
-          'border-2 border-yellow-300 shadow-neon-gold animate-pulse-neon'
+          'border-2 border-yellow-300 shadow-neon-gold',
+          'animate-pulse-neon'
         )}
       >
         <span className="relative z-10">🎯 SHOW!</span>
