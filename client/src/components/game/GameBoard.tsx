@@ -248,14 +248,14 @@ export function GameBoard() {
   );
 }
 
-const ACTION_STYLE: Record<string, { icon: string; border: string; text: string }> = {
-  draw:    { icon: '🃏', border: 'border-neon-blue/50',   text: 'text-neon-blue' },
-  discard: { icon: '♠️', border: 'border-dark-border',    text: 'text-dark-text' },
-  skip:    { icon: '⏭️', border: 'border-yellow-500/50',  text: 'text-yellow-400' },
-  attack:  { icon: '⚔️', border: 'border-neon-red/50',    text: 'text-neon-red' },
-  penalty: { icon: '💀', border: 'border-neon-red/50',    text: 'text-neon-red' },
-  show:    { icon: '🎉', border: 'border-neon-green/50',  text: 'text-neon-green' },
-  system:  { icon: 'ℹ️', border: 'border-dark-border',    text: 'text-dark-muted' },
+const ACTION_STYLE: Record<string, { icon: string; iconBg: string; bg: string; border: string }> = {
+  draw:    { icon: '🃏', iconBg: '#2563eb', bg: 'rgba(5,10,30,0.95)',  border: 'rgba(37,99,235,0.35)' },
+  discard: { icon: '♠️', iconBg: '#475569', bg: 'rgba(10,10,15,0.95)', border: 'rgba(71,85,105,0.35)' },
+  skip:    { icon: '⏭️', iconBg: '#d97706', bg: 'rgba(25,18,5,0.95)',  border: 'rgba(217,119,6,0.35)' },
+  attack:  { icon: '⚔️', iconBg: '#dc2626', bg: 'rgba(30,5,5,0.95)',   border: 'rgba(220,38,38,0.35)' },
+  penalty: { icon: '💀', iconBg: '#b91c1c', bg: 'rgba(30,5,5,0.95)',   border: 'rgba(220,38,38,0.35)' },
+  show:    { icon: '🎉', iconBg: '#16a34a', bg: 'rgba(5,25,10,0.95)',  border: 'rgba(22,163,74,0.35)' },
+  system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.95)', border: 'rgba(29,78,216,0.35)' },
 };
 
 function ActionToast() {
@@ -277,19 +277,39 @@ function ActionToast() {
     <AnimatePresence>
       {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
-          className={clsx(
-            'fixed left-1/2 -translate-x-1/2 z-30',
-            'px-5 py-2 rounded-full shadow-xl backdrop-blur-md',
-            'bg-black/75 max-w-[88vw] text-center',
-            // Mobile: float in the deck/center area, well below opponent cards
-            // Desktop: above player hand
-            'top-[44%] sm:top-auto sm:bottom-[280px]',
-          )}
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+          className="fixed left-1/2 -translate-x-1/2 z-30 top-[44%] sm:top-auto sm:bottom-[280px]"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: style.bg,
+            border: `1px solid ${style.border}`,
+            borderRadius: 14,
+            padding: '9px 14px 9px 9px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(14px)',
+            maxWidth: '88vw',
+            minWidth: 220,
+          }}
         >
-          <span className="text-sm sm:text-base font-semibold text-white tracking-wide">
+          {/* Colored icon square */}
+          <div style={{
+            background: style.iconBg,
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            fontSize: 16,
+          }}>
+            {style.icon}
+          </div>
+          <span style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
             {action.message}
           </span>
         </motion.div>

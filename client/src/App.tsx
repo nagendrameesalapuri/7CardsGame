@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster, ToastBar } from 'react-hot-toast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useAuthStore } from './store/authStore';
 import { soundService } from './services/sound';
@@ -21,9 +21,9 @@ function AuthCallback() {
       const url = new URL(window.location.href);
       const token = url.searchParams.get('token');
       if (token) {
-        setToken(token);       // persist token to store + localStorage
-        await loadMe();        // fetch user and set isAuthenticated: true
-        navigate('/lobby', { replace: true });  // no full-page reload
+        setToken(token);
+        await loadMe();
+        navigate('/lobby', { replace: true });
       } else {
         navigate('/', { replace: true });
       }
@@ -40,7 +40,6 @@ function AuthCallback() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuthStore();
-  // Only block with spinner when loading AND we have no user data yet (initial auth check)
   if (isLoading && !user) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
@@ -51,6 +50,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
 }
 
+/** Maps toast type + message to visual config. */
+function getToastConfig(type: string, message: string) {
+  const isWarning = message.startsWith('⚠️') || message.startsWith('🚨');
+  if (type === 'error') {
+    return { iconBg: '#dc2626', bg: 'rgba(30,5,5,0.96)', border: '1px solid rgba(220,38,38,0.35)', icon: '✕' };
+  }
+  if (type === 'success') {
+    return { iconBg: '#16a34a', bg: 'rgba(5,25,10,0.96)', border: '1px solid rgba(22,163,74,0.35)', icon: '✓' };
+  }
+  if (isWarning) {
+    return { iconBg: '#d97706', bg: 'rgba(25,18,5,0.96)', border: '1px solid rgba(217,119,6,0.35)', icon: '!' };
+  }
+  return { iconBg: '#2563eb', bg: 'rgba(5,10,28,0.96)', border: '1px solid rgba(37,99,235,0.35)', icon: 'i' };
+}
+
 export function App() {
   const { loadMe, token } = useAuthStore();
 
@@ -58,12 +72,9 @@ export function App() {
     if (token) loadMe();
     soundService.preload(['card_deal', 'card_draw', 'card_discard', 'power_seven', 'power_jack', 'show_call', 'win', 'lose', 'chat']);
 
-    // Warm up AudioContext on every touch/click so iOS keeps it running after background.
-    // `once: true` was wrong — iOS suspends AudioContext on background and needs re-warm.
     const warmup = () => soundService.warmup();
     document.addEventListener('touchstart', warmup, { passive: true });
     document.addEventListener('click', warmup);
-    // Also re-warm when app returns to foreground (iOS 14.5+ allows resume from visibilitychange)
     const onVisible = () => { if (document.visibilityState === 'visible') soundService.warmup(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -86,23 +97,65 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
 
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: {
-              background: 'rgba(0,0,0,0.78)',
-              color: '#ffffff',
-              borderRadius: '999px',
-              fontSize: '14px',
-              padding: '9px 22px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(10px)',
-              border: 'none',
-            },
-            success: { icon: null },
-            error: { icon: null },
+        <Toaster position="top-center" containerStyle={{ zIndex: 9999 }}>
+          {(t) => {
+            const rawMsg = typeof t.message === 'string' ? t.message : '';
+            const cfg = getToastConfig(t.type, rawMsg);
+            return (
+              <ToastBar toast={t} style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+                {({ message }) => (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      background: cfg.bg,
+                      border: cfg.border,
+                      borderRadius: '14px',
+                      padding: '10px 14px 10px 10px',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+                      backdropFilter: 'blur(14px)',
+                      minWidth: '240px',
+                      maxWidth: '340px',
+                    }}
+                  >
+                    {/* Colored icon square */}
+                    <div style={{
+                      background: cfg.iconBg,
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      color: '#fff',
+                      fontWeight: 700,
+                      fontSize: 15,
+                    }}>
+                      {cfg.icon}
+                    </div>
+
+                    {/* Message */}
+                    <div style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 500, flex: 1, lineHeight: 1.4 }}>
+                      {message}
+                    </div>
+
+                    {/* Dismiss */}
+                    <button
+                      onClick={() => toast.dismiss(t.id)}
+                      style={{ color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#f1f5f9')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </ToastBar>
+            );
           }}
-        />
+        </Toaster>
       </BrowserRouter>
     </ThemeProvider>
   );
