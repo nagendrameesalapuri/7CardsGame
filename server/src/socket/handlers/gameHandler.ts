@@ -439,13 +439,20 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       break;
     case 'discard':
       if (!state.hasDrawnThisTurn) {
-        // Bot needs to draw first
+        // Try as a cut first (discard without drawing — valid when cards match top of discard)
+        if (decision.cardIds?.length) {
+          const cutAttempt = GameEngine.processDiscard(state, botPlayerId, decision.cardIds);
+          if (cutAttempt.success) {
+            result = cutAttempt;
+            break;
+          }
+        }
+        // Not a valid cut — draw first, then discard
         const drawResult = GameEngine.processDrawCard(state, botPlayerId, BotPlayer.decideDrawSource(state, botPlayerId));
         if (drawResult.success) {
           activeGames.set(drawResult.state.id, drawResult.state);
           for (const a of drawResult.actions) io.to(state.roomId).emit('game:action', a);
           broadcastGameState(io, drawResult.state);
-          // Schedule discard
           setTimeout(() => {
             const s2 = activeGames.get(state.id);
             if (!s2) return;
