@@ -14,7 +14,7 @@ const BASE_VALUES: Record<Rank, number> = {
 };
 
 export class DeckManager {
-  /** Create a fresh 54-card deck: 52 standard + 2 printed jokers (unshuffled). */
+  /** Create a fresh 57-card deck: 52 standard + 5 printed jokers (unshuffled). */
   static createDeck(): Card[] {
     const deck: Card[] = [];
     for (const suit of SUITS) {
@@ -28,8 +28,8 @@ export class DeckManager {
         });
       }
     }
-    // Add 2 printed jokers — always wild regardless of paper joker
-    for (let i = 0; i < 2; i++) {
+    // Add 5 printed jokers — always wild regardless of paper joker
+    for (let i = 0; i < 5; i++) {
       deck.push({
         id: `pj${i}-${uuidv4().slice(0, 6)}`,
         suit: 'none',
