@@ -18,6 +18,7 @@ export function GameBoard() {
   const { user } = useAuthStore();
   const {
     game, matchResult, isMyTurn, canShow, underAttack, handTotal,
+    roundReadyUpdate, readyForNextRound,
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
@@ -210,7 +211,9 @@ export function GameBoard() {
             players={game.players}
             roundNumber={game.roundNumber}
             roundCount={game.roundCount}
-            onContinue={() => {}}
+            myUserId={user?.id ?? ''}
+            roundReadyUpdate={roundReadyUpdate}
+            onReady={readyForNextRound}
           />
         )}
       </AnimatePresence>

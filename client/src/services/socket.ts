@@ -67,6 +67,7 @@ export const socketGame = {
   attackRespond: (action: 'throw' | 'take', cardIds?: string[]) =>
     getSocket().emit('game:attack:respond', { action, cardIds }),
   reconnect: (roomCode: string) => getSocket().emit('game:reconnect', roomCode),
+  roundReady: () => getSocket().emit('game:round_ready'),
 };
 
 // ── Chat events ───────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ type EventMap = {
   'game:match_end': MatchResult;
   'game:error': string;
   'game:can_resume': { roomCode: string };
+  'game:round_ready_update': { readyUserIds: string[]; total: number };
   'chat:received': ChatMessage;
 };
 

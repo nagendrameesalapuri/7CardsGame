@@ -15,6 +15,9 @@ interface GameStore {
   lastAction: GameAction | null;
   matchResult: MatchResult | null;
 
+  // Round-ready state (waiting for all humans to click "Play Next Round")
+  roundReadyUpdate: { readyUserIds: string[]; total: number } | null;
+
   // UI state
   selectedCardIds: string[];
   showConfirmVisible: boolean;
@@ -40,6 +43,7 @@ interface GameStore {
   discardCards: () => void;
   callShow: () => void;
   respondToAttack: (action: 'throw' | 'take') => void;
+  readyForNextRound: () => void;
 
   toggleCardSelection: (cardId: string) => void;
   clearSelection: () => void;
@@ -66,6 +70,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resumeRoomCode: null,
   clearResume: () => set({ resumeRoomCode: null }),
   matchResult: null,
+  roundReadyUpdate: null,
   selectedCardIds: [],
   showConfirmVisible: false,
   isMyTurn: false,
@@ -95,8 +100,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       room: null, game: null, selectedCardIds: [],
       matchResult: null, lastAction: null, gameError: null,
-      resumeRoomCode: null, isMyTurn: false, canShow: false,
-      underAttack: false, handTotal: 0,
+      resumeRoomCode: null, roundReadyUpdate: null,
+      isMyTurn: false, canShow: false, underAttack: false, handTotal: 0,
     });
   },
 
@@ -123,6 +128,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socketGame.show();
     set({ showConfirmVisible: false });
     soundService.play('show_call');
+  },
+
+  readyForNextRound: () => {
+    socketGame.roundReady();
   },
 
   respondToAttack: (action) => {
@@ -191,7 +200,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       room, roomError: null,
       // Clear any stale match/game state from a previous session
       matchResult: null, game: null, lastAction: null,
-      resumeRoomCode: null, isMyTurn: false, canShow: false,
+      resumeRoomCode: null, roundReadyUpdate: null,
+      isMyTurn: false, canShow: false,
       underAttack: false, handTotal: 0, selectedCardIds: [],
     })));
     unsubs.push(on('room:updated', (room) => set({ room })));
@@ -224,8 +234,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
         return {
           game, isMyTurn, canShow, underAttack, handTotal,
-          // Clear stale match result when a new game begins
-          ...(isNewGame ? { matchResult: null, lastAction: null } : {}),
+          // Clear stale match/round state when a new game begins
+          ...(isNewGame ? { matchResult: null, lastAction: null, roundReadyUpdate: null } : {}),
         };
       });
     }));
@@ -241,6 +251,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         case 'show': soundService.play('show_call'); break;
         case 'penalty': soundService.play('power_seven'); break;
       }
+    }));
+
+    unsubs.push(on('game:round_ready_update', (update) => {
+      set({ roundReadyUpdate: update });
     }));
 
     unsubs.push(on('game:match_end', (result) => {
@@ -272,8 +286,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   reset: () => set({
     room: null, roomError: null, game: null, gameError: null,
-    lastAction: null, matchResult: null, selectedCardIds: [],
-    showConfirmVisible: false, isMyTurn: false, canShow: false,
-    underAttack: false, handTotal: 0,
+    lastAction: null, matchResult: null, roundReadyUpdate: null,
+    selectedCardIds: [], showConfirmVisible: false,
+    isMyTurn: false, canShow: false, underAttack: false, handTotal: 0,
   }),
 }));

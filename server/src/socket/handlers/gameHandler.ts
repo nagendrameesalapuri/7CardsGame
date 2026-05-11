@@ -21,6 +21,8 @@ const activeGames = new Map<string, GameState>();
 const roomToGame = new Map<string, string>();
 // Turn timers (gameId → NodeJS.Timeout)
 const turnTimers = new Map<string, NodeJS.Timeout>();
+// Ready-for-next-round tracking: gameId → Set of userIds who have clicked "Play Next Round"
+const roundReadyPlayers = new Map<string, Set<string>>();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -147,6 +149,27 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       return GameEngine.processAttackResponse(state, playerId, data.action, data.cardIds);
     }, true);
   });
+
+  // Player clicks "Play Next Round"
+  socket.on('game:round_ready', () => {
+    const gameState = getActiveGame(socket.data.roomCode);
+    if (!gameState || gameState.status !== 'show_called' || !gameState.roundResult) return;
+
+    // Don't handle if this is actually a match-end round
+    if (ScoreEngine.checkMatchOver(gameState)) return;
+
+    const readySet = roundReadyPlayers.get(gameState.id) ?? new Set<string>();
+    readySet.add(userId);
+    roundReadyPlayers.set(gameState.id, readySet);
+
+    const humanPlayers = gameState.players.filter(p => !p.isBot && !p.isEliminated);
+    emitRoundReadyUpdate(io, gameState, readySet, humanPlayers.length);
+
+    // Start next round when every human has clicked
+    if (humanPlayers.every(p => readySet.has(p.userId))) {
+      startNextRound(io, gameState);
+    }
+  });
 }
 
 // ── Core action handler ───────────────────────────────────────────────────────
@@ -234,20 +257,47 @@ function handleRoundEnd(io: Server, state: GameState) {
 
   const matchResult = ScoreEngine.checkMatchOver(state);
   if (matchResult) {
-    setTimeout(() => handleMatchEnd(io, state), state.roundResult!.nextRoundIn);
+    // Brief delay so players can see the final round's scoreboard before match-end overlay
+    setTimeout(() => handleMatchEnd(io, state), 2500);
     return;
   }
 
-  // Schedule next round
-  setTimeout(() => {
-    const freshState = GameEngine.startNewRound(state, state.roundResult!);
-    activeGames.set(freshState.id, freshState);
-    roomToGame.set(freshState.roomId, freshState.id);
+  // Auto-ready all bots; wait for human players to click "Play Next Round"
+  const readySet = new Set<string>();
+  for (const p of state.players.filter(p => p.isBot && !p.isEliminated)) {
+    readySet.add(p.userId);
+  }
+  roundReadyPlayers.set(state.id, readySet);
 
-    broadcastGameState(io, freshState);
-    startTurnTimer(io, freshState.id);
-    scheduleBotTurnIfNeeded(io, freshState);
-  }, state.roundResult!.nextRoundIn);
+  const humanPlayers = state.players.filter(p => !p.isBot && !p.isEliminated);
+  emitRoundReadyUpdate(io, state, readySet, humanPlayers.length);
+
+  // Edge case: no human players at all — start immediately
+  if (humanPlayers.length === 0) {
+    startNextRound(io, state);
+  }
+}
+
+function emitRoundReadyUpdate(
+  io: Server,
+  state: GameState,
+  readySet: Set<string>,
+  totalHumans: number,
+) {
+  io.to(state.roomId).emit('game:round_ready_update', {
+    readyUserIds: [...readySet],
+    total: totalHumans,
+  });
+}
+
+function startNextRound(io: Server, state: GameState) {
+  roundReadyPlayers.delete(state.id);
+  const freshState = GameEngine.startNewRound(state, state.roundResult!);
+  activeGames.set(freshState.id, freshState);
+  roomToGame.set(freshState.roomId, freshState.id);
+  broadcastGameState(io, freshState);
+  startTurnTimer(io, freshState.id);
+  scheduleBotTurnIfNeeded(io, freshState);
 }
 
 function handleMatchEnd(io: Server, state: GameState) {
@@ -313,6 +363,7 @@ function handleMatchEnd(io: Server, state: GameState) {
 
   activeGames.delete(state.id);
   roomToGame.delete(state.roomId);
+  roundReadyPlayers.delete(state.id);
   cancelTurnTimer(state.id);
 }
 
@@ -488,6 +539,16 @@ async function broadcastGameState(io: Server, state: GameState) {
     const uid = (s as any).userId as string;
     const clientState = buildClientState(state, uid);
     s.emit('game:state', clientState);
+  }
+
+  // Re-emit ready state whenever game state is pushed during round-end phase
+  // so reconnecting players get the current ready count immediately
+  if (state.status === 'show_called') {
+    const readySet = roundReadyPlayers.get(state.id);
+    if (readySet) {
+      const humanPlayers = state.players.filter(p => !p.isBot && !p.isEliminated);
+      emitRoundReadyUpdate(io, state, readySet, humanPlayers.length);
+    }
   }
 }
 
