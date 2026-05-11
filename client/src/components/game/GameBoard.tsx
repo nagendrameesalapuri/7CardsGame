@@ -15,6 +15,7 @@ import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { Avatar } from '../ui/Avatar';
+import { useShortScreen } from '../../hooks/useShortScreen';
 
 function usePortraitPhone() {
   const [is, setIs] = React.useState(() => {
@@ -95,7 +96,7 @@ export function GameBoard() {
       )}
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
+      <div className="flex items-center justify-between px-3 py-2 short:py-1 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
         <div className="flex items-center gap-2">
           <button
             onClick={leaveRoom}
@@ -349,6 +350,7 @@ function ActionToast() {
   const { lastAction } = useGameStore();
   const [visible, setVisible] = React.useState(false);
   const [action, setAction] = React.useState<typeof lastAction>(null);
+  const isShort = useShortScreen();
 
   React.useEffect(() => {
     if (!lastAction?.message) return;
@@ -360,6 +362,11 @@ function ActionToast() {
 
   const style = ACTION_STYLE[action?.type ?? 'system'] ?? ACTION_STYLE.system;
 
+  // portrait mobile: below scores bar; desktop: above player hand; landscape phone: just below top bar
+  const positionClass = isShort
+    ? 'fixed left-1/2 -translate-x-1/2 z-30 top-[42px]'
+    : 'fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]';
+
   return (
     <AnimatePresence>
       {visible && action && (
@@ -367,7 +374,7 @@ function ActionToast() {
           initial={{ opacity: 0, y: 10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          className="fixed left-1/2 -translate-x-1/2 z-30 top-[155px] sm:top-auto sm:bottom-[280px]"
+          className={positionClass}
           style={{
             display: 'flex',
             alignItems: 'center',
