@@ -1,6 +1,6 @@
 /**
- * BotPlayer — Simple AI decision logic.
- * The bot always plays optimally to minimize its hand total.
+ * BotPlayer — AI decision logic.
+ * Plays competitively to minimize hand total and win rounds.
  */
 
 import { GameState, Card, DrawSource } from '../../../shared/src/types';
@@ -21,28 +21,30 @@ export class BotPlayer {
 
   /**
    * Decide what to draw.
-   * Look at top discard card — take it if it reduces hand total, else draw from deck.
+   * Take from discard if it's strictly better than the highest card in hand.
    */
   static decideDrawSource(state: GameState, botPlayerId: string): DrawSource {
     const bot = state.players.find(p => p.id === botPlayerId)!;
     const topDiscard = state.discardPile[state.discardPile.length - 1];
     if (!topDiscard) return 'deck';
 
-    // 7 and J cannot be taken from the discard pile
+    // Power cards (7, J) can't be taken from discard — they would trigger powers
     if (!topDiscard.isJoker && (topDiscard.rank === '7' || topDiscard.rank === 'J')) {
       return 'deck';
     }
 
+    // Never take a Joker from discard (value 0 but burns a Joker slot; draw for other Jokers)
+    if (topDiscard.isJoker) return 'deck';
+
+    const discardValue = DeckManager.getCardValue(topDiscard);
     const highestCard = bot.hand.reduce(
       (h, c) => (DeckManager.getCardValue(c) > DeckManager.getCardValue(h) ? c : h),
       bot.hand[0]
     );
+    const highestValue = DeckManager.getCardValue(highestCard);
 
-    // Take from discard if it saves points
-    if (
-      DeckManager.getCardValue(topDiscard) < DeckManager.getCardValue(highestCard) &&
-      DeckManager.getCardValue(topDiscard) < 5
-    ) {
+    // Take if it replaces the highest card and saves at least 2 points
+    if (discardValue < highestValue - 1) {
       return 'discard';
     }
 
@@ -50,25 +52,30 @@ export class BotPlayer {
   }
 
   /**
-   * Decide which card to discard.
-   * Priority: discard highest value card, but prefer using 7/J power cards strategically.
+   * Decide which card(s) to discard.
+   * Never discard Jokers. Discard the highest-value group (same rank).
+   * Keep 7s when hand total is already low — they're valuable for attack deflection.
    */
   static decideDiscard(state: GameState, botPlayerId: string): string[] {
     const bot = state.players.find(p => p.id === botPlayerId)!;
     const hand = bot.hand;
+    const handTotal = DeckManager.calculateHandTotal(hand);
 
-    // Group cards by rank
+    // Group non-Joker cards by rank
     const byRank: Record<string, Card[]> = {};
     for (const card of hand) {
+      if (card.isJoker) continue; // never discard Jokers
       if (!byRank[card.rank]) byRank[card.rank] = [];
       byRank[card.rank].push(card);
     }
 
-    // Find the rank group whose combined value is highest (most points to shed)
     let bestGroup: Card[] = [];
     let bestValue = -1;
 
     for (const group of Object.values(byRank)) {
+      // Keep 7s when hand is low — useful for attack defense
+      if (group[0].rank === '7' && handTotal <= 12) continue;
+
       const groupValue = group.reduce((sum, c) => sum + DeckManager.getCardValue(c), 0);
       if (groupValue > bestValue) {
         bestValue = groupValue;
@@ -76,22 +83,38 @@ export class BotPlayer {
       }
     }
 
+    // Fallback: if all remaining cards are 7s and Jokers, discard a 7
+    if (bestGroup.length === 0) {
+      const seven = hand.find(c => c.rank === '7' && !c.isJoker);
+      if (seven) return [seven.id];
+      // Last resort: discard the highest-value card individually
+      const highest = hand.reduce(
+        (h, c) => (DeckManager.getCardValue(c) > DeckManager.getCardValue(h) ? c : h),
+        hand[0]
+      );
+      return [highest.id];
+    }
+
     return bestGroup.map(c => c.id);
   }
 
   /**
    * Should the bot call SHOW?
-   * Call show aggressively when hand ≤ 3 to secure wins.
+   * Show aggressively at low totals; show with some probability at moderate totals.
    */
   static shouldCallShow(state: GameState, botPlayerId: string): boolean {
     const bot = state.players.find(p => p.id === botPlayerId)!;
     const total = DeckManager.calculateHandTotal(bot.hand);
-    return total <= 1;
+    if (total === 0) return true;
+    if (total <= 2) return true;
+    if (total <= 4) return Math.random() < 0.90;
+    if (total <= 5) return Math.random() < 0.65;
+    return false;
   }
 
   /**
    * Respond to a 7 attack.
-   * Throw a 7 if available, else take penalty.
+   * Throw a 7 back if available, else take the penalty.
    */
   static decideAttackResponse(
     state: GameState,
@@ -123,14 +146,14 @@ export class BotPlayer {
     }
 
     if (!state.hasDrawnThisTurn) {
-      // Check for cut opportunity: discard matching cards without drawing
+      // Cut opportunity: discard matching cards without drawing
       const topDiscard = state.discardPile[state.discardPile.length - 1];
       const isRealSeven = (c: Card) => c.rank === '7' && !c.isJoker;
-      if (topDiscard && !isRealSeven(topDiscard)) {
-        const matching = bot.hand.filter(c => c.rank === topDiscard.rank && !isRealSeven(c));
+      if (topDiscard && !isRealSeven(topDiscard) && !topDiscard.isJoker) {
+        const matching = bot.hand.filter(c => !c.isJoker && c.rank === topDiscard.rank && !isRealSeven(c));
         const matchValue = matching.reduce((sum, c) => sum + DeckManager.getCardValue(c), 0);
-        // Cut if the matching cards have meaningful point value (worth shedding)
-        if (matching.length > 0 && matchValue >= 5) {
+        // Cut if worth at least 3 points (was 5 — more aggressive)
+        if (matching.length > 0 && matchValue >= 3) {
           return { action: 'discard', cardIds: matching.map(c => c.id) };
         }
       }

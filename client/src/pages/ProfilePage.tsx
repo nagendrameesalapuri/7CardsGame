@@ -10,13 +10,32 @@ import toast from 'react-hot-toast';
 export function ProfilePage() {
   const { user, loadMe } = useAuthStore();
   const [editMode, setEditMode] = useState(false);
-
-  useEffect(() => { loadMe(); }, []);
-  const [username, setUsername] = useState(user?.username ?? '');
-  const [selectedAvatar, setSelectedAvatar] = useState(user?.avatar ?? 'avatar_1');
+  const [username, setUsername] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState('avatar_1');
   const [isSaving, setIsSaving] = useState(false);
 
-  if (!user) return null;
+  // Load user data on mount only if not already loaded
+  useEffect(() => {
+    if (!user) loadMe();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync local state whenever user data arrives or changes
+  useEffect(() => {
+    if (user && !editMode) {
+      setUsername(user.username);
+      setSelectedAvatar(user.avatar ?? 'avatar_1');
+    }
+  }, [user?.username, user?.avatar]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!user) {
+    return (
+      <Layout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="text-dark-muted animate-pulse text-sm">Loading profile…</div>
+        </div>
+      </Layout>
+    );
+  }
 
   const handleSave = async () => {
     setIsSaving(true);

@@ -39,9 +39,9 @@ function AuthCallback() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
-  // While loadMe() is in-flight, show a spinner instead of redirecting to /
-  if (isLoading) {
+  const { isAuthenticated, isLoading, user } = useAuthStore();
+  // Only block with spinner when loading AND we have no user data yet (initial auth check)
+  if (isLoading && !user) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <div className="text-dark-muted animate-pulse text-sm">Loading…</div>
