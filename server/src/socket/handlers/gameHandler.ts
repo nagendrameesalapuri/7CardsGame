@@ -184,7 +184,11 @@ function handlePlayerAction(
   resetTimer = false,
 ) {
   const gameState = getActiveGame(socket.data.roomCode);
-  if (!gameState) return socket.emit('game:error', 'No active game');
+  if (!gameState) {
+    // socket.data.roomCode is not set yet (reconnect race) — silently drop, not a real error
+    if (socket.data.roomCode) socket.emit('game:error', 'No active game');
+    return;
+  }
 
   const result = actionFn(gameState);
 

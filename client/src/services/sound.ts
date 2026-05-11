@@ -118,17 +118,21 @@ class SoundService {
     } catch { /* ignore if context closed */ }
   }
 
-  /** Call this from any user-gesture handler to pre-warm the AudioContext on iOS. */
+  /** Call this from any user-gesture handler to pre-warm the AudioContext on iOS.
+   *  Safe to call repeatedly — only does work when context is suspended. */
   warmup(): void {
     const ctx = this.getContext();
     if (!ctx) return;
-    if (ctx.state === 'suspended') ctx.resume();
-    // Play a silent buffer — forces iOS to unlock the audio context
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
+    if (ctx.state !== 'suspended') return;
+    ctx.resume().catch(() => {});
+    // Play a silent buffer — forces iOS to fully unlock the audio context
+    try {
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch { /* ignore */ }
   }
 
   setEnabled(v: boolean) { this.enabled = v; }

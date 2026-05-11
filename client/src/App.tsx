@@ -58,13 +58,18 @@ export function App() {
     if (token) loadMe();
     soundService.preload(['card_deal', 'card_draw', 'card_discard', 'power_seven', 'power_jack', 'show_call', 'win', 'lose', 'chat']);
 
-    // Warm up AudioContext on first user gesture so iOS allows sound/beep
-    const warmup = () => { soundService.warmup(); };
-    document.addEventListener('touchstart', warmup, { once: true, passive: true });
-    document.addEventListener('click', warmup, { once: true });
+    // Warm up AudioContext on every touch/click so iOS keeps it running after background.
+    // `once: true` was wrong — iOS suspends AudioContext on background and needs re-warm.
+    const warmup = () => soundService.warmup();
+    document.addEventListener('touchstart', warmup, { passive: true });
+    document.addEventListener('click', warmup);
+    // Also re-warm when app returns to foreground (iOS 14.5+ allows resume from visibilitychange)
+    const onVisible = () => { if (document.visibilityState === 'visible') soundService.warmup(); };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       document.removeEventListener('touchstart', warmup);
       document.removeEventListener('click', warmup);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [loadMe, token]);
 

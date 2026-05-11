@@ -269,6 +269,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     unsubs.push(on('game:error', (msg) => {
       set({ gameError: msg });
+      // Suppress transient reconnect errors that fire before socket re-joins the room
+      if (msg === 'No active game' && get().game) return;
       toast.error(msg);
     }));
 
