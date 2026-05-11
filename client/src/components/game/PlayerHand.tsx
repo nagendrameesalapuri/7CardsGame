@@ -31,31 +31,32 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
     hand.some(c => c.rank === topDiscard.rank && !isRealSeven(c));
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className={clsx('flex flex-col items-center', underAttack ? 'gap-1.5 sm:gap-3' : 'gap-3')}>
 
       {/* Hand total badge */}
       <div className={clsx(
-        'flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold',
+        'flex items-center gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-sm font-bold',
         handTotal <= 5
           ? 'bg-neon-green/20 text-neon-green border border-neon-green/40'
           : 'bg-dark-surface border border-dark-border text-dark-muted'
       )}>
-        <span>Your Hand:</span>
-        <span className="text-lg">{handTotal} pts</span>
+        <span className="text-xs sm:text-sm">Your Hand:</span>
+        <span className="text-base sm:text-lg font-bold">{handTotal} pts</span>
         {handTotal <= 5 && isMyTurn && <span className="text-xs opacity-80 animate-pulse">✓ SHOW now!</span>}
         {handTotal <= 5 && !isMyTurn && <span className="text-xs opacity-80">✓ Ready to SHOW</span>}
       </div>
 
-      {/* Attack warning */}
+      {/* Attack warning — compact on mobile to save vertical space */}
       <AnimatePresence>
         {underAttack && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="px-4 py-2 bg-neon-red/20 border border-neon-red rounded-lg text-neon-red text-sm font-bold text-center animate-pulse"
+            className="w-full px-3 py-1 sm:px-4 sm:py-2 bg-neon-red/20 border border-neon-red rounded-lg text-neon-red font-bold text-center animate-pulse"
           >
-            ⚔️ Under 7 Attack! Select a 7 to throw back, or take penalty cards
+            <span className="sm:hidden text-xs">⚔️ 7 Attack! Select a 7 to counter, or take penalty</span>
+            <span className="hidden sm:inline text-sm">⚔️ Under 7 Attack! Select a 7 to throw back, or take penalty cards</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -70,11 +71,14 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         });
         const isMobile = window.innerWidth < 640;
         const isMany = sorted.length >= 9;
-        const cardSize = isMany ? 'sm' : isMobile ? 'md' : 'lg';
+        // Use sm cards on mobile during attack to fit all elements on screen without clipping
+        const cardSize = isMany ? 'sm' : (isMobile && underAttack) ? 'sm' : isMobile ? 'md' : 'lg';
         const row1 = isMany ? sorted.slice(0, Math.ceil(sorted.length / 2)) : sorted;
         const row2 = isMany ? sorted.slice(Math.ceil(sorted.length / 2)) : [];
 
-        const overlapPx = isMany ? 14 : isMobile && hand.length > 5 ? 18 : 8;
+        const overlapPx = isMany ? 14 : (isMobile && underAttack) ? 8 : isMobile && hand.length > 5 ? 18 : 8;
+        // sm card height = h-14 = 56px, md = h-24 = 96px, lg = h-28 = 112px
+        const minH = isMany ? '180px' : (isMobile && underAttack) ? '64px' : isMobile ? '104px' : '120px';
 
         const renderRow = (cards: typeof sorted, rowOffset = 0) => (
           <div
@@ -113,7 +117,7 @@ export function PlayerHand({ hand, isMyTurn, hasDrawnThisTurn, underAttack, hand
         );
 
         return (
-          <div className="flex flex-col gap-1 w-full" style={{ minHeight: isMany ? '180px' : '120px', padding: '4px 8px 0' }}>
+          <div className="flex flex-col gap-1 w-full" style={{ minHeight: minH, padding: '4px 8px 8px' }}>
             {renderRow(row1, 0)}
             {row2.length > 0 && renderRow(row2, row1.length)}
           </div>

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useAuthStore } from './store/authStore';
@@ -11,26 +11,43 @@ import { GamePage } from './pages/GamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 
-// Handle Google OAuth callback token
+// Handle Google OAuth callback token — runs inside BrowserRouter so useNavigate works
 function AuthCallback() {
-  const { setToken } = useAuthStore();
-  const navigate = React.useRef(window.location.href);
+  const { setToken, loadMe } = useAuthStore();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const token = url.searchParams.get('token');
-    if (token) {
-      setToken(token);
-      window.history.replaceState({}, '', '/lobby');
-    }
-    window.location.href = '/lobby';
-  }, [setToken]);
+    const run = async () => {
+      const url = new URL(window.location.href);
+      const token = url.searchParams.get('token');
+      if (token) {
+        setToken(token);       // persist token to store + localStorage
+        await loadMe();        // fetch user and set isAuthenticated: true
+        navigate('/lobby', { replace: true });  // no full-page reload
+      } else {
+        navigate('/', { replace: true });
+      }
+    };
+    run();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div className="min-h-screen bg-dark-bg flex items-center justify-center text-dark-muted animate-pulse">Signing in...</div>;
+  return (
+    <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+      <div className="text-dark-muted animate-pulse text-sm">Signing in…</div>
+    </div>
+  );
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
+  // While loadMe() is in-flight, show a spinner instead of redirecting to /
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+        <div className="text-dark-muted animate-pulse text-sm">Loading…</div>
+      </div>
+    );
+  }
   return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
 }
 

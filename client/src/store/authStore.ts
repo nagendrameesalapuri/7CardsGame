@@ -24,7 +24,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       guestToken: null,
-      isLoading: false,
+      // Start as loading if localStorage already has a token so ProtectedRoute
+      // shows a spinner instead of immediately redirecting to / before loadMe() runs.
+      isLoading: !!localStorage.getItem('token'),
       isAuthenticated: false,
 
       setToken: (token, guestToken) => {
