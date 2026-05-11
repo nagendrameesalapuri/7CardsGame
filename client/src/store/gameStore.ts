@@ -4,6 +4,10 @@ import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, Card } fro
 import { socketRoom, socketGame, socketChat, on, getSocket } from '../services/socket';
 import { soundService } from '../services/sound';
 
+// Tracks the last alerted handCount per opponent (playerId → count).
+// Allows notifying once per distinct count (3 → 2 → 1), resets when player goes > 3.
+const lowCardAlerted = new Map<string, number>();
+
 interface GameStore {
   // Room state
   room: Room | null;
@@ -196,14 +200,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ resumeRoomCode: roomCode });
     }));
 
-    unsubs.push(on('room:joined', (room) => set({
-      room, roomError: null,
-      // Clear any stale match/game state from a previous session
-      matchResult: null, game: null, lastAction: null,
-      resumeRoomCode: null, roundReadyUpdate: null,
-      isMyTurn: false, canShow: false,
-      underAttack: false, handTotal: 0, selectedCardIds: [],
-    })));
+    unsubs.push(on('room:joined', (room) => {
+      lowCardAlerted.clear();
+      set({
+        room, roomError: null,
+        matchResult: null, game: null, lastAction: null,
+        resumeRoomCode: null, roundReadyUpdate: null,
+        isMyTurn: false, canShow: false,
+        underAttack: false, handTotal: 0, selectedCardIds: [],
+      });
+    }));
     unsubs.push(on('room:updated', (room) => set({ room })));
     unsubs.push(on('room:left', () => set({ room: null })));
     unsubs.push(on('room:error', (msg) => {
@@ -220,10 +226,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const underAttack = !!(incoming.attackChain &&
         incoming.players[incoming.attackChain.targetPlayerIndex]?.id === incoming.myPlayerId);
 
+      // Notify all players when an opponent drops to ≤3 cards
+      // Fires once per distinct count (3 → 2 → 1); resets when they go back above 3
+      if (incoming.status === 'playing') {
+        incoming.players.forEach(player => {
+          if (player.id === incoming.myPlayerId || player.isEliminated) return;
+          if (player.handCount <= 3) {
+            if (lowCardAlerted.get(player.id) !== player.handCount) {
+              lowCardAlerted.set(player.id, player.handCount);
+              const emoji = player.handCount === 1 ? '🚨' : '⚠️';
+              toast(
+                `${emoji} ${player.username} has only ${player.handCount} card${player.handCount === 1 ? '' : 's'}!`,
+                { duration: 4500, id: `low-cards-${player.id}` }
+              );
+            }
+          } else {
+            lowCardAlerted.delete(player.id);
+          }
+        });
+      }
+
       // Merge chatMessages: server list is authoritative; keep any client-only msgs not yet on server
       set(state => {
         const prevIsMyTurn = state.isMyTurn;
         const isNewGame = !state.game || state.game.id !== incoming.id;
+        if (isNewGame) lowCardAlerted.clear();
         const serverIds = new Set(incoming.chatMessages.map(m => m.id));
         const localOnly = state.game?.chatMessages.filter(m => !serverIds.has(m.id)) ?? [];
         const mergedChat = [...incoming.chatMessages, ...localOnly];

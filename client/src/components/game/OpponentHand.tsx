@@ -44,6 +44,15 @@ export function OpponentHand({ player, isCurrentTurn, isAttackTarget, position }
         {isAttackTarget && (
           <div className="text-neon-red text-xs font-bold animate-pulse">⚔️ ATTACK!</div>
         )}
+        {!isAttackTarget && player.handCount <= 3 && !player.isEliminated && (
+          <motion.div
+            animate={{ scale: [1, 1.15, 1] }}
+            transition={{ repeat: Infinity, duration: 0.7 }}
+            className="text-yellow-400 text-xs font-bold"
+          >
+            ⚠️ {player.handCount} card{player.handCount === 1 ? '!' : 's!'}
+          </motion.div>
+        )}
 
         <Avatar
           avatar={player.avatar}
