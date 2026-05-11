@@ -367,6 +367,10 @@ export class GameEngine {
       return fail('Cannot SHOW while under a 7 attack', state);
     }
 
+    if (state.hasDrawnThisTurn) {
+      return fail('Discard a card first before calling SHOW', state);
+    }
+
     const player = state.players.find(p => p.id === playerId)!;
     const handTotal = DeckManager.calculateHandTotal(player.hand);
 

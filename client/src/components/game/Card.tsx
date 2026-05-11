@@ -20,10 +20,11 @@ const SUIT_COLORS: Record<string, string> = {
   diamonds: 'text-red-500',
   clubs: 'text-gray-900 dark:text-gray-900',
   spades: 'text-gray-900 dark:text-gray-900',
+  none: 'text-yellow-500',
 };
 
 const SUIT_SYMBOLS: Record<string, string> = {
-  hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠',
+  hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠', none: '',
 };
 
 const SIZES = {
@@ -69,6 +70,8 @@ export function Card({
     );
   }
 
+  const isPrintedJoker = card.rank === 'Joker';
+
   return (
     <motion.div
       initial={isDealt ? { y: -150, rotate: -15, opacity: 0 } : false}
@@ -100,28 +103,42 @@ export function Card({
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-transparent pointer-events-none" />
       )}
 
-      {/* Top-left rank & suit */}
-      <div className={clsx('absolute top-1 left-1.5 leading-tight', suitColor)}>
-        <div className={clsx('font-bold leading-none', sz.rank)}>{card.rank}</div>
-        <div className={clsx('leading-none', sz.suit === 'text-xl' ? 'text-sm' : 'text-xs')}>{suitSymbol}</div>
-      </div>
+      {isPrintedJoker ? (
+        /* Printed joker — special display */
+        <>
+          <div className="absolute top-1 left-1.5 text-yellow-500 font-bold leading-none" style={{ fontSize: '0.6rem' }}>🃏</div>
+          <div className="absolute inset-0 flex items-center justify-center text-3xl">🃏</div>
+          <div className="absolute bottom-1 left-0 right-0 text-center">
+            <span className="text-[8px] font-bold text-yellow-600 bg-yellow-100 px-1 rounded">JOKER</span>
+          </div>
+        </>
+      ) : (
+        /* Regular card */
+        <>
+          {/* Top-left rank & suit */}
+          <div className={clsx('absolute top-1 left-1.5 leading-tight', suitColor)}>
+            <div className={clsx('font-bold leading-none', sz.rank)}>{card.rank}</div>
+            <div className={clsx('leading-none', sz.suit === 'text-xl' ? 'text-sm' : 'text-xs')}>{suitSymbol}</div>
+          </div>
 
-      {/* Center suit */}
-      <div className={clsx('absolute inset-0 flex items-center justify-center', suitColor, sz.suit)}>
-        {card.isJoker ? '★' : suitSymbol}
-      </div>
+          {/* Center suit */}
+          <div className={clsx('absolute inset-0 flex items-center justify-center', suitColor, sz.suit)}>
+            {card.isJoker ? '★' : suitSymbol}
+          </div>
 
-      {/* Bottom-right rank & suit (rotated) */}
-      <div className={clsx('absolute bottom-1 right-1.5 leading-tight rotate-180', suitColor)}>
-        <div className={clsx('font-bold leading-none', sz.rank)}>{card.rank}</div>
-        <div className={clsx('leading-none', sz.suit === 'text-xl' ? 'text-sm' : 'text-xs')}>{suitSymbol}</div>
-      </div>
+          {/* Bottom-right rank & suit (rotated) */}
+          <div className={clsx('absolute bottom-1 right-1.5 leading-tight rotate-180', suitColor)}>
+            <div className={clsx('font-bold leading-none', sz.rank)}>{card.rank}</div>
+            <div className={clsx('leading-none', sz.suit === 'text-xl' ? 'text-sm' : 'text-xs')}>{suitSymbol}</div>
+          </div>
 
-      {/* Joker label */}
-      {card.isJoker && (
-        <div className="absolute bottom-1 left-0 right-0 text-center">
-          <span className="text-[8px] font-bold text-yellow-600 bg-yellow-100 px-1 rounded">JOKER</span>
-        </div>
+          {/* Joker label for paper joker cards */}
+          {card.isJoker && (
+            <div className="absolute bottom-1 left-0 right-0 text-center">
+              <span className="text-[8px] font-bold text-yellow-600 bg-yellow-100 px-1 rounded">JOKER</span>
+            </div>
+          )}
+        </>
       )}
     </motion.div>
   );

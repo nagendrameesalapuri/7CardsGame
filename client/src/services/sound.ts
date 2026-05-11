@@ -87,6 +87,25 @@ class SoundService {
     source.start();
   }
 
+  /** Short beep to alert the player that it's their turn. Uses oscillator — no file needed. */
+  playBeep(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(this.volume * 0.4, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  }
+
   setEnabled(v: boolean) { this.enabled = v; }
   setVolume(v: number) { this.volume = Math.max(0, Math.min(1, v)); }
   isEnabled() { return this.enabled; }

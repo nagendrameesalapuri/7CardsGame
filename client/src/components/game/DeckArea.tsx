@@ -101,7 +101,7 @@ export function DeckArea({
           </div>
           {topDiscard && (
             <span className="text-dark-muted text-xs">
-              {topDiscard.rank} of {topDiscard.suit}
+              {topDiscard.rank === 'Joker' ? 'Printed Joker' : `${topDiscard.rank} of ${topDiscard.suit}`}
             </span>
           )}
         </div>

@@ -193,17 +193,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
     unsubs.push(on('game:state', (incoming) => {
       const isMyTurn = incoming.players[incoming.currentPlayerIndex]?.id === incoming.myPlayerId;
       const handTotal = calculateHandTotal(incoming.myHand);
-      const canShow = isMyTurn && handTotal <= 5 &&
+      // SHOW is only available before drawing — once a card is drawn, must discard first
+      const canShow = isMyTurn && !incoming.hasDrawnThisTurn && handTotal <= 5 &&
         !(incoming.attackChain?.targetPlayerIndex === incoming.players.findIndex(p => p.id === incoming.myPlayerId));
       const underAttack = !!(incoming.attackChain &&
         incoming.players[incoming.attackChain.targetPlayerIndex]?.id === incoming.myPlayerId);
 
       // Merge chatMessages: server list is authoritative; keep any client-only msgs not yet on server
       set(state => {
+        const prevIsMyTurn = state.isMyTurn;
         const serverIds = new Set(incoming.chatMessages.map(m => m.id));
         const localOnly = state.game?.chatMessages.filter(m => !serverIds.has(m.id)) ?? [];
         const mergedChat = [...incoming.chatMessages, ...localOnly];
         const game = { ...incoming, chatMessages: mergedChat };
+        // Beep when turn transitions to the current player
+        if (isMyTurn && !prevIsMyTurn && incoming.status === 'playing') {
+          soundService.playBeep();
+        }
         return { game, isMyTurn, canShow, underAttack, handTotal };
       });
     }));

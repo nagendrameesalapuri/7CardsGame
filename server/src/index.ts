@@ -20,7 +20,12 @@ import userRoutes from './routes/users';
 import gameRoutes from './routes/games';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
-const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:3000';
+const isProd = process.env.NODE_ENV === 'production';
+
+// Support comma-separated origins: CLIENT_URL=https://a.netlify.app,https://b.netlify.app
+const rawOrigins = process.env.CLIENT_URL ?? 'http://localhost:3000';
+const allowedOrigins = rawOrigins.split(',').map(o => o.trim()).filter(Boolean);
+const corsOrigin = allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins;
 
 async function bootstrap() {
   await connectDatabase();
@@ -30,7 +35,7 @@ async function bootstrap() {
 
   // ── Middleware ──────────────────────────────────────────────────────────────
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: CLIENT_URL, credentials: true }));
+  app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
 
   app.use(
@@ -38,7 +43,12 @@ async function bootstrap() {
       secret: process.env.SESSION_SECRET ?? 'dev-secret',
       resave: false,
       saveUninitialized: false,
-      cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 },
+      // SameSite=None;Secure required for cross-site OAuth redirects (mobile Safari)
+      cookie: {
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000,
+      },
     })
   );
 
@@ -60,7 +70,7 @@ async function bootstrap() {
 
   // ── Socket.IO ────────────────────────────────────────────────────────────────
   const io = new Server(httpServer, {
-    cors: { origin: CLIENT_URL, methods: ['GET', 'POST'], credentials: true },
+    cors: { origin: corsOrigin, methods: ['GET', 'POST'], credentials: true },
     pingTimeout: 20000,
     pingInterval: 25000,
   });
