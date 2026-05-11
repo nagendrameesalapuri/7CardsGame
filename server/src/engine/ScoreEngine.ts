@@ -35,10 +35,9 @@ export class ScoreEngine {
       ? showPlayerEntry
       : totals.find(t => t.handTotal === minTotal)!;
 
-    // Penalty for failed show = sum of all other active players' scoreable totals
-    const opponentSum = totals
-      .filter(t => t.player.id !== showPlayerId)
-      .reduce((sum, t) => sum + scoreableTotal(t.handTotal), 0);
+    // Penalty for failed show = show player's own hand + winner's hand
+    // e.g. show player has 4 pts, winner has 1 pt → penalty = 5
+    const failedShowPenalty = showPlayerTotal + winnerEntry.handTotal;
 
     const playerResults: PlayerRoundResult[] = state.players.map(p => {
       if (p.isEliminated) {
@@ -55,7 +54,7 @@ export class ScoreEngine {
       if (p.id === winnerEntry.player.id) {
         roundPoints = 0;
       } else if (!showPlayerWon && p.id === showPlayerId) {
-        roundPoints = opponentSum;
+        roundPoints = failedShowPenalty;
       } else {
         roundPoints = scoreableTotal(totals.find(t => t.player.id === p.id)!.handTotal);
       }
