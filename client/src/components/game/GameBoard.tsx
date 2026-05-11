@@ -13,6 +13,7 @@ import { WinnerCelebration } from './WinnerCelebration';
 import { ChatPanel } from './ChatPanel';
 import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
+import { ActionButtons } from './ActionButtons';
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -53,8 +54,10 @@ export function GameBoard() {
   const rightOpponents = opponents.length >= 4 ? [opponents[2]] :
     opponents.length >= 3 ? [opponents[2] ?? opponents[opponents.length - 1]] : [];
 
+  const myHand = game?.myHand ?? [];
+
   return (
-    <div className="relative w-full h-full min-h-screen bg-felt bg-felt-pattern overflow-hidden flex flex-col">
+    <div className="relative w-full h-[100dvh] bg-felt bg-felt-pattern overflow-hidden flex flex-col">
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
@@ -100,7 +103,7 @@ export function GameBoard() {
       </div>
 
       {/* ── Main game area ───────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-between p-4 gap-4 relative">
+      <div className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 gap-2 sm:gap-4 relative overflow-hidden">
 
         {/* Live score leaderboard — desktop only */}
         <div className="hidden sm:block">
@@ -171,16 +174,26 @@ export function GameBoard() {
         </div>
 
         {/* Player section: SHOW button + hand */}
-        <div className="w-full flex flex-col items-center gap-3">
+        <div className="w-full flex flex-col items-center gap-2">
           <div className="flex items-center gap-4">
             <AnimatePresence>
               {canShow && <ShowButton key="show-btn" />}
             </AnimatePresence>
           </div>
 
-          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-4 pb-6 border border-white/10">
+          {/* Mobile action bar — always visible above cards, hidden on desktop */}
+          <div className="sm:hidden w-full px-3">
+            <ActionButtons
+              hand={myHand}
+              isMyTurn={isMyTurn}
+              hasDrawnThisTurn={game.hasDrawnThisTurn}
+              underAttack={underAttack}
+            />
+          </div>
+
+          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-3 sm:p-4 border border-white/10">
             <PlayerHand
-              hand={game.myHand}
+              hand={myHand}
               isMyTurn={isMyTurn}
               hasDrawnThisTurn={game.hasDrawnThisTurn}
               underAttack={underAttack}

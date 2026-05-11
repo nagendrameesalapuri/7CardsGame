@@ -39,8 +39,16 @@ export function App() {
 
   useEffect(() => {
     if (token) loadMe();
-    // Preload common sounds
     soundService.preload(['card_deal', 'card_draw', 'card_discard', 'power_seven', 'power_jack', 'show_call', 'win', 'lose', 'chat']);
+
+    // Warm up AudioContext on first user gesture so iOS allows sound/beep
+    const warmup = () => { soundService.warmup(); };
+    document.addEventListener('touchstart', warmup, { once: true, passive: true });
+    document.addEventListener('click', warmup, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', warmup);
+      document.removeEventListener('click', warmup);
+    };
   }, [loadMe, token]);
 
   return (

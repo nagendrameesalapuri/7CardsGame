@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#0d1117"/>
+  <rect x="40" y="40" width="432" height="432" rx="60" fill="#161b22"/>
+  <!-- Card suit decorations -->
+  <text x="80" y="160" font-size="80" fill="#ff3b5c" opacity="0.6">♥</text>
+  <text x="340" y="400" font-size="80" fill="#ff3b5c" opacity="0.6">♦</text>
+  <text x="80" y="400" font-size="80" fill="#e6edf3" opacity="0.6">♠</text>
+  <text x="340" y="160" font-size="80" fill="#e6edf3" opacity="0.6">♣</text>
+  <!-- Center card -->
+  <rect x="156" y="156" width="200" height="200" rx="20" fill="#00ff88" opacity="0.15"/>
+  <rect x="156" y="156" width="200" height="200" rx="20" fill="none" stroke="#00ff88" stroke-width="4"/>
+  <text x="256" y="282" font-size="100" text-anchor="middle" fill="#00ff88">7</text>
+</svg>

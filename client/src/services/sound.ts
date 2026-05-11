@@ -87,23 +87,48 @@ class SoundService {
     source.start();
   }
 
-  /** Short beep to alert the player that it's their turn. Uses oscillator — no file needed. */
+  /** Short beep to alert the player that it's their turn. Uses oscillator — no file needed.
+   *  Also vibrates on Android. iOS requires warmup() called from a prior user gesture. */
   playBeep(): void {
+    // Vibrate on Android (ignored on iOS/desktop)
+    try { navigator.vibrate?.(120); } catch { /* ignore */ }
+
     if (!this.enabled) return;
     const ctx = this.getContext();
     if (!ctx) return;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => this._beepOsc(ctx));
+      return;
+    }
+    this._beepOsc(ctx);
+  }
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    gain.gain.setValueAtTime(this.volume * 0.4, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.3);
+  private _beepOsc(ctx: AudioContext): void {
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(this.volume * 0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } catch { /* ignore if context closed */ }
+  }
+
+  /** Call this from any user-gesture handler to pre-warm the AudioContext on iOS. */
+  warmup(): void {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    // Play a silent buffer — forces iOS to unlock the audio context
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
   }
 
   setEnabled(v: boolean) { this.enabled = v; }
