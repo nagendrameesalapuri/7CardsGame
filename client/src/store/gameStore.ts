@@ -92,7 +92,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   leaveRoom: () => {
     socketRoom.leave();
-    set({ room: null, game: null, selectedCardIds: [] });
+    set({
+      room: null, game: null, selectedCardIds: [],
+      matchResult: null, lastAction: null, gameError: null,
+      resumeRoomCode: null, isMyTurn: false, canShow: false,
+      underAttack: false, handTotal: 0,
+    });
   },
 
   toggleReady: () => socketRoom.ready(),
@@ -182,7 +187,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ resumeRoomCode: roomCode });
     }));
 
-    unsubs.push(on('room:joined', (room) => set({ room, roomError: null })));
+    unsubs.push(on('room:joined', (room) => set({
+      room, roomError: null,
+      // Clear any stale match/game state from a previous session
+      matchResult: null, game: null, lastAction: null,
+      resumeRoomCode: null, isMyTurn: false, canShow: false,
+      underAttack: false, handTotal: 0, selectedCardIds: [],
+    })));
     unsubs.push(on('room:updated', (room) => set({ room })));
     unsubs.push(on('room:left', () => set({ room: null })));
     unsubs.push(on('room:error', (msg) => {
@@ -202,6 +213,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Merge chatMessages: server list is authoritative; keep any client-only msgs not yet on server
       set(state => {
         const prevIsMyTurn = state.isMyTurn;
+        const isNewGame = !state.game || state.game.id !== incoming.id;
         const serverIds = new Set(incoming.chatMessages.map(m => m.id));
         const localOnly = state.game?.chatMessages.filter(m => !serverIds.has(m.id)) ?? [];
         const mergedChat = [...incoming.chatMessages, ...localOnly];
@@ -210,7 +222,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (isMyTurn && !prevIsMyTurn && incoming.status === 'playing') {
           soundService.playBeep();
         }
-        return { game, isMyTurn, canShow, underAttack, handTotal };
+        return {
+          game, isMyTurn, canShow, underAttack, handTotal,
+          // Clear stale match result when a new game begins
+          ...(isNewGame ? { matchResult: null, lastAction: null } : {}),
+        };
       });
     }));
 
