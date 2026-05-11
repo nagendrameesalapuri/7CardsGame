@@ -11,9 +11,10 @@ export function HomePage() {
   const [guestError, setGuestError] = useState('');
   const [mode, setMode] = useState<'home' | 'guest'>('home');
 
-  // Show error if redirected back from server with google_not_configured
+  // Show error if redirected back from server with an error code
   const urlError = new URLSearchParams(window.location.search).get('error');
   const googleNotConfigured = urlError === 'google_not_configured';
+  const tooManyRequests = urlError === 'too_many_requests';
 
   if (isAuthenticated) {
     navigate('/lobby');
@@ -77,6 +78,11 @@ export function HomePage() {
               {googleNotConfigured && (
                 <p className="text-yellow-400 text-xs text-center bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
                   Google login not configured on this server. Use Guest login instead.
+                </p>
+              )}
+              {tooManyRequests && (
+                <p className="text-neon-red text-xs text-center bg-neon-red/10 border border-neon-red/30 rounded-lg px-3 py-2">
+                  Too many login attempts. Please wait a few minutes and try again.
                 </p>
               )}
               <Button

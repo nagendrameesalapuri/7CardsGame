@@ -47,7 +47,10 @@ export const useAuthStore = create<AuthState>()(
           set({ token, guestToken, user, isAuthenticated: true, isLoading: false });
         } catch (err: any) {
           set({ isLoading: false });
-          throw new Error(err.response?.data?.error ?? 'Login failed');
+          if (err.response?.status === 429) {
+            throw new Error('Too many attempts — please wait a few minutes and try again.');
+          }
+          throw new Error(err.response?.data?.error ?? 'Login failed. Please try again.');
         }
       },
 

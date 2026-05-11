@@ -56,9 +56,34 @@ async function bootstrap() {
   app.use(passport.session());
   configurePassport();
 
-  // Rate limiting
-  app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
-  app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
+  // General API rate limit — generous enough for active gameplay (most game actions are Socket.IO)
+  app.use('/api/', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again in a few minutes.' },
+  }));
+
+  // Google OAuth — redirect back to client with error instead of showing a raw 429 page
+  app.use('/api/auth/google', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    handler: (_req, res) => {
+      const clientUrl = (process.env.CLIENT_URL ?? 'http://localhost:3000').split(',')[0].trim();
+      res.redirect(`${clientUrl}/?error=too_many_requests`);
+    },
+  }));
+
+  // Guest account creation — limit to prevent spam (successful logins don't count)
+  app.use('/api/auth/guest', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 15,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts, please wait a few minutes and try again.' },
+  }));
 
   // ── Routes ──────────────────────────────────────────────────────────────────
   app.use('/api/auth', authRoutes);
