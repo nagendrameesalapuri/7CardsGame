@@ -277,20 +277,21 @@ function ActionToast() {
     <AnimatePresence>
       {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: -8, scale: 0.93 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -8, scale: 0.93 }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8 }}
           className={clsx(
-            'fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-3',
-            'px-4 sm:px-5 py-2 sm:py-3 bg-dark-surface/98 border-2 rounded-2xl shadow-2xl backdrop-blur-sm',
-            'max-w-[92vw] text-center',
-            // Mobile: top of screen below the two header bars; Desktop: above player hand
-            'top-[88px] sm:top-auto sm:bottom-[260px]',
-            style.border,
+            'fixed left-1/2 -translate-x-1/2 z-30',
+            'px-5 py-2 rounded-full shadow-xl backdrop-blur-md',
+            'bg-black/75 max-w-[88vw] text-center',
+            // Mobile: float in the deck/center area, well below opponent cards
+            // Desktop: above player hand
+            'top-[44%] sm:top-auto sm:bottom-[280px]',
           )}
         >
-          <span className="text-2xl flex-shrink-0">{style.icon}</span>
-          <span className={clsx('text-base font-bold tracking-wide', style.text)}>{action.message}</span>
+          <span className="text-sm sm:text-base font-semibold text-white tracking-wide">
+            {action.message}
+          </span>
         </motion.div>
       )}
     </AnimatePresence>

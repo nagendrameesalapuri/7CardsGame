@@ -90,12 +90,14 @@ export function App() {
           position="top-center"
           toastOptions={{
             style: {
-              background: '#161b22',
-              color: '#e6edf3',
-              border: '1px solid #30363d',
-              borderRadius: '10px',
+              background: 'rgba(0,0,0,0.78)',
+              color: '#ffffff',
+              borderRadius: '999px',
               fontSize: '14px',
-              padding: '10px 16px',
+              padding: '9px 22px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+              backdropFilter: 'blur(10px)',
+              border: 'none',
             },
             success: { icon: null },
             error: { icon: null },
