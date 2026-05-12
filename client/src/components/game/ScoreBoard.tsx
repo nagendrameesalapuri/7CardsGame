@@ -82,6 +82,16 @@ export function ScoreBoard({
     : 0;
   const showPlayerName = players.find(p => p.id === roundResult.showPlayerId)?.username ?? '';
 
+  // For failed-SHOW penalty breakdown: sum of every player's hand (what the caller absorbs)
+  const penaltyBreakdown = !roundResult.showPlayerWon
+    ? roundResult.playerResults
+        .filter(r => r.hand.length > 0)
+        .map(r => ({
+          username: r.username,
+          pts: r.hand.reduce((s, c) => s + (c.isJoker ? 0 : c.value), 0),
+        }))
+    : [];
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -95,34 +105,64 @@ export function ScoreBoard({
         className="bg-dark-surface border border-dark-border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-900 to-blue-900 px-6 py-5 text-center">
+        <div className={clsx(
+          'px-6 py-5 text-center',
+          roundResult.showPlayerWon
+            ? 'bg-gradient-to-r from-purple-900 to-blue-900'
+            : 'bg-gradient-to-r from-red-950 to-slate-900',
+        )}>
           <motion.div
             animate={{ rotate: [0, -10, 10, 0], scale: [1, 1.2, 1] }}
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-5xl mb-2"
           >
-            {roundResult.showPlayerWon ? '🏆' : '💥'}
+            {roundResult.showPlayerWon ? (isTie ? '🤝' : '🏆') : '💥'}
           </motion.div>
+
           <h2 className="text-2xl font-bold text-white">
             {roundResult.showPlayerWon
               ? isTie
-                ? `🤝 Tie — ${winnerIds.length} players win!`
+                ? `Tie — ${winnerIds.length} players win!`
                 : `${winner?.username} wins the round!`
               : 'SHOW failed!'}
           </h2>
-          {isTie && roundResult.showPlayerWon && (
-            <p className="text-yellow-200 text-xs mt-1">All tied winners score 0 points this round</p>
-          )}
-          {/* Show caller's declared points — prominent */}
+
+          {/* Show caller badge */}
           <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5">
             <span className="text-yellow-300 font-bold text-sm">📢 {showPlayerName}</span>
             <span className="text-white text-sm">called SHOW with</span>
             <span className="text-yellow-300 font-bold text-lg">{showHandTotal} pts</span>
           </div>
+
+          {/* Failed SHOW: explain why + penalty formula */}
           {!roundResult.showPlayerWon && (
-            <p className="text-red-300 text-xs mt-2">
-              {showPlayerName} declared SHOW but wasn't lowest — gets penalty!
-            </p>
+            <div className="mt-3 space-y-1.5">
+              <p className="text-red-300 text-sm font-semibold">
+                {showPlayerName} wasn't the lowest — {winner?.username} had {
+                  showPlayerResult?.hand.reduce((s,c) => s+(c.isJoker?0:c.value),0) ?? 0
+                } pts less!
+              </p>
+              <div className="inline-flex flex-wrap justify-center gap-1 text-xs mt-1">
+                <span className="text-dark-muted">Penalty =</span>
+                {penaltyBreakdown.map((b, i) => (
+                  <span key={b.username}>
+                    <span className="text-white font-bold">{b.pts}</span>
+                    <span className="text-dark-muted"> ({b.username})</span>
+                    {i < penaltyBreakdown.length - 1 && <span className="text-dark-muted"> + </span>}
+                  </span>
+                ))}
+                {showPlayerResult && (
+                  <>
+                    <span className="text-dark-muted"> = </span>
+                    <span className="text-neon-red font-black">{showPlayerResult.roundPoints} pts</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isTie && roundResult.showPlayerWon && (
+            <p className="text-yellow-200 text-xs mt-1">All tied winners score 0 points this round</p>
           )}
         </div>
 
@@ -171,7 +211,9 @@ export function ScoreBoard({
                       )}
                     </div>
                     <p className="text-xs text-dark-muted">
-                      {isShowPlayer
+                      {isShowPlayer && !roundResult.showPlayerWon
+                        ? `Called SHOW with ${handTotal} pts — penalty: ${result.roundPoints} pts`
+                        : isShowPlayer
                         ? `Called SHOW with ${handTotal} pts in hand`
                         : `Hand total: ${handTotal} pts`}
                     </p>

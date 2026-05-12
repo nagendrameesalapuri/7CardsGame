@@ -5,13 +5,21 @@ export class ScoreEngine {
   /**
    * Called when a player declares SHOW.
    *
-   * Winner determination:
-   *  - Show player wins alone when their total ≤ minTotal (declared first → gets the edge).
-   *    winnerIds = [showPlayerId] → only they receive 0 round points.
-   *  - Show player fails (their total > minTotal) → ALL players tied at minTotal share the win.
-   *    winnerIds = every player whose handTotal === minTotal → each gets 0 round points.
-   *  - Show player who fails pays penalty = their hand total + minTotal.
-   *  - All other non-winning players pay their own hand total.
+   * SHOW SUCCESS (show caller has the lowest hand):
+   *   - Show caller wins → 0 round points.
+   *   - All other players pay their own hand total.
+   *
+   * SHOW FAIL (show caller does NOT have the lowest hand):
+   *   - Actual lowest-hand player(s) win → 0 round points each.
+   *   - Failed show caller pays the SUM of ALL active players' hand totals
+   *     (their own hand + every other player's hand, including the winner's).
+   *     Example: caller=4, winner=3, other=7 → penalty = 4+3+7 = 14
+   *   - All other non-winning players pay their own hand total normally.
+   *
+   * Ties: if show fails and multiple players share the minimum hand total,
+   * all tied players win (0 pts each). Show caller still pays the full sum.
+   *
+   * Score of 1 is treated as 2 (minimum non-zero penalty).
    */
   static calculateRoundResult(state: GameState, showPlayerId: string): RoundResult {
     const activePlayers = state.players.filter(p => !p.isEliminated);
@@ -28,36 +36,29 @@ export class ScoreEngine {
     const showPlayerEntry = totals.find(t => t.player.id === showPlayerId)!;
     const showPlayerTotal = showPlayerEntry.handTotal;
 
-    // Show caller wins on tie — declared first, gets the edge
+    // Show caller wins on tie — declared first gets the edge
     const showPlayerWon = showPlayerTotal <= minTotal;
 
-    // When show wins: only show player gets 0 pts (sole winner even if others tie)
-    // When show fails: every player at minTotal gets 0 pts
     const winnerIds = showPlayerWon
       ? [showPlayerId]
       : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
 
     const primaryWinnerId = winnerIds[0];
 
-    // Penalty for failed show = show player's own total + the minimum total
-    const failedShowPenalty = showPlayerTotal + minTotal;
+    // Failed SHOW penalty = sum of ALL active players' hand totals (incl. show caller's own)
+    // This is larger than the old (showPlayerTotal + minTotal) formula which was incorrect.
+    const failedShowPenalty = totals.reduce((sum, t) => sum + scoreableTotal(t.handTotal), 0);
 
     const playerResults: PlayerRoundResult[] = state.players.map(p => {
       if (p.isEliminated) {
-        return {
-          playerId: p.id,
-          username: p.username,
-          hand: p.hand,
-          roundPoints: 0,
-          totalScore: p.totalScore,
-        };
+        return { playerId: p.id, username: p.username, hand: p.hand, roundPoints: 0, totalScore: p.totalScore };
       }
 
       let roundPoints: number;
       if (winnerIds.includes(p.id)) {
-        roundPoints = 0;                                           // winner(s) — 0 pts
+        roundPoints = 0;
       } else if (!showPlayerWon && p.id === showPlayerId) {
-        roundPoints = failedShowPenalty;                          // failed show penalty
+        roundPoints = failedShowPenalty;
       } else {
         roundPoints = scoreableTotal(totals.find(t => t.player.id === p.id)!.handTotal);
       }
@@ -69,6 +70,17 @@ export class ScoreEngine {
         roundPoints,
         totalScore: p.totalScore + roundPoints,
       };
+    });
+
+    // Debug log
+    console.log('[ScoreEngine] Round result:', {
+      showCaller: showPlayerEntry.player.username,
+      showCallerPoints: showPlayerTotal,
+      showPlayerWon,
+      actualWinners: winnerIds.map(id => state.players.find(p => p.id === id)?.username),
+      lowestPoints: minTotal,
+      penaltyApplied: showPlayerWon ? 0 : failedShowPenalty,
+      playerRoundPoints: playerResults.map(r => `${r.username}: +${r.roundPoints} (total ${r.totalScore})`),
     });
 
     return {
