@@ -30,11 +30,29 @@ export function ChatPanel({ messages, playerCount = 2 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [lastReadCount, setLastReadCount] = useState(0);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+  // Track keyboard height so the panel lifts above the soft keyboard on Android
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const { sendChat, sendReaction } = useGameStore();
   const { user } = useAuthStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragControls = useDragControls();
+
+  // VisualViewport listener — detects soft keyboard on Android/mobile
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(offset);
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
 
   const myPlayerId = user?.id;
   const unreadCount = isOpen ? 0 : Math.max(0, messages.length - lastReadCount);
@@ -135,10 +153,13 @@ export function ChatPanel({ messages, playerCount = 2 }: ChatPanelProps) {
           className="flex flex-col"
           style={{
             position: 'fixed',
-            bottom: 16,
+            bottom: 16 + keyboardOffset,
             right: 12,
             width: 'min(calc(100vw - 24px), 360px)',
-            height: 'clamp(360px, 65dvh, 520px)',
+            // Shrink height when keyboard is visible so panel stays on screen
+            height: keyboardOffset > 0
+              ? `min(calc(100dvh - ${keyboardOffset + 32}px), 480px)`
+              : 'clamp(360px, 65dvh, 520px)',
             zIndex: 9999,
             background: 'rgba(8,9,14,0.94)',
             backdropFilter: 'blur(28px)',

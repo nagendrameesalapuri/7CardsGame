@@ -65,7 +65,7 @@ export function VoiceChat() {
           whileTap={{ scale: 0.93 }}
           onClick={handleJoin}
           disabled={isJoining}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+          className="w-7 h-7 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}
           title="Join voice chat"
         >
@@ -73,12 +73,11 @@ export function VoiceChat() {
             <motion.span
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-              className="block w-3.5 h-3.5 rounded-full border-2 border-dark-muted border-t-neon-green"
+              className="block w-3 h-3 rounded-full border-2 border-dark-muted border-t-neon-green"
             />
           ) : (
             <MicIcon muted={false} className="w-3.5 h-3.5 text-dark-muted" />
           )}
-          <span className="text-dark-muted text-[11px] font-medium">Voice</span>
         </motion.button>
 
         {/* Permission error tooltip */}

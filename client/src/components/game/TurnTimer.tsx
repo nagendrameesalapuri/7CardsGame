@@ -23,16 +23,16 @@ export function TurnTimer({ turnStartTime, turnTimeLimit, isMyTurn, currentPlaye
 
   return (
     <div className={clsx(
-      'flex items-center gap-3 px-4 py-2 rounded-xl border transition-all',
+      'flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl border transition-all',
       isCritical
         ? 'bg-neon-red/20 border-neon-red/60 shadow-neon-red'
         : isWarning
         ? 'bg-yellow-500/10 border-yellow-500/40'
         : 'bg-dark-surface border-dark-border',
     )}>
-      {/* Circular progress */}
-      <div className="relative w-12 h-12 flex-shrink-0">
-        <svg className="w-12 h-12 -rotate-90" viewBox="0 0 50 50">
+      {/* Circular progress — smaller on mobile */}
+      <div className="relative w-8 h-8 sm:w-12 sm:h-12 flex-shrink-0">
+        <svg className="w-8 h-8 sm:w-12 sm:h-12 -rotate-90" viewBox="0 0 50 50">
           <circle cx="25" cy="25" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
           <motion.circle
             cx="25" cy="25" r={radius}
@@ -46,14 +46,15 @@ export function TurnTimer({ turnStartTime, turnTimeLimit, isMyTurn, currentPlaye
           />
         </svg>
         <div className={clsx(
-          'absolute inset-0 flex items-center justify-center font-bold text-sm',
+          'absolute inset-0 flex items-center justify-center font-bold text-xs sm:text-sm',
           isCritical ? 'text-neon-red' : isWarning ? 'text-yellow-400' : 'text-neon-green'
         )}>
           {secondsLeft}
         </div>
       </div>
 
-      <div className="flex flex-col">
+      {/* Text — hidden on mobile to save space */}
+      <div className="hidden sm:flex flex-col">
         <span className={clsx('font-bold text-sm', isMyTurn ? 'text-neon-green' : 'text-dark-text')}>
           {isMyTurn ? '🎯 Your Turn!' : `${currentPlayerName}'s Turn`}
         </span>
@@ -67,6 +68,17 @@ export function TurnTimer({ turnStartTime, turnTimeLimit, isMyTurn, currentPlaye
           </motion.span>
         )}
       </div>
+
+      {/* Mobile: just a tiny "your turn" dot when it's my turn */}
+      {isMyTurn && (
+        <motion.span
+          animate={{ opacity: [1, 0.3, 1] }}
+          transition={{ repeat: Infinity, duration: 0.7 }}
+          className="sm:hidden text-[10px] font-black text-neon-green leading-none"
+        >
+          YOU
+        </motion.span>
+      )}
     </div>
   );
 }

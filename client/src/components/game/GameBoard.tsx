@@ -50,7 +50,7 @@ export function GameBoard() {
 
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={leaveRoom}
             className="text-dark-muted hover:text-neon-red transition-colors text-sm flex items-center gap-1"
@@ -71,7 +71,7 @@ export function GameBoard() {
           currentPlayerName={currentPlayer?.username ?? ''}
         />
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <VoiceChat />
           <ChatPanel
             messages={game.chatMessages}
