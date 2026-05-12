@@ -1,20 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
-import { useVoiceChat } from '../../hooks/useVoiceChat';
+import { useVoiceChat, VoicePermissionError } from '../../hooks/useVoiceChat';
 
 function MicIcon({ muted, className }: { muted: boolean; className?: string }) {
   return muted ? (
-    // Mic with strikethrough
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <line x1="2" y1="2" x2="22" y2="22" />
       <path d="M18.89 13.23A7.12 7.12 0 0019 12v-1" />
       <path d="M5 10v2a7 7 0 007 7" />
-      <path d="M12 19v3" />
-      <path d="M8 23h8" />
+      <path d="M12 19v3" /><path d="M8 23h8" />
       <path d="M11 5H9a3 3 0 00-3 3v3" />
       <path d="M15 9V8a3 3 0 00-3-3" />
-      <path d="M12 12v-2" />
     </svg>
   ) : (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -42,6 +40,132 @@ function SpeakingRing({ active }: { active: boolean }) {
   );
 }
 
+// ── Permission denied modal ───────────────────────────────────────────────────
+
+const ERROR_CONTENT: Record<NonNullable<VoicePermissionError>, {
+  icon: string;
+  title: string;
+  body: React.ReactNode;
+}> = {
+  denied: {
+    icon: '🔒',
+    title: 'Microphone Access Blocked',
+    body: (
+      <div className="space-y-3 text-left">
+        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          Your browser has blocked microphone access for this site.
+          Follow these steps to fix it:
+        </p>
+        <ol className="space-y-2">
+          {[
+            { step: '1', text: 'Tap the 🔒 lock icon in your browser\'s address bar' },
+            { step: '2', text: 'Tap "Permissions" or "Site settings"' },
+            { step: '3', text: 'Set "Microphone" to Allow' },
+            { step: '4', text: 'Reload this page and try again' },
+          ].map(({ step, text }) => (
+            <li key={step} className="flex items-start gap-3">
+              <span
+                className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black mt-0.5"
+                style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}
+              >
+                {step}
+              </span>
+              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>{text}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs pt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          On Samsung Internet: Settings → Sites and downloads → Permissions → Microphone
+        </p>
+      </div>
+    ),
+  },
+  not_found: {
+    icon: '🎤',
+    title: 'No Microphone Found',
+    body: (
+      <p className="text-sm text-center" style={{ color: 'rgba(255,255,255,0.55)' }}>
+        No microphone was detected on this device. Connect one and try again.
+      </p>
+    ),
+  },
+  unavailable: {
+    icon: '⚠️',
+    title: 'Microphone Unavailable',
+    body: (
+      <p className="text-sm text-center" style={{ color: 'rgba(255,255,255,0.55)' }}>
+        Could not access the microphone. Make sure no other app is using it, then try again.
+      </p>
+    ),
+  },
+};
+
+function PermissionModal({ error, onClose }: { error: VoicePermissionError; onClose: () => void }) {
+  if (!error) return null;
+  const content = ERROR_CONTENT[error];
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        key="voice-perm-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-[9998] flex items-end justify-center pb-6 px-4"
+        style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      >
+        <motion.div
+          key="voice-perm-modal"
+          initial={{ y: 60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 60, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+          onClick={e => e.stopPropagation()}
+          className="w-full max-w-sm rounded-3xl p-6 flex flex-col gap-4"
+          style={{
+            background: 'rgba(12,14,18,0.97)',
+            border: '1px solid rgba(255,59,92,0.25)',
+            boxShadow: '0 8px 60px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.04)',
+          }}
+        >
+          {/* Icon + title */}
+          <div className="text-center">
+            <div className="text-5xl mb-3">{content.icon}</div>
+            <h3 className="text-white font-bold text-lg">{content.title}</h3>
+          </div>
+
+          {/* Body */}
+          {content.body}
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl font-semibold text-sm transition-colors"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}
+            >
+              Dismiss
+            </button>
+            {error === 'denied' && (
+              <button
+                onClick={() => { window.location.reload(); }}
+                className="flex-1 py-3 rounded-2xl font-bold text-sm"
+                style={{ background: '#00e87a', color: '#071a0e' }}
+              >
+                Reload page
+              </button>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function VoiceChat() {
   const {
     isInVoice, isJoining, isMuted, isSpeaking,
@@ -49,21 +173,21 @@ export function VoiceChat() {
     joinVoice, leaveVoice, toggleMute,
   } = useVoiceChat();
 
-  const [showError, setShowError] = useState(false);
+  const [showPermModal, setShowPermModal] = useState(false);
 
-  const handleJoin = async () => {
-    setShowError(false);
-    await joinVoice();
-    if (permissionError) setShowError(true);
-  };
+  // Watch permissionError in an effect — avoids the stale-closure bug where
+  // reading permissionError right after `await joinVoice()` sees the old value.
+  useEffect(() => {
+    if (permissionError) setShowPermModal(true);
+  }, [permissionError]);
 
   // ── NOT in voice: join button ────────────────────────────────────────────
   if (!isInVoice) {
     return (
-      <div className="relative">
+      <>
         <motion.button
           whileTap={{ scale: 0.93 }}
-          onClick={handleJoin}
+          onClick={joinVoice}
           disabled={isJoining}
           className="w-7 h-7 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}
@@ -80,39 +204,30 @@ export function VoiceChat() {
           )}
         </motion.button>
 
-        {/* Permission error tooltip */}
-        <AnimatePresence>
-          {showError && permissionError && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              className="absolute top-full mt-1.5 right-0 z-50 text-xs text-neon-red bg-dark-surface border border-neon-red/30 rounded-xl px-3 py-2 whitespace-nowrap shadow-lg"
-            >
-              {permissionError}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+        <PermissionModal
+          error={showPermModal ? permissionError : null}
+          onClose={() => setShowPermModal(false)}
+        />
+      </>
     );
   }
 
   // ── IN voice: controls + participant avatars ──────────────────────────────
   return (
     <div className="flex items-center gap-1.5">
-      {/* Participant speaking chips */}
+      {/* Remote participant speaking chips */}
       <AnimatePresence>
         {participants.map(p => (
           <motion.div
             key={p.userId}
-            initial={{ opacity: 0, scale: 0.6, width: 0 }}
-            animate={{ opacity: 1, scale: 1, width: 'auto' }}
-            exit={{ opacity: 0, scale: 0.6, width: 0 }}
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.6 }}
             className="relative flex-shrink-0"
           >
             <div className={clsx(
-              'relative w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black text-white',
-              p.isSpeaking ? 'bg-neon-green text-dark-bg' : 'bg-dark-border',
+              'relative w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black',
+              p.isSpeaking ? 'bg-neon-green text-dark-bg' : 'bg-dark-border text-white',
             )}>
               {p.username.slice(0, 2).toUpperCase()}
               <SpeakingRing active={p.isSpeaking} />
@@ -121,39 +236,36 @@ export function VoiceChat() {
         ))}
       </AnimatePresence>
 
-      {/* Self speaking indicator + mic button */}
-      <div className="relative flex-shrink-0">
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={toggleMute}
-          className={clsx(
-            'relative w-7 h-7 rounded-xl flex items-center justify-center transition-all',
-            isMuted
-              ? 'bg-neon-red/20 border border-neon-red/50'
-              : 'bg-neon-green/15 border border-neon-green/40',
-          )}
-          title={isMuted ? 'Unmute' : 'Mute'}
-        >
-          <MicIcon
-            muted={isMuted}
-            className={clsx('w-3.5 h-3.5', isMuted ? 'text-neon-red' : 'text-neon-green')}
+      {/* Mute / unmute */}
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        onClick={toggleMute}
+        className={clsx(
+          'relative w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0',
+          isMuted
+            ? 'bg-neon-red/20 border border-neon-red/50'
+            : 'bg-neon-green/15 border border-neon-green/40',
+        )}
+        title={isMuted ? 'Unmute' : 'Mute'}
+      >
+        <MicIcon
+          muted={isMuted}
+          className={clsx('w-3.5 h-3.5', isMuted ? 'text-neon-red' : 'text-neon-green')}
+        />
+        {!isMuted && isSpeaking && (
+          <motion.span
+            animate={{ opacity: [1, 0.2, 1] }}
+            transition={{ repeat: Infinity, duration: 0.6 }}
+            className="absolute inset-0 rounded-xl border-2 border-neon-green pointer-events-none"
           />
-          {/* Speaking pulse on mic button */}
-          {!isMuted && isSpeaking && (
-            <motion.span
-              animate={{ opacity: [1, 0.2, 1] }}
-              transition={{ repeat: Infinity, duration: 0.6 }}
-              className="absolute inset-0 rounded-xl border-2 border-neon-green"
-            />
-          )}
-        </motion.button>
-      </div>
+        )}
+      </motion.button>
 
       {/* Leave voice */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={leaveVoice}
-        className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors text-[10px]"
+        className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] flex-shrink-0"
         style={{ background: 'rgba(255,59,92,0.15)', border: '1px solid rgba(255,59,92,0.35)', color: '#ff3b5c' }}
         title="Leave voice"
       >

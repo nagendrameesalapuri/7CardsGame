@@ -25,6 +25,8 @@ const ICE_CONFIG: RTCConfiguration = {
 const SPEAKING_THRESHOLD = 12; // 0–255 RMS threshold
 const SPEAKING_POLL_MS = 80;
 
+export type VoicePermissionError = 'denied' | 'not_found' | 'unavailable' | null;
+
 export interface VoiceParticipant {
   userId: string;
   username: string;
@@ -63,7 +65,7 @@ export function useVoiceChat() {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<VoicePermissionError>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, PeerEntry>>(new Map());
@@ -250,6 +252,21 @@ export function useVoiceChat() {
     setIsJoining(true);
 
     try {
+      // Pre-check permission state — catches the "previously denied" case on Android
+      // where getUserMedia throws immediately without showing a dialog.
+      if (navigator.permissions) {
+        try {
+          const perm = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          if (perm.state === 'denied') {
+            setPermissionError('denied');
+            setIsJoining(false);
+            return;
+          }
+        } catch (_) {
+          // Permissions API unsupported in this browser — fall through to getUserMedia
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
 
@@ -262,10 +279,14 @@ export function useVoiceChat() {
       setIsInVoice(true);
       startSpeakingPoll();
     } catch (err: any) {
-      const msg = err?.name === 'NotAllowedError'
-        ? 'Microphone permission denied'
-        : 'Microphone not available';
-      setPermissionError(msg);
+      const name: string = err?.name ?? '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setPermissionError('denied');
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setPermissionError('not_found');
+      } else {
+        setPermissionError('unavailable');
+      }
       console.error('[Voice] getUserMedia failed:', err);
     } finally {
       setIsJoining(false);
