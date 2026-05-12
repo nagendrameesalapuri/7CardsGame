@@ -65,7 +65,8 @@ export interface GameState {
 }
 
 export interface RoundResult {
-  winnerId: string;
+  winnerId: string;           // primary winner (show player when they win; first tied winner otherwise)
+  winnerIds: string[];        // all players who tied for lowest — each receives 0 round points
   showPlayerId: string;
   showPlayerWon: boolean;
   playerResults: PlayerRoundResult[];
@@ -82,7 +83,8 @@ export interface PlayerRoundResult {
 
 export interface MatchResult {
   winnerId: string;
-  winnerUsername: string;
+  winnerIds?: string[];       // all tied match winners
+  winnerUsername: string;     // "Player A & Player B" on tie
   finalScores: { playerId: string; username: string; totalScore: number }[];
 }
 

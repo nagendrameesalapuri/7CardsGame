@@ -42,7 +42,9 @@ function Confetti() {
 
 export function WinnerCelebration({ result, onClose }: WinnerCelebrationProps) {
   const { user } = useAuthStore();
-  const isWinner = user && (user.id === result.winnerId);
+  const winnerIds = result.winnerIds ?? [result.winnerId];
+  const isTie = winnerIds.length > 1;
+  const isWinner = user && winnerIds.includes(user.id);
   const [showConfetti, setShowConfetti] = useState(true);
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export function WinnerCelebration({ result, onClose }: WinnerCelebrationProps) {
               transition={{ repeat: 2, duration: 0.5 }}
               className="text-8xl mb-2"
             >
-              {isWinner ? '🏆' : '🎮'}
+              {isWinner ? (isTie ? '🤝' : '🏆') : '🎮'}
             </motion.div>
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
@@ -76,10 +78,14 @@ export function WinnerCelebration({ result, onClose }: WinnerCelebrationProps) {
               transition={{ delay: 0.3 }}
               className="text-3xl font-bold text-white"
             >
-              {isWinner ? 'You Won!' : `${result.winnerUsername} Wins!`}
+              {isWinner
+                ? (isTie ? "It's a Tie — You Win!" : 'You Won!')
+                : isTie
+                  ? `🤝 Tie — ${result.winnerUsername} Win!`
+                  : `${result.winnerUsername} Wins!`}
             </motion.h1>
             <p className="text-dark-muted mt-1">
-              {isWinner ? 'Congratulations! 🎉' : 'Better luck next round!'}
+              {isWinner ? 'Congratulations! 🎉' : 'Better luck next time!'}
             </p>
           </div>
 
@@ -97,13 +103,17 @@ export function WinnerCelebration({ result, onClose }: WinnerCelebrationProps) {
                   className="flex items-center justify-between px-4 py-2 rounded-xl bg-dark-bg"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-dark-muted text-sm">#{i + 1}</span>
-                    <span className={s.playerId === result.winnerId ? 'text-neon-green font-bold' : 'text-dark-text'}>
-                      {s.username}
-                      {s.playerId === result.winnerId && ' 👑'}
+                    <span className="text-dark-muted text-sm">
+                      {winnerIds.includes(s.playerId) ? (isTie ? '🤝' : '👑') : `#${i + 1}`}
                     </span>
+                    <span className={winnerIds.includes(s.playerId) ? 'text-neon-green font-bold' : 'text-dark-text'}>
+                      {s.username}
+                    </span>
+                    {winnerIds.includes(s.playerId) && isTie && (
+                      <span className="text-[10px] bg-neon-green/20 text-neon-green px-1.5 py-0.5 rounded-full font-bold">TIE</span>
+                    )}
                   </div>
-                  <span className={s.playerId === result.winnerId ? 'text-neon-green font-bold' : 'text-dark-muted'}>
+                  <span className={winnerIds.includes(s.playerId) ? 'text-neon-green font-bold' : 'text-dark-muted'}>
                     {s.totalScore} pts
                   </span>
                 </motion.div>

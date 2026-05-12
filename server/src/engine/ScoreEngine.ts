@@ -3,20 +3,20 @@ import { DeckManager } from './DeckManager';
 
 export class ScoreEngine {
   /**
-   * Called when a player says SHOW.
+   * Called when a player declares SHOW.
    *
    * Winner determination:
-   *  - If SHOW player has the strictly lowest (or tied-lowest) hand total → they win (0 pts).
-   *  - Otherwise → the player with the actual lowest total wins;
-   *    SHOW player receives the sum of ALL other players' hand totals as penalty;
-   *    losing non-SHOW players receive their own hand total.
-   *
-   * No elimination — everyone plays all rounds; lowest cumulative score wins.
+   *  - Show player wins alone when their total ≤ minTotal (declared first → gets the edge).
+   *    winnerIds = [showPlayerId] → only they receive 0 round points.
+   *  - Show player fails (their total > minTotal) → ALL players tied at minTotal share the win.
+   *    winnerIds = every player whose handTotal === minTotal → each gets 0 round points.
+   *  - Show player who fails pays penalty = their hand total + minTotal.
+   *  - All other non-winning players pay their own hand total.
    */
   static calculateRoundResult(state: GameState, showPlayerId: string): RoundResult {
     const activePlayers = state.players.filter(p => !p.isEliminated);
 
-    // Minimum scoreable total is 2 (a total of 1 is rounded up to 2)
+    // Score of 1 is rounded up to 2 (minimum non-zero penalty)
     const scoreableTotal = (n: number) => (n === 1 ? 2 : n);
 
     const totals = activePlayers.map(p => ({
@@ -28,16 +28,19 @@ export class ScoreEngine {
     const showPlayerEntry = totals.find(t => t.player.id === showPlayerId)!;
     const showPlayerTotal = showPlayerEntry.handTotal;
 
-    // Show caller wins on tie — they declared first so they get the edge
+    // Show caller wins on tie — declared first, gets the edge
     const showPlayerWon = showPlayerTotal <= minTotal;
 
-    const winnerEntry = showPlayerWon
-      ? showPlayerEntry
-      : totals.find(t => t.handTotal === minTotal)!;
+    // When show wins: only show player gets 0 pts (sole winner even if others tie)
+    // When show fails: every player at minTotal gets 0 pts
+    const winnerIds = showPlayerWon
+      ? [showPlayerId]
+      : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
 
-    // Penalty for failed show = show player's own hand + winner's hand
-    // e.g. show player has 4 pts, winner has 1 pt → penalty = 5
-    const failedShowPenalty = showPlayerTotal + winnerEntry.handTotal;
+    const primaryWinnerId = winnerIds[0];
+
+    // Penalty for failed show = show player's own total + the minimum total
+    const failedShowPenalty = showPlayerTotal + minTotal;
 
     const playerResults: PlayerRoundResult[] = state.players.map(p => {
       if (p.isEliminated) {
@@ -51,10 +54,10 @@ export class ScoreEngine {
       }
 
       let roundPoints: number;
-      if (p.id === winnerEntry.player.id) {
-        roundPoints = 0;
+      if (winnerIds.includes(p.id)) {
+        roundPoints = 0;                                           // winner(s) — 0 pts
       } else if (!showPlayerWon && p.id === showPlayerId) {
-        roundPoints = failedShowPenalty;
+        roundPoints = failedShowPenalty;                          // failed show penalty
       } else {
         roundPoints = scoreableTotal(totals.find(t => t.player.id === p.id)!.handTotal);
       }
@@ -69,7 +72,8 @@ export class ScoreEngine {
     });
 
     return {
-      winnerId: winnerEntry.player.id,
+      winnerId: primaryWinnerId,
+      winnerIds,
       showPlayerId,
       showPlayerWon,
       playerResults,
@@ -79,18 +83,17 @@ export class ScoreEngine {
 
   /**
    * Check if the match is over.
-   * Ends when all rounds have been played (roundNumber >= roundCount),
-   * or early if only one active player remains.
-   * Winner = player with the lowest cumulative score.
+   * Supports ties — all players sharing the minimum cumulative score are co-winners.
    */
   static checkMatchOver(state: GameState): MatchResult | null {
     const active = state.players.filter(p => !p.isEliminated);
 
-    // Early end if only one player left
+    // Early end — only one active player
     if (active.length <= 1) {
       const winner = active[0] ?? state.players[0];
       return {
         winnerId: winner.id,
+        winnerIds: [winner.id],
         winnerUsername: winner.username,
         finalScores: state.players.map(p => ({
           playerId: p.id,
@@ -100,23 +103,22 @@ export class ScoreEngine {
       };
     }
 
-    // Not done yet
     if (state.roundNumber < state.roundCount) return null;
 
-    // All rounds played — winner has lowest total (using updated scores from roundResult)
+    // All rounds played — find player(s) with lowest cumulative score
     const results = state.roundResult?.playerResults ?? [];
     const activeResults = results.filter(r =>
       !state.players.find(p => p.id === r.playerId)?.isEliminated
     );
 
-    const winner = activeResults.reduce(
-      (best, r) => r.totalScore < best.totalScore ? r : best,
-      activeResults[0]
-    );
+    const minScore = Math.min(...activeResults.map(r => r.totalScore));
+    const matchWinners = activeResults.filter(r => r.totalScore === minScore);
+    const primary = matchWinners[0];
 
     return {
-      winnerId: winner.playerId,
-      winnerUsername: winner.username,
+      winnerId: primary.playerId,
+      winnerIds: matchWinners.map(r => r.playerId),
+      winnerUsername: matchWinners.map(r => r.username).join(' & '),
       finalScores: results.map(r => ({
         playerId: r.playerId,
         username: r.username,

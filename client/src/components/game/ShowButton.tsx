@@ -19,7 +19,7 @@ export function ShowButton() {
         whileTap={{ scale: 0.97 }}
         onClick={() => setShowConfirmVisible(true)}
         className={clsx(
-          'relative w-full py-3 sm:py-3.5 rounded-2xl font-black text-xl shadow-xl transition-all',
+          'relative w-full py-2 sm:py-2.5 rounded-xl font-bold text-base shadow-xl transition-all',
           'bg-gradient-to-r from-yellow-400 via-orange-400 to-yellow-400 text-dark-bg',
           'border-2 border-yellow-300 shadow-neon-gold',
           'animate-pulse-neon'

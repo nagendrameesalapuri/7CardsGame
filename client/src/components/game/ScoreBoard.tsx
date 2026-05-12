@@ -46,6 +46,8 @@ export function ScoreBoard({
   myUserId, roundReadyUpdate, onReady,
 }: ScoreBoardProps) {
   const winner = players.find(p => p.id === roundResult.winnerId);
+  const winnerIds = roundResult.winnerIds ?? [roundResult.winnerId];
+  const isTie = winnerIds.length > 1;
   const isFinalRound = roundNumber >= roundCount;
 
   // Countdown for final round — starts at MATCH_END_DELAY_S and ticks to 0
@@ -64,10 +66,12 @@ export function ScoreBoard({
   const totalHumans = roundReadyUpdate?.total ?? 0;
   const allReady = totalHumans > 0 && readyCount >= totalHumans;
 
-  // Sort: winner first, then by roundPoints ascending
+  // Sort: winners first (by insertion order), then by roundPoints ascending
   const sorted = [...roundResult.playerResults].sort((a, b) => {
-    if (a.playerId === roundResult.winnerId) return -1;
-    if (b.playerId === roundResult.winnerId) return 1;
+    const aWins = winnerIds.includes(a.playerId);
+    const bWins = winnerIds.includes(b.playerId);
+    if (aWins && !bWins) return -1;
+    if (!aWins && bWins) return 1;
     return a.roundPoints - b.roundPoints;
   });
 
@@ -101,9 +105,14 @@ export function ScoreBoard({
           </motion.div>
           <h2 className="text-2xl font-bold text-white">
             {roundResult.showPlayerWon
-              ? `${winner?.username} wins the round!`
+              ? isTie
+                ? `🤝 Tie — ${winnerIds.length} players win!`
+                : `${winner?.username} wins the round!`
               : 'SHOW failed!'}
           </h2>
+          {isTie && roundResult.showPlayerWon && (
+            <p className="text-yellow-200 text-xs mt-1">All tied winners score 0 points this round</p>
+          )}
           {/* Show caller's declared points — prominent */}
           <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5">
             <span className="text-yellow-300 font-bold text-sm">📢 {showPlayerName}</span>
@@ -121,9 +130,11 @@ export function ScoreBoard({
         <div className="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
           {sorted.map((result, i) => {
             const player = players.find(p => p.id === result.playerId);
-            const isWinner = result.playerId === roundResult.winnerId;
+            const isWinner = winnerIds.includes(result.playerId);
             const isShowPlayer = result.playerId === roundResult.showPlayerId;
             const handTotal = result.hand.reduce((s, c) => s + (c.isJoker ? 0 : c.value), 0);
+            // All tied winners share rank #1
+            const displayRank = isWinner ? 1 : winnerIds.length + (i - winnerIds.filter(id => sorted.slice(0, i).some(r => r.playerId === id)).length) + 1;
 
             return (
               <motion.div
@@ -142,14 +153,17 @@ export function ScoreBoard({
               >
                 {/* Top row: avatar + name + score */}
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-6 h-6 rounded-full bg-dark-border flex items-center justify-center text-xs font-bold text-dark-muted flex-shrink-0">
-                    {i + 1}
+                  <div className={clsx(
+                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
+                    isWinner ? 'bg-neon-green text-dark-bg' : 'bg-dark-border text-dark-muted',
+                  )}>
+                    {isWinner ? (isTie ? '🤝' : '👑') : `#${i + 1}`}
                   </div>
                   <Avatar avatar={player?.avatar ?? 'avatar_1'} size="sm" isBot={player?.isBot} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-semibold text-dark-text text-sm">{result.username}</span>
-                      {isWinner && <span className="text-xs bg-neon-green text-dark-bg px-2 py-0.5 rounded-full font-bold">WIN</span>}
+                      {isWinner && <span className="text-xs bg-neon-green text-dark-bg px-2 py-0.5 rounded-full font-bold">{isTie ? 'TIE WIN' : 'WIN'}</span>}
                       {isShowPlayer && (
                         <span className="text-xs bg-yellow-500 text-dark-bg px-2 py-0.5 rounded-full font-bold">
                           SHOW · {handTotal} pts

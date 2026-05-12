@@ -81,6 +81,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       console.log(`[Room] ${username} created room ${room.code}`);
       socket.emit('room:joined', dto);
       io.to(room.code).emit('room:updated', dto);
+      // Notify all clients in lobby so they can refresh the public room list
+      if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
     } catch (err) {
       console.error('[Room] Create error:', err);
       socket.emit('room:error', 'Failed to create room');
@@ -129,6 +131,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       console.log(`[Room] ${username} joined ${room.code} (${room.players.length}/${room.config.maxPlayers})`);
       socket.emit('room:joined', dto);
       io.to(room.code).emit('room:updated', dto);
+      if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
     } catch (err) {
       console.error('[Room] Join error:', err);
       socket.emit('room:error', 'Failed to join room');
@@ -197,6 +200,8 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
   }
 
   await room.save();
-  io.to(room.code).emit('room:updated', roomToDTO(room));
+  const dto = roomToDTO(room);
+  io.to(room.code).emit('room:updated', dto);
+  if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
   socket.emit('room:left');
 }

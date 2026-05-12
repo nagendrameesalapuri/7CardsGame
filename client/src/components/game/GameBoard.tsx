@@ -104,7 +104,7 @@ export function GameBoard() {
           />
         </div>
 
-        {/* ── All opponents side by side — always visible, no card fans ── */}
+        {/* ── All opponents side by side ── */}
         <div className="flex gap-2 sm:gap-3 justify-center overflow-x-auto w-full px-1 flex-shrink-0 py-0.5">
           {allOpponents.map(opp => (
             <OpponentChip
@@ -116,7 +116,10 @@ export function GameBoard() {
           ))}
         </div>
 
-        {/* Deck area — full width center */}
+        {/* ── Action notification — sits between opponents and deck ── */}
+        <ActionToast />
+
+        {/* Deck area */}
         <div className="flex-1 flex items-center justify-center">
           <DeckArea
             deckCount={game.deckCount}
@@ -197,8 +200,6 @@ export function GameBoard() {
         )}
       </AnimatePresence>
 
-      {/* ── Last action toast ────────────────────────────────────────────────── */}
-      <ActionToast />
     </div>
   );
 }
@@ -321,45 +322,45 @@ function ActionToast() {
 
   const style = ACTION_STYLE[action?.type ?? 'system'] ?? ACTION_STYLE.system;
 
+  // Render as inline flex item — sits between opponent strip and deck area in the layout.
+  // AnimatePresence removes it from the DOM when not visible, so it takes zero layout space.
   return (
     <AnimatePresence>
       {visible && action && (
         <motion.div
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          className="fixed left-0 right-0 z-30 px-2 sm:px-4 top-[116px] sm:top-[80px]"
+          key="action-toast"
+          initial={{ opacity: 0, y: -6, scaleY: 0.85 }}
+          animate={{ opacity: 1, y: 0, scaleY: 1 }}
+          exit={{ opacity: 0, y: -6, scaleY: 0.85 }}
+          className="w-full flex-shrink-0"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: style.bg,
+            border: `1px solid ${style.border}`,
+            borderRadius: 12,
+            padding: '7px 14px 7px 10px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(16px)',
+          }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              background: style.bg,
-              border: `1px solid ${style.border}`,
-              borderRadius: 12,
-              padding: '8px 14px 8px 10px',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
-              backdropFilter: 'blur(16px)',
-            }}
-          >
-            <div style={{
-              background: style.iconBg,
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              fontSize: 14,
-            }}>
-              {style.icon}
-            </div>
-            <span style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 500, lineHeight: 1.4, flex: 1 }}>
-              {action.message}
-            </span>
+          <div style={{
+            background: style.iconBg,
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            fontSize: 13,
+          }}>
+            {style.icon}
           </div>
+          <span style={{ color: '#f1f5f9', fontSize: 12, fontWeight: 500, lineHeight: 1.4, flex: 1 }}>
+            {action.message}
+          </span>
         </motion.div>
       )}
     </AnimatePresence>

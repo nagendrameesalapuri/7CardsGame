@@ -93,6 +93,7 @@ type EventMap = {
   'game:can_resume': { roomCode: string };
   'game:round_ready_update': { readyUserIds: string[]; total: number };
   'chat:received': ChatMessage;
+  'lobby:rooms_updated': void;
 };
 
 export function on<K extends keyof EventMap>(

@@ -43,9 +43,13 @@ export function LobbyPage() {
     // Navigate to game once it starts
     const unsubGame = on('game:state', () => navigate('/game'));
 
-    roomsApi.list().then(r => setPublicRooms(r.data.rooms)).catch(() => {});
+    const fetchRooms = () => roomsApi.list().then(r => setPublicRooms(r.data.rooms)).catch(() => {});
+    fetchRooms();
 
-    return () => { unsub(); unsubGame(); };
+    // Refresh public rooms list whenever anyone creates/joins/leaves a public room
+    const unsubLobby = on('lobby:rooms_updated', fetchRooms);
+
+    return () => { unsub(); unsubGame(); unsubLobby(); };
   }, [isAuthenticated, navigate, subscribeToEvents]);
 
   // Show room lobby if in a room
