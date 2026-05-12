@@ -94,6 +94,14 @@ type EventMap = {
   'game:round_ready_update': { readyUserIds: string[]; total: number };
   'chat:received': ChatMessage;
   'lobby:rooms_updated': void;
+  // Voice chat (WebRTC signaling)
+  'voice:peers': { userId: string; username: string }[];
+  'voice:peer_joined': { userId: string; username: string };
+  'voice:peer_left': { userId: string };
+  'voice:offer': { fromUserId: string; offer: object };
+  'voice:answer': { fromUserId: string; answer: object };
+  'voice:ice_candidate': { fromUserId: string; candidate: object };
+  'voice:error': string;
 };
 
 export function on<K extends keyof EventMap>(

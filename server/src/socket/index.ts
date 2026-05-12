@@ -4,6 +4,7 @@ import { User } from '../models/User';
 import { registerRoomHandlers } from './handlers/roomHandler';
 import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './handlers/gameHandler';
 import { registerChatHandlers } from './handlers/chatHandler';
+import { registerVoiceHandlers } from './handlers/voiceHandler';
 
 export function initSocketIO(io: Server) {
   // ── Auth middleware ─────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export function initSocketIO(io: Server) {
     registerRoomHandlers(io, socket);
     registerGameHandlers(io, socket);
     registerChatHandlers(io, socket);
+    registerVoiceHandlers(io, socket);
 
     // Notify client if they have an active game they can resume
     const uid = (socket as any).userId as string;

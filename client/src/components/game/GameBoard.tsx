@@ -13,6 +13,7 @@ import { ChatPanel } from './ChatPanel';
 import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
+import { VoiceChat } from './VoiceChat';
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -70,10 +71,13 @@ export function GameBoard() {
           currentPlayerName={currentPlayer?.username ?? ''}
         />
 
-        <ChatPanel
-          messages={game.chatMessages}
-          playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
-        />
+        <div className="flex items-center gap-1.5">
+          <VoiceChat />
+          <ChatPanel
+            messages={game.chatMessages}
+            playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
+          />
+        </div>
       </div>
 
       {/* ── Mobile scores bar ───────────────────────────────────────────────── */}
