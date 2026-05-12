@@ -70,7 +70,10 @@ export function GameBoard() {
           currentPlayerName={currentPlayer?.username ?? ''}
         />
 
-        <ChatPanel messages={game.chatMessages} />
+        <ChatPanel
+          messages={game.chatMessages}
+          playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
+        />
       </div>
 
       {/* ── Mobile scores bar ───────────────────────────────────────────────── */}
