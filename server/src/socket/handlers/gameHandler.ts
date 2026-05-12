@@ -616,11 +616,13 @@ function buildClientState(state: GameState, userId: string): ClientGameState {
   };
 }
 
-/** Broadcast personalised game state to every human socket in the room. */
-async function broadcastGameState(io: Server, state: GameState) {
-  const sockets = await io.in(state.roomId).fetchSockets();
-
-  for (const s of sockets) {
+/** Broadcast personalised game state to every human socket in the room.
+ *  Uses io.sockets.sockets (sync Map) instead of fetchSockets() (async) so
+ *  all players receive their update in the same event-loop tick — no staggered delay.
+ */
+function broadcastGameState(io: Server, state: GameState) {
+  for (const [, s] of io.sockets.sockets) {
+    if (s.data.roomCode !== state.roomId) continue;
     if ((s as any).isSpectator) continue;
     const uid = (s as any).userId as string;
     const clientState = buildClientState(state, uid);
