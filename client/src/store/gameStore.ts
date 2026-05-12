@@ -34,6 +34,9 @@ interface GameStore {
   resumeRoomCode: string | null;
   clearResume: () => void;
 
+  // Admin force-ended
+  forceEndedMsg: string | null;
+
   // Actions
   createRoom: (data: Parameters<typeof socketRoom.create>[0]) => void;
   joinRoom: (code: string) => void;
@@ -75,6 +78,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearResume: () => set({ resumeRoomCode: null }),
   matchResult: null,
   roundReadyUpdate: null,
+  forceEndedMsg: null,
   selectedCardIds: [],
   showConfirmVisible: false,
   isMyTurn: false,
@@ -307,12 +311,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       });
     }));
 
+    // Admin force-ended the game/room — clear state so GamePage redirects
+    const handleForceEnded = ({ message }: { message: string }) => {
+      notify.error(message ?? 'Game was ended by an admin', { duration: 5000 });
+      set({ game: null, room: null, matchResult: null, forceEndedMsg: message ?? 'Game ended by admin' });
+    };
+    unsubs.push(on('game:force_ended', handleForceEnded));
+    unsubs.push(on('room:force_ended', handleForceEnded));
+
     return () => unsubs.forEach(u => u());
   },
 
   reset: () => set({
     room: null, roomError: null, game: null, gameError: null,
-    lastAction: null, matchResult: null, roundReadyUpdate: null,
+    lastAction: null, matchResult: null, roundReadyUpdate: null, forceEndedMsg: null,
     selectedCardIds: [], showConfirmVisible: false,
     isMyTurn: false, canShow: false, underAttack: false, handTotal: 0,
   }),

@@ -6,6 +6,7 @@ export interface IUser extends Document {
   email?: string;
   avatar: string;
   isGuest: boolean;
+  isBanned: boolean;
   guestToken?: string;
   stats: {
     gamesPlayed: number;
@@ -28,6 +29,7 @@ const UserSchema = new Schema<IUser>(
     email: { type: String, sparse: true, unique: true, lowercase: true },
     avatar: { type: String, default: 'avatar_1' },
     isGuest: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
     guestToken: { type: String, sparse: true, unique: true },
     stats: {
       gamesPlayed: { type: Number, default: 0 },

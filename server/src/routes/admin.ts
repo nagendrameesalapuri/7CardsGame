@@ -1,0 +1,381 @@
+import { Router, Request, Response } from 'express';
+import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { requireAdmin } from '../middleware/adminAuth';
+import { AdminConfig, getAdminConfig } from '../models/AdminConfig';
+import { User } from '../models/User';
+import { Room } from '../models/Room';
+import { Game } from '../models/Game';
+import {
+  getAllActiveRoomInfos, forceEndGame, kickPlayerFromGame,
+  getActiveGame,
+} from '../socket/handlers/gameHandler';
+import { getSpectatorCounts } from '../socket/handlers/spectatorHandler';
+import { getOnlineUserIds } from '../socket/index';
+
+export default function createAdminRouter(io: Server) {
+  const router = Router();
+
+  // ── Admin login ─────────────────────────────────────────────────────────────
+  router.post('/login', (req: Request, res: Response) => {
+    const { password } = req.body as { password: string };
+    const secret = process.env.ADMIN_SECRET;
+
+    if (!secret) {
+      return res.status(503).json({ error: 'Admin access not configured on this server' });
+    }
+    if (!password || password !== secret) {
+      return res.status(401).json({ error: 'Invalid admin password' });
+    }
+
+    const token = jwt.sign({ role: 'admin' }, process.env.JWT_SECRET!, { expiresIn: '8h' });
+    res.json({ token });
+  });
+
+  // ── Public config (no auth) ─────────────────────────────────────────────────
+  router.get('/config/public', async (_req: Request, res: Response) => {
+    try {
+      const cfg = await getAdminConfig();
+      res.json({
+        featureFlags: cfg.featureFlags,
+        gameConfig: cfg.gameConfig,
+      });
+    } catch {
+      res.status(500).json({ error: 'Failed to load config' });
+    }
+  });
+
+  // ── All admin routes below require admin token ───────────────────────────────
+  router.use(requireAdmin);
+
+  // ── Get full config ─────────────────────────────────────────────────────────
+  router.get('/config', async (_req: Request, res: Response) => {
+    try {
+      const cfg = await getAdminConfig();
+      res.json(cfg);
+    } catch {
+      res.status(500).json({ error: 'Failed to load config' });
+    }
+  });
+
+  // ── Update config ───────────────────────────────────────────────────────────
+  router.patch('/config', async (req: Request, res: Response) => {
+    try {
+      const { featureFlags, gameConfig } = req.body;
+      const cfg = await getAdminConfig();
+
+      if (featureFlags) {
+        if (typeof featureFlags.spectatorModeEnabled === 'boolean') {
+          cfg.featureFlags.spectatorModeEnabled = featureFlags.spectatorModeEnabled;
+        }
+        if (typeof featureFlags.publicRoomsEnabled === 'boolean') {
+          cfg.featureFlags.publicRoomsEnabled = featureFlags.publicRoomsEnabled;
+        }
+      }
+
+      if (gameConfig) {
+        const gc = cfg.gameConfig;
+        if (gameConfig.minPlayers !== undefined) gc.minPlayers = Math.max(2, Math.min(10, gameConfig.minPlayers));
+        if (gameConfig.maxPlayers !== undefined) gc.maxPlayers = Math.max(2, Math.min(10, gameConfig.maxPlayers));
+        if (gameConfig.minRounds  !== undefined) gc.minRounds  = Math.max(1, Math.min(50, gameConfig.minRounds));
+        if (gameConfig.maxRounds  !== undefined) gc.maxRounds  = Math.max(1, Math.min(50, gameConfig.maxRounds));
+        if (gameConfig.maxSpectators !== undefined) gc.maxSpectators = Math.max(0, Math.min(50, gameConfig.maxSpectators));
+        if (gameConfig.maxBots    !== undefined) gc.maxBots    = Math.max(0, Math.min(9,  gameConfig.maxBots));
+        // Ensure min <= max
+        if (gc.minPlayers > gc.maxPlayers) gc.maxPlayers = gc.minPlayers;
+        if (gc.minRounds  > gc.maxRounds)  gc.maxRounds  = gc.minRounds;
+      }
+
+      await cfg.save();
+
+      // Notify all connected clients of the updated config
+      io.emit('admin:config_updated', {
+        featureFlags: cfg.featureFlags,
+        gameConfig: cfg.gameConfig,
+      });
+
+      res.json(cfg);
+    } catch {
+      res.status(500).json({ error: 'Failed to update config' });
+    }
+  });
+
+  // ── Overview stats ──────────────────────────────────────────────────────────
+  router.get('/stats', async (_req: Request, res: Response) => {
+    try {
+      const [totalUsers, totalGames, activeRooms] = await Promise.all([
+        User.countDocuments(),
+        Game.countDocuments({ status: 'finished' }),
+        Room.countDocuments({ status: { $in: ['waiting', 'playing'] } }),
+      ]);
+      const onlineCount = getOnlineUserIds().size;
+      const liveGames = getAllActiveRoomInfos().filter(r => r.status === 'playing').length;
+
+      res.json({ totalUsers, totalGames, activeRooms, onlineCount, liveGames });
+    } catch {
+      res.status(500).json({ error: 'Failed to load stats' });
+    }
+  });
+
+  // ── Live rooms ──────────────────────────────────────────────────────────────
+  router.get('/rooms', async (_req: Request, res: Response) => {
+    try {
+      const spectatorCounts = getSpectatorCounts();
+      const inMemory = getAllActiveRoomInfos();
+      const inMemoryCodes = new Set(inMemory.map(r => r.roomCode));
+
+      // Waiting rooms (not yet in memory)
+      const waitingRooms = await Room.find({
+        status: 'waiting',
+        code: { $nin: [...inMemoryCodes] },
+      }).lean();
+
+      const rooms = [
+        ...inMemory.map(r => ({
+          code: r.roomCode,
+          name: r.name,
+          status: r.status,
+          playerCount: r.playerCount,
+          maxPlayers: r.maxPlayers,
+          roundNumber: r.roundNumber,
+          roundCount: r.roundCount,
+          spectatorCount: spectatorCounts.get(r.roomCode) ?? 0,
+          players: r.players,
+        })),
+        ...waitingRooms.map(r => ({
+          code: r.code,
+          name: r.name,
+          status: 'waiting',
+          playerCount: r.players.length,
+          maxPlayers: r.config.maxPlayers,
+          roundNumber: 0,
+          roundCount: r.config.roundCount,
+          spectatorCount: spectatorCounts.get(r.code) ?? 0,
+          players: r.players.map(p => ({ username: p.username, userId: p.userId, isBot: p.isBot })),
+        })),
+      ];
+
+      res.json({ rooms });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch rooms' });
+    }
+  });
+
+  // ── End a game/room (admin force-end) ───────────────────────────────────────
+  router.delete('/rooms/:code', async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+
+      // Force-end in-memory game
+      const ended = forceEndGame(io, code);
+
+      // Clean up DB room
+      await Room.deleteOne({ code: code.toUpperCase() });
+
+      // Notify everyone in that room
+      io.to(code).emit('room:force_ended', { message: 'This room was ended by an admin' });
+      io.socketsLeave(code);
+
+      // Refresh lobby for all connected clients
+      io.emit('lobby:rooms_updated');
+
+      res.json({ success: true, gameEnded: ended });
+    } catch {
+      res.status(500).json({ error: 'Failed to end room' });
+    }
+  });
+
+  // ── Kick player from room ───────────────────────────────────────────────────
+  router.post('/rooms/:code/kick/:userId', async (req: Request, res: Response) => {
+    try {
+      const { code, userId } = req.params;
+
+      // Kick from in-memory game
+      kickPlayerFromGame(io, code, userId);
+
+      // Find their socket and disconnect from room
+      const sockets = await io.in(code).fetchSockets();
+      for (const s of sockets) {
+        if ((s as any).userId === userId) {
+          s.emit('room:kicked', { message: 'You were kicked by an admin' });
+          s.leave(code);
+          break;
+        }
+      }
+
+      // Remove from DB room
+      await Room.updateOne({ code: code.toUpperCase() }, { $pull: { players: { userId } } });
+
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to kick player' });
+    }
+  });
+
+  // ── Users list ──────────────────────────────────────────────────────────────
+  router.get('/users', async (req: Request, res: Response) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = 50;
+      const search = (req.query.search as string) || '';
+
+      const query = search
+        ? { username: { $regex: search, $options: 'i' } }
+        : {};
+
+      const [users, total] = await Promise.all([
+        User.find(query)
+          .select('-guestToken -googleId -email')
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        User.countDocuments(query),
+      ]);
+
+      const onlineIds = getOnlineUserIds();
+
+      res.json({
+        users: users.map(u => ({
+          id: u._id,
+          username: u.username,
+          avatar: u.avatar,
+          isGuest: u.isGuest,
+          isBanned: (u as any).isBanned ?? false,
+          isOnline: onlineIds.has(u._id.toString()),
+          stats: u.stats,
+          createdAt: u.createdAt,
+        })),
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+      });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  });
+
+  // ── Ban / unban user ────────────────────────────────────────────────────────
+  router.post('/users/:id/ban', async (req: Request, res: Response) => {
+    try {
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { isBanned: true },
+        { new: true }
+      );
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Disconnect their active socket
+      const sockets = await io.fetchSockets();
+      for (const s of sockets) {
+        if ((s as any).userId === req.params.id) {
+          s.emit('auth:banned', { message: 'Your account has been banned' });
+          s.disconnect(true);
+          break;
+        }
+      }
+
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to ban user' });
+    }
+  });
+
+  router.post('/users/:id/unban', async (req: Request, res: Response) => {
+    try {
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { isBanned: false },
+        { new: true }
+      );
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to unban user' });
+    }
+  });
+
+  // ── Kick user (disconnect socket only, no ban) ──────────────────────────────
+  router.post('/users/:id/kick', async (req: Request, res: Response) => {
+    try {
+      const sockets = await io.fetchSockets();
+      let kicked = false;
+      for (const s of sockets) {
+        if ((s as any).userId === req.params.id) {
+          s.emit('auth:kicked', { message: 'You were kicked by an admin' });
+          s.disconnect(true);
+          kicked = true;
+          break;
+        }
+      }
+      res.json({ success: true, kicked });
+    } catch {
+      res.status(500).json({ error: 'Failed to kick user' });
+    }
+  });
+
+  // ── Reset user stats ────────────────────────────────────────────────────────
+  router.post('/users/:id/reset-stats', async (req: Request, res: Response) => {
+    try {
+      await User.findByIdAndUpdate(req.params.id, {
+        $set: {
+          'stats.gamesPlayed': 0, 'stats.gamesWon': 0,
+          'stats.roundsPlayed': 0, 'stats.roundsWon': 0,
+          'stats.totalPointsEarned': 0,
+          'stats.showAttempts': 0, 'stats.showSuccesses': 0,
+        },
+      });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to reset stats' });
+    }
+  });
+
+  // ── Leaderboard (admin view) ────────────────────────────────────────────────
+  router.get('/leaderboard', async (_req: Request, res: Response) => {
+    try {
+      const users = await User.find({ 'stats.gamesPlayed': { $gt: 0 } })
+        .select('username avatar stats isGuest isBanned')
+        .sort({ 'stats.gamesWon': -1 })
+        .limit(100)
+        .lean();
+
+      res.json({
+        leaderboard: users.map((u, i) => ({
+          rank: i + 1,
+          id: u._id,
+          username: u.username,
+          avatar: u.avatar,
+          isGuest: u.isGuest,
+          isBanned: (u as any).isBanned ?? false,
+          gamesWon: u.stats.gamesWon,
+          gamesPlayed: u.stats.gamesPlayed,
+          winRate: u.stats.gamesPlayed > 0
+            ? Math.round((u.stats.gamesWon / u.stats.gamesPlayed) * 100)
+            : 0,
+        })),
+      });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+  });
+
+  // ── Reset full leaderboard ──────────────────────────────────────────────────
+  router.post('/leaderboard/reset', async (_req: Request, res: Response) => {
+    try {
+      const result = await User.updateMany({}, {
+        $set: {
+          'stats.gamesPlayed': 0, 'stats.gamesWon': 0,
+          'stats.roundsPlayed': 0, 'stats.roundsWon': 0,
+          'stats.totalPointsEarned': 0,
+          'stats.showAttempts': 0, 'stats.showSuccesses': 0,
+        },
+      });
+      res.json({ message: `Reset stats for ${result.modifiedCount} users` });
+    } catch {
+      res.status(500).json({ error: 'Failed to reset leaderboard' });
+    }
+  });
+
+  return router;
+}

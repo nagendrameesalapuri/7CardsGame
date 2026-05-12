@@ -4,4 +4,5 @@ export type {
   PlayerState, AttackChain, GameState, RoundResult, PlayerRoundResult,
   MatchResult, ChatMessage, RoomConfig, RoomPlayer, Room,
   ClientGameState, ClientPlayerState, GameAction, User, UserStats,
+  SpectatorGameState, AdminFeatureFlags, AdminGameConfig, PublicAdminConfig,
 } from '../../../shared/src/types';

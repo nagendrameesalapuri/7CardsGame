@@ -34,12 +34,12 @@ const RoomPlayerSchema = new Schema<IRoomPlayer>({
 }, { _id: false });
 
 const RoomConfigSchema = new Schema<RoomConfig>({
-  maxPlayers: { type: Number, default: 4, min: 2, max: 5 },
-  roundCount: { type: Number, default: 5, min: 1, max: 20 },
+  maxPlayers: { type: Number, default: 4, min: 2, max: 7 },
+  roundCount: { type: Number, default: 5, min: 1, max: 50 },
   isPrivate: { type: Boolean, default: false },
   turnTimeLimit: { type: Number, default: 30, min: 15, max: 60 },
   allowBots: { type: Boolean, default: true },
-  botCount: { type: Number, default: 0, min: 0, max: 3 },
+  botCount: { type: Number, default: 0, min: 0, max: 6 },
 }, { _id: false });
 
 const RoomSchema = new Schema<IRoom>(

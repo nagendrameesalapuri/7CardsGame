@@ -5,6 +5,14 @@ import { registerRoomHandlers } from './handlers/roomHandler';
 import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './handlers/gameHandler';
 import { registerChatHandlers } from './handlers/chatHandler';
 import { registerVoiceHandlers } from './handlers/voiceHandler';
+import { registerSpectatorHandlers } from './handlers/spectatorHandler';
+
+// In-memory set of online user IDs
+const onlineUsers = new Map<string, string>(); // userId → socketId
+
+export function getOnlineUserIds(): Map<string, string> {
+  return onlineUsers;
+}
 
 export function initSocketIO(io: Server) {
   // ── Auth middleware ─────────────────────────────────────────────────────────
@@ -13,10 +21,21 @@ export function initSocketIO(io: Server) {
       const token = socket.handshake.auth.token as string | undefined;
       const guestToken = socket.handshake.auth.guestToken as string | undefined;
 
+      // Allow spectator connections with a special flag (no user account needed)
+      const isSpectator = socket.handshake.auth.spectator === true;
+      if (isSpectator) {
+        (socket as any).userId = `spectator_${socket.id}`;
+        (socket as any).username = 'Spectator';
+        (socket as any).avatar = 'spectator';
+        (socket as any).isSpectator = true;
+        return next();
+      }
+
       if (token) {
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
         const user = await User.findById(decoded.userId);
         if (!user) return next(new Error('User not found'));
+        if (user.isBanned) return next(new Error('Account banned'));
 
         (socket as any).userId = user.id;
         (socket as any).username = user.username;
@@ -25,6 +44,7 @@ export function initSocketIO(io: Server) {
       } else if (guestToken) {
         const user = await User.findOne({ guestToken });
         if (!user) return next(new Error('Guest session expired'));
+        if (user.isBanned) return next(new Error('Account banned'));
 
         (socket as any).userId = user.id;
         (socket as any).username = user.username;
@@ -42,18 +62,28 @@ export function initSocketIO(io: Server) {
 
   // ── Connection ──────────────────────────────────────────────────────────────
   io.on('connection', (socket) => {
+    const uid: string = (socket as any).userId;
+    const isSpectator: boolean = (socket as any).isSpectator ?? false;
+
     console.log(`[Socket] ${(socket as any).username} connected (${socket.id})`);
+
+    // Track online users (skip spectator virtual IDs)
+    if (!isSpectator) {
+      onlineUsers.set(uid, socket.id);
+    }
 
     registerRoomHandlers(io, socket);
     registerGameHandlers(io, socket);
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
+    registerSpectatorHandlers(io, socket);
 
     // Notify client if they have an active game they can resume
-    const uid = (socket as any).userId as string;
-    const active = getActiveGameByUserId(uid);
-    if (active) {
-      socket.emit('game:can_resume', { roomCode: active.roomCode });
+    if (!isSpectator) {
+      const active = getActiveGameByUserId(uid);
+      if (active) {
+        socket.emit('game:can_resume', { roomCode: active.roomCode });
+      }
     }
 
     // Reconnection: restore game state
@@ -67,8 +97,6 @@ export function initSocketIO(io: Server) {
       await socket.join(roomCode);
       socket.data.roomCode = roomCode;
 
-      // Mark player as reconnected
-      const uid = (socket as any).userId;
       const player = game.players.find(p => p.userId === uid);
       if (player) {
         player.isConnected = true;
@@ -80,15 +108,18 @@ export function initSocketIO(io: Server) {
         });
       }
 
-      // Send full state to reconnected player
       socket.emit('game:state', buildClientStateForSocket(game, uid));
     });
 
     socket.on('disconnect', () => {
       console.log(`[Socket] ${(socket as any).username} disconnected`);
+
+      if (!isSpectator) {
+        onlineUsers.delete(uid);
+      }
+
       const game = getActiveGame(socket.data.roomCode);
       if (game) {
-        const uid = (socket as any).userId;
         const player = game.players.find(p => p.userId === uid);
         if (player) {
           player.isConnected = false;

@@ -184,6 +184,52 @@ export interface GameAction {
   timestamp?: string;
 }
 
+// ---- Spectator ----
+
+export interface SpectatorGameState {
+  id: string;
+  roomId: string;
+  status: GameStatus;
+  players: ClientPlayerState[];
+  discardPile: Card[];
+  deckCount: number;
+  jokerRank: Rank;
+  jokerCard: Card;
+  currentPlayerIndex: number;
+  turnNumber: number;
+  turnStartTime: string;
+  turnTimeLimit: number;
+  attackChain: AttackChain | null;
+  roundCount: number;
+  roundNumber: number;
+  hasDrawnThisTurn: boolean;
+  showPlayerId: string | null;
+  roundResult: RoundResult | null;
+  chatMessages: ChatMessage[];
+  isSpectatorView: true;
+}
+
+// ---- Admin Config ----
+
+export interface AdminFeatureFlags {
+  spectatorModeEnabled: boolean;
+  publicRoomsEnabled: boolean;
+}
+
+export interface AdminGameConfig {
+  minPlayers: number;
+  maxPlayers: number;
+  minRounds: number;
+  maxRounds: number;
+  maxSpectators: number;
+  maxBots: number;
+}
+
+export interface PublicAdminConfig {
+  featureFlags: AdminFeatureFlags;
+  gameConfig: AdminGameConfig;
+}
+
 // ---- User / Auth ----
 
 export interface User {
@@ -193,6 +239,7 @@ export interface User {
   email?: string;
   avatar: string;
   isGuest: boolean;
+  isBanned?: boolean;
   stats: UserStats;
   createdAt: string;
 }

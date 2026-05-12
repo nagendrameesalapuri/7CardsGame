@@ -22,6 +22,11 @@ export function HomePage() {
   }
 
   const handleGuestLogin = async () => {
+    // Hidden admin trigger — all caps "ADMIN"
+    if (guestName.trim() === 'ADMIN') {
+      navigate('/admin/login');
+      return;
+    }
     if (!guestName.trim() || guestName.trim().length < 2) {
       setGuestError('Name must be at least 2 characters');
       return;
@@ -33,6 +38,12 @@ export function HomePage() {
     } catch (e: any) {
       setGuestError(e.message);
     }
+  };
+
+  const handleGuestNameChange = (value: string) => {
+    setGuestName(value);
+    // Clear any lingering error
+    if (guestError) setGuestError('');
   };
 
   return (
@@ -135,7 +146,7 @@ export function HomePage() {
 
               <input
                 value={guestName}
-                onChange={e => setGuestName(e.target.value)}
+                onChange={e => handleGuestNameChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
                 placeholder="Your display name"
                 maxLength={20}

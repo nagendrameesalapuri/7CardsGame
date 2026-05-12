@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
-import { ClientGameState, Room, GameAction, ChatMessage, MatchResult } from '../types';
+import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, SpectatorGameState, PublicAdminConfig } from '../types';
 
 let socket: Socket | null = null;
+let spectatorSocket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) throw new Error('Socket not initialized — call connectSocket first');
@@ -10,7 +11,6 @@ export function getSocket(): Socket {
 
 export function connectSocket(token?: string, guestToken?: string): Socket {
   if (socket) {
-    // Reuse existing socket — just update auth and reconnect if needed
     (socket as any).auth = { token, guestToken };
     if (!socket.connected) socket.connect();
     return socket;
@@ -37,6 +37,45 @@ export function disconnectSocket() {
   socket?.disconnect();
   socket = null;
 }
+
+// ── Spectator socket (separate connection with spectator flag) ────────────────
+
+export function connectSpectatorSocket(): Socket {
+  if (spectatorSocket?.connected) return spectatorSocket;
+
+  const backendUrl = import.meta.env.VITE_BACKEND_URL ?? '/';
+  const token = localStorage.getItem('token');
+  const guestToken = localStorage.getItem('guestToken');
+
+  spectatorSocket = io(backendUrl, {
+    auth: { token, guestToken },
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 10,
+    transports: ['websocket', 'polling'],
+  });
+
+  spectatorSocket.on('connect', () => console.log('[SpectatorSocket] Connected'));
+  spectatorSocket.on('disconnect', (r) => console.warn('[SpectatorSocket] Disconnected:', r));
+  return spectatorSocket;
+}
+
+export function getSpectatorSocket(): Socket | null {
+  return spectatorSocket;
+}
+
+export function disconnectSpectatorSocket() {
+  spectatorSocket?.disconnect();
+  spectatorSocket = null;
+}
+
+export const socketSpectate = {
+  join: (roomCode: string) => {
+    const s = spectatorSocket ?? connectSpectatorSocket();
+    s.emit('spectate:join', roomCode);
+  },
+  leave: () => spectatorSocket?.emit('spectate:leave'),
+};
 
 // ── Room events ───────────────────────────────────────────────────────────────
 
@@ -84,6 +123,8 @@ type EventMap = {
   'room:updated': Room;
   'room:left': void;
   'room:error': string;
+  'room:kicked': { message: string };
+  'room:force_ended': { message: string };
   'game:state': ClientGameState;
   'game:started': ClientGameState;
   'game:action': GameAction;
@@ -92,8 +133,17 @@ type EventMap = {
   'game:error': string;
   'game:can_resume': { roomCode: string };
   'game:round_ready_update': { readyUserIds: string[]; total: number };
+  'game:force_ended': { message: string };
   'chat:received': ChatMessage;
   'lobby:rooms_updated': void;
+  'spectate:state': SpectatorGameState;
+  'spectate:joined': { roomCode: string; spectatorCount: number };
+  'spectate:error': string;
+  'spectate:count': { count: number };
+  'spectate:game_ended': { message: string; winner: string };
+  'auth:banned': { message: string };
+  'auth:kicked': { message: string };
+  'admin:config_updated': PublicAdminConfig;
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };
@@ -118,4 +168,13 @@ export function once<K extends keyof EventMap>(
   handler: (data: EventMap[K]) => void
 ) {
   getSocket().once(event as string, handler as any);
+}
+
+export function onSpectator<K extends keyof EventMap>(
+  event: K,
+  handler: (data: EventMap[K]) => void
+): () => void {
+  const s = spectatorSocket ?? connectSpectatorSocket();
+  s.on(event as string, handler as any);
+  return () => s.off(event as string, handler as any);
 }

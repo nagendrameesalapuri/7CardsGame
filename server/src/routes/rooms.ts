@@ -1,26 +1,48 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { Room } from '../models/Room';
+import { getAdminConfig } from '../models/AdminConfig';
+import { getSpectatorCount } from '../socket/handlers/spectatorHandler';
+import { getActiveGame } from '../socket/handlers/gameHandler';
 
 const router = Router();
 
-// List public rooms
+// List public rooms (waiting + playing for spectating)
 router.get('/', requireAuth, async (_req: Request, res: Response) => {
   try {
-    const rooms = await Room.find({ status: 'waiting', 'config.isPrivate': false })
+    const cfg = await getAdminConfig();
+
+    if (!cfg.featureFlags.publicRoomsEnabled) {
+      return res.json({ rooms: [] });
+    }
+
+    const rooms = await Room.find({ 'config.isPrivate': false, status: { $in: ['waiting', 'playing'] } })
       .sort({ createdAt: -1 })
       .limit(20)
       .lean();
 
-    res.json({ rooms: rooms.map(r => ({
-      id: r._id,
-      code: r.code,
-      name: r.name,
-      playerCount: r.players.length,
-      maxPlayers: r.config.maxPlayers,
-      roundCount: r.config.roundCount,
-      createdAt: r.createdAt,
-    })) });
+    // Only show 'playing' rooms that have an active in-memory game.
+    // This prevents stale DB entries from appearing after a match ends
+    // (Room.findOneAndUpdate is async so DB may lag behind the emit).
+    const filteredRooms = rooms.filter(r =>
+      r.status === 'waiting' || getActiveGame(r.code) !== undefined
+    );
+
+    res.json({
+      rooms: filteredRooms.map(r => ({
+        id: r._id,
+        code: r.code,
+        name: r.name,
+        playerCount: r.players.length,
+        maxPlayers: r.config.maxPlayers,
+        roundCount: r.config.roundCount,
+        status: r.status,
+        spectatorCount: getSpectatorCount(r.code),
+        canSpectate: r.status === 'playing' && cfg.featureFlags.spectatorModeEnabled,
+        createdAt: r.createdAt,
+      })),
+      spectatorModeEnabled: cfg.featureFlags.spectatorModeEnabled,
+    });
   } catch {
     res.status(500).json({ error: 'Failed to fetch rooms' });
   }

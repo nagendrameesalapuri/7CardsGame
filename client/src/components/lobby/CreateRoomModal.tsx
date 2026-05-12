@@ -2,17 +2,25 @@ import React, { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { useGameStore } from '../../store/gameStore';
+import { PublicAdminConfig } from '../../types';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
+  adminConfig?: PublicAdminConfig | null;
 }
 
-export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
+export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModalProps) {
   const { createRoom } = useGameStore();
+
+  const minPlayers = adminConfig?.gameConfig.minPlayers ?? 2;
+  const maxPlayers = adminConfig?.gameConfig.maxPlayers ?? 6;
+  const minRounds  = adminConfig?.gameConfig.minRounds  ?? 1;
+  const maxRounds  = adminConfig?.gameConfig.maxRounds  ?? 20;
+
   const [form, setForm] = useState({
     name: '',
-    maxPlayers: 4,
+    maxPlayers: Math.min(4, maxPlayers),
     roundCount: 5,
     isPrivate: false,
     turnTimeLimit: 30,
@@ -48,7 +56,8 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
               onChange={e => setForm(f => ({ ...f, maxPlayers: +e.target.value }))}
               className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text focus:outline-none"
             >
-              {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n} Players</option>)}
+              {Array.from({ length: maxPlayers - minPlayers + 1 }, (_, i) => minPlayers + i)
+                .map(n => <option key={n} value={n}>{n} Players</option>)}
             </select>
           </div>
 
@@ -58,13 +67,15 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
               Rounds to Play: <span className="text-dark-text font-bold">{form.roundCount}</span>
             </label>
             <input
-              type="range" min={1} max={20} step={1}
-              value={form.roundCount}
+              type="range" min={minRounds} max={maxRounds} step={1}
+              value={Math.max(minRounds, Math.min(maxRounds, form.roundCount))}
               onChange={e => setForm(f => ({ ...f, roundCount: +e.target.value }))}
               className="w-full accent-neon-blue"
             />
             <div className="flex justify-between text-xs text-dark-muted mt-0.5">
-              <span>1 (quick)</span><span>10</span><span>20 (long)</span>
+              <span>{minRounds} (quick)</span>
+              <span>{Math.round((minRounds + maxRounds) / 2)}</span>
+              <span>{maxRounds} (long)</span>
             </div>
           </div>
         </div>

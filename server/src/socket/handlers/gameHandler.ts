@@ -14,6 +14,7 @@ import { BotPlayer } from '../../engine/BotPlayer';
 import { ScoreEngine } from '../../engine/ScoreEngine';
 import { GameState, ClientGameState, DrawSource, MatchResult } from '../../../../shared/src/types';
 import { v4 as uuidv4 } from 'uuid';
+import { broadcastToSpectators } from './spectatorHandler';
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -41,6 +42,64 @@ export function getActiveGameByUserId(userId: string): { game: GameState; roomCo
   return undefined;
 }
 
+export function getAllActiveRoomInfos() {
+  const result: {
+    roomCode: string; name: string; status: string;
+    playerCount: number; maxPlayers: number;
+    roundNumber: number; roundCount: number;
+    players: { username: string; userId: string; isBot: boolean }[];
+  }[] = [];
+  for (const [roomCode, gameId] of roomToGame.entries()) {
+    const game = activeGames.get(gameId);
+    if (!game) continue;
+    result.push({
+      roomCode,
+      name: roomCode,
+      status: game.status,
+      playerCount: game.players.filter(p => !p.isEliminated).length,
+      maxPlayers: game.players.length,
+      roundNumber: game.roundNumber,
+      roundCount: game.roundCount,
+      players: game.players.map(p => ({ username: p.username, userId: p.userId, isBot: p.isBot })),
+    });
+  }
+  return result;
+}
+
+export function forceEndGame(io: Server, roomCode: string): boolean {
+  const gameId = roomToGame.get(roomCode);
+  if (!gameId) return false;
+  const state = activeGames.get(gameId);
+  if (!state) return false;
+
+  io.to(roomCode).emit('game:force_ended', { message: 'Game was ended by an admin' });
+
+  activeGames.delete(gameId);
+  roomToGame.delete(roomCode);
+  roundReadyPlayers.delete(gameId);
+  cancelTurnTimer(gameId);
+
+  Room.findOneAndUpdate({ code: roomCode }, { status: 'finished' }).catch(console.error);
+  return true;
+}
+
+export function kickPlayerFromGame(io: Server, roomCode: string, userId: string): boolean {
+  const game = getActiveGame(roomCode);
+  if (!game) return false;
+  const player = game.players.find(p => p.userId === userId);
+  if (!player) return false;
+  player.isEliminated = true;
+  player.isConnected = false;
+  io.to(roomCode).emit('game:action', {
+    type: 'system',
+    playerId: player.id,
+    message: `${player.username} was removed by admin`,
+    timestamp: new Date().toISOString(),
+  });
+  broadcastGameState(io, game);
+  return true;
+}
+
 export function registerGameHandlers(io: Server, socket: Socket) {
   const userId: string = (socket as any).userId;
 
@@ -55,6 +114,12 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       const humans = room.players.filter(p => !p.isBot);
       if (humans.length < 2 && room.config.botCount === 0) {
         return socket.emit('game:error', 'Need at least 2 players to start');
+      }
+
+      // Deck limit: 56 usable cards, need ≥1 for discard seed → max 7 players (7×7=49 dealt, 7 remain)
+      const totalPlayers = room.players.length + room.config.botCount;
+      if (totalPlayers > 7) {
+        return socket.emit('game:error', `Too many players (max 7, got ${totalPlayers}). Reduce bot count.`);
       }
 
       // Build player list (humans + bots)
@@ -369,6 +434,15 @@ function handleMatchEnd(io: Server, state: GameState) {
   roomToGame.delete(state.roomId);
   roundReadyPlayers.delete(state.id);
   cancelTurnTimer(state.id);
+
+  // Notify lobby so the finished room disappears from the public list
+  io.emit('lobby:rooms_updated');
+
+  // Notify spectators the game is over
+  io.to(`spectate:${state.roomId}`).emit('spectate:game_ended', {
+    message: 'The match has ended',
+    winner: matchResult.winnerUsername,
+  });
 }
 
 // ── Turn Timer ────────────────────────────────────────────────────────────────
@@ -547,13 +621,13 @@ async function broadcastGameState(io: Server, state: GameState) {
   const sockets = await io.in(state.roomId).fetchSockets();
 
   for (const s of sockets) {
+    if ((s as any).isSpectator) continue;
     const uid = (s as any).userId as string;
     const clientState = buildClientState(state, uid);
     s.emit('game:state', clientState);
   }
 
   // Re-emit ready state whenever game state is pushed during round-end phase
-  // so reconnecting players get the current ready count immediately
   if (state.status === 'show_called') {
     const readySet = roundReadyPlayers.get(state.id);
     if (readySet) {
@@ -561,6 +635,9 @@ async function broadcastGameState(io: Server, state: GameState) {
       emitRoundReadyUpdate(io, state, readySet, humanPlayers.length);
     }
   }
+
+  // Broadcast sanitised state to spectators
+  broadcastToSpectators(io, state);
 }
 
 function findPlayerIdByUserId(state: GameState, userId: string): string | undefined {

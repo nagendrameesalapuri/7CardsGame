@@ -18,6 +18,7 @@ import authRoutes from './routes/auth';
 import roomRoutes from './routes/rooms';
 import userRoutes from './routes/users';
 import gameRoutes from './routes/games';
+import createAdminRouter from './routes/admin';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -99,6 +100,9 @@ async function bootstrap() {
     pingTimeout: 20000,
     pingInterval: 25000,
   });
+
+  // Admin routes need io for kick/end operations — register after io is created
+  app.use('/api/admin', createAdminRouter(io));
 
   initSocketIO(io);
 

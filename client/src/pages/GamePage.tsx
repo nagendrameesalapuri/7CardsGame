@@ -6,7 +6,7 @@ import { GameBoard } from '../components/game/GameBoard';
 import { socketGame } from '../services/socket';
 
 export function GamePage() {
-  const { game, room, subscribeToEvents } = useGameStore();
+  const { game, room, forceEndedMsg, subscribeToEvents, reset } = useGameStore();
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
 
@@ -22,6 +22,14 @@ export function GamePage() {
 
     return unsub;
   }, [isAuthenticated, navigate, subscribeToEvents, room, game]);
+
+  // Auto-redirect to lobby when admin force-ends the game
+  useEffect(() => {
+    if (forceEndedMsg) {
+      reset();
+      navigate('/lobby', { replace: true });
+    }
+  }, [forceEndedMsg, navigate, reset]);
 
   if (!isAuthenticated) return null;
 

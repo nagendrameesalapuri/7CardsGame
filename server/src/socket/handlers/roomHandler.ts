@@ -65,12 +65,13 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           socketId: socket.id,
         }],
         config: {
-          maxPlayers: data.maxPlayers ?? 4,
+          // Deck: 57 cards - 1 joker = 56 usable; 7 per player; need ≥1 for discard → max 7 players
+          maxPlayers: Math.min(data.maxPlayers ?? 4, 7),
           roundCount: data.roundCount ?? 5,
           isPrivate: data.isPrivate ?? false,
           turnTimeLimit: data.turnTimeLimit ?? 30,
           allowBots: data.allowBots ?? true,
-          botCount: data.botCount ?? 0,
+          botCount: Math.min(data.botCount ?? 0, 6),
         },
       });
 

@@ -27,6 +27,30 @@ api.interceptors.response.use(
   }
 );
 
+// ── Admin API (uses separate admin token) ────────────────────────────────────
+
+const adminApi = axios.create({
+  baseURL: `${BACKEND}/api/admin`,
+  withCredentials: true,
+});
+
+adminApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('adminToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+adminApi.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('adminToken');
+      window.location.href = '/admin/login';
+    }
+    return Promise.reject(err);
+  }
+);
+
 export const authApi = {
   googleLogin: () => { window.location.href = `${BACKEND}/api/auth/google`; },
   guestLogin: (username: string) =>
@@ -36,7 +60,7 @@ export const authApi = {
 };
 
 export const roomsApi = {
-  list: () => api.get<{ rooms: any[] }>('/rooms'),
+  list: () => api.get<{ rooms: any[]; spectatorModeEnabled: boolean }>('/rooms'),
   get: (code: string) => api.get<{ room: any }>(`/rooms/${code}`),
 };
 
@@ -48,6 +72,35 @@ export const usersApi = {
 
 export const gamesApi = {
   history: () => api.get<{ games: any[] }>('/games/history'),
+};
+
+export const configApi = {
+  getPublic: () => api.get<{ featureFlags: any; gameConfig: any }>('/admin/config/public'),
+};
+
+export const admin = {
+  login: (password: string) =>
+    adminApi.post<{ token: string }>('/login', { password }),
+
+  getConfig: () => adminApi.get<any>('/config'),
+  updateConfig: (data: any) => adminApi.patch('/config', data),
+
+  getStats: () => adminApi.get<any>('/stats'),
+
+  getRooms: () => adminApi.get<{ rooms: any[] }>('/rooms'),
+  endRoom: (code: string) => adminApi.delete(`/rooms/${code}`),
+  kickFromRoom: (code: string, userId: string) =>
+    adminApi.post(`/rooms/${code}/kick/${userId}`),
+
+  getUsers: (params?: { page?: number; search?: string }) =>
+    adminApi.get<{ users: any[]; total: number; page: number; pages: number }>('/users', { params }),
+  banUser: (id: string) => adminApi.post(`/users/${id}/ban`),
+  unbanUser: (id: string) => adminApi.post(`/users/${id}/unban`),
+  kickUser: (id: string) => adminApi.post(`/users/${id}/kick`),
+  resetUserStats: (id: string) => adminApi.post(`/users/${id}/reset-stats`),
+
+  getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>('/leaderboard'),
+  resetLeaderboard: () => adminApi.post('/leaderboard/reset'),
 };
 
 export default api;
