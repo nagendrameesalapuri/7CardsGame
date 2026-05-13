@@ -6,7 +6,7 @@ import { admin } from '../services/api';
 import { on } from '../services/socket';
 import { Avatar } from '../components/ui/Avatar';
 
-type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig';
+type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'withdrawals' | 'wallets';
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -458,15 +458,218 @@ function GameConfigSection({ config, onSave }: { config: any; onSave: (data: any
   );
 }
 
+// ── Withdrawals Section ────────────────────────────────────────────────────────
+
+const WD_STATUS_STYLE: Record<string, string> = {
+  pending:  'bg-yellow-500/20 text-yellow-300',
+  approved: 'bg-green-500/20 text-green-400',
+  rejected: 'bg-red-500/20 text-red-400',
+};
+
+function WithdrawalsSection() {
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [noteMap, setNoteMap] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await admin.getWithdrawals();
+      setWithdrawals(data.withdrawals);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const process = async (id: string, status: 'approved' | 'rejected') => {
+    try {
+      await admin.processWithdrawal(id, status, noteMap[id]);
+      setWithdrawals(prev => prev.map(w => w._id === id ? { ...w, status } : w));
+    } catch { /* ignore */ }
+  };
+
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-bold text-white">Withdrawal Requests</h2>
+      {withdrawals.length === 0 ? (
+        <p className="text-dark-muted text-sm py-8 text-center">No withdrawal requests</p>
+      ) : (
+        <div className="space-y-3">
+          {withdrawals.map(w => (
+            <div key={w._id} className="rounded-2xl p-4 space-y-2" style={cardStyle}>
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="font-semibold text-white">{w.username}</p>
+                  <p className="text-sm text-dark-muted">{w.upiId ? `UPI: ${w.upiId}` : `Bank: ${w.bankDetails?.accountName}`}</p>
+                  <p className="text-xs text-dark-muted">{new Date(w.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-neon-green">₹{w.amount}</p>
+                  <span className={clsx('text-xs px-2 py-0.5 rounded-full', WD_STATUS_STYLE[w.status] ?? '')}>
+                    {w.status}
+                  </span>
+                </div>
+              </div>
+              {w.status === 'pending' && (
+                <div className="flex gap-2 flex-wrap items-center pt-1">
+                  <input
+                    placeholder="Admin note (optional)"
+                    value={noteMap[w._id] ?? ''}
+                    onChange={e => setNoteMap(p => ({ ...p, [w._id]: e.target.value }))}
+                    className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
+                  />
+                  <button onClick={() => process(w._id, 'approved')}
+                    className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors">
+                    Approve
+                  </button>
+                  <button onClick={() => process(w._id, 'rejected')}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors">
+                    Reject
+                  </button>
+                </div>
+              )}
+              {w.adminNote && <p className="text-xs text-dark-muted italic">{w.adminNote}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Wallets Section ────────────────────────────────────────────────────────────
+
+function WalletsSection() {
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creditUserId, setCreditUserId] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditNote, setCreditNote] = useState('');
+  const [crediting, setCrediting] = useState(false);
+  const [creditResult, setCreditResult] = useState<string | null>(null);
+
+  const loadWallets = useCallback(() => {
+    admin.getWallets()
+      .then(({ data }) => setWallets(data.wallets))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadWallets(); }, [loadWallets]);
+
+  const handleCredit = async () => {
+    const amt = parseInt(creditAmount);
+    if (!creditUserId.trim()) return setCreditResult('❌ Enter a User ID');
+    if (!amt || amt <= 0) return setCreditResult('❌ Enter a valid amount');
+    setCrediting(true);
+    setCreditResult(null);
+    try {
+      const { data } = await admin.creditWallet(creditUserId.trim(), amt, creditNote || undefined);
+      setCreditResult(`✅ Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}`);
+      setCreditUserId(''); setCreditAmount(''); setCreditNote('');
+      loadWallets();
+    } catch (err: any) {
+      setCreditResult(`❌ ${err?.response?.data?.error ?? 'Failed'}`);
+    } finally {
+      setCrediting(false);
+    }
+  };
+
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+
+  return (
+    <div className="space-y-5">
+      <h2 className="text-xl font-bold text-white">User Wallets</h2>
+
+      {/* ── Credit wallet form ── */}
+      <div className="rounded-2xl p-4 space-y-3" style={cardStyle}>
+        <p className="text-sm font-semibold text-white">💸 Add Money to User Wallet</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <label className="text-xs text-dark-muted block mb-1">User ID</label>
+            <input
+              value={creditUserId}
+              onChange={e => setCreditUserId(e.target.value)}
+              placeholder="Paste MongoDB user _id"
+              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text font-mono focus:outline-none focus:border-neon-green"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-dark-muted block mb-1">Amount (₹)</label>
+            <input
+              type="number"
+              value={creditAmount}
+              onChange={e => setCreditAmount(e.target.value)}
+              placeholder="e.g. 500"
+              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
+            />
+          </div>
+        </div>
+        <input
+          value={creditNote}
+          onChange={e => setCreditNote(e.target.value)}
+          placeholder="Note (optional) — e.g. Promo bonus"
+          className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
+        />
+        <button
+          onClick={handleCredit}
+          disabled={crediting}
+          className="px-4 py-2 rounded-lg bg-neon-green text-dark-bg text-xs font-bold hover:bg-green-400 transition-colors disabled:opacity-50"
+        >
+          {crediting ? 'Adding…' : 'Add Money'}
+        </button>
+        {creditResult && (
+          <p className="text-xs mt-1" style={{ color: creditResult.startsWith('✅') ? '#00e676' : '#ff6b6b' }}>
+            {creditResult}
+          </p>
+        )}
+      </div>
+
+      {/* ── Wallet balances list ── */}
+      {wallets.length === 0 ? (
+        <p className="text-dark-muted text-sm py-4 text-center">No users with balance yet</p>
+      ) : (
+        <div className="space-y-2">
+          {wallets.map((w, i) => (
+            <div key={w.id} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={cardStyle}>
+              <div className="flex items-center gap-3">
+                <span className="text-dark-muted text-sm w-6">#{i + 1}</span>
+                <div>
+                  <p className="text-sm font-semibold text-white">{w.username}</p>
+                  <p className="text-[10px] text-dark-muted font-mono break-all">{w.id}</p>
+                  <p className="text-xs text-dark-muted">{w.email ?? (w.isGuest ? 'Guest' : '—')}</p>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-neon-green font-bold">₹{w.balance}</p>
+                <button
+                  onClick={() => setCreditUserId(w.id)}
+                  className="text-[10px] text-dark-muted hover:text-neon-green transition-colors mt-0.5"
+                >
+                  Use ID ↑
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
-  { key: 'overview',   icon: '📊', label: 'Overview' },
-  { key: 'rooms',      icon: '🎮', label: 'Live Rooms' },
-  { key: 'users',      icon: '👤', label: 'Users' },
-  { key: 'leaderboard',icon: '🏆', label: 'Leaderboard' },
-  { key: 'features',   icon: '⚙️', label: 'Features' },
-  { key: 'gameconfig', icon: '🎯', label: 'Game Config' },
+  { key: 'overview',     icon: '📊', label: 'Overview' },
+  { key: 'rooms',        icon: '🎮', label: 'Live Rooms' },
+  { key: 'users',        icon: '👤', label: 'Users' },
+  { key: 'leaderboard',  icon: '🏆', label: 'Leaderboard' },
+  { key: 'withdrawals',  icon: '💸', label: 'Withdrawals' },
+  { key: 'wallets',      icon: '💰', label: 'Wallets' },
+  { key: 'features',     icon: '⚙️', label: 'Features' },
+  { key: 'gameconfig',   icon: '🎯', label: 'Game Config' },
 ];
 
 export function AdminPage() {
@@ -620,12 +823,14 @@ export function AdminPage() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
           >
-            {section === 'overview'    && <OverviewSection />}
-            {section === 'rooms'       && <RoomsSection />}
-            {section === 'users'       && <UsersSection />}
-            {section === 'leaderboard' && <LeaderboardSection />}
-            {section === 'features'    && <FeaturesSection config={config} onSave={saveConfig} />}
-            {section === 'gameconfig'  && <GameConfigSection config={config} onSave={saveConfig} />}
+            {section === 'overview'     && <OverviewSection />}
+            {section === 'rooms'        && <RoomsSection />}
+            {section === 'users'        && <UsersSection />}
+            {section === 'leaderboard'  && <LeaderboardSection />}
+            {section === 'withdrawals'  && <WithdrawalsSection />}
+            {section === 'wallets'      && <WalletsSection />}
+            {section === 'features'     && <FeaturesSection config={config} onSave={saveConfig} />}
+            {section === 'gameconfig'   && <GameConfigSection config={config} onSave={saveConfig} />}
           </motion.div>
         </AnimatePresence>
       </main>

@@ -88,6 +88,7 @@ export const socketRoom = {
     turnTimeLimit?: number;
     allowBots?: boolean;
     botCount?: number;
+    entryFee?: number;
   }) => getSocket().emit('room:create', data),
 
   join: (code: string) => getSocket().emit('room:join', code),
@@ -144,6 +145,7 @@ type EventMap = {
   'auth:banned': { message: string };
   'auth:kicked': { message: string };
   'admin:config_updated': PublicAdminConfig;
+  'wallet:prize_won': { amount: number; balance: number };
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };

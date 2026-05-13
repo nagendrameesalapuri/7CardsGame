@@ -9,6 +9,7 @@ import { Server, Socket } from 'socket.io';
 import { Room } from '../../models/Room';
 import { Game } from '../../models/Game';
 import { User } from '../../models/User';
+import { Transaction } from '../../models/Transaction';
 import { GameEngine, GameConfig } from '../../engine/GameEngine';
 import { BotPlayer } from '../../engine/BotPlayer';
 import { ScoreEngine } from '../../engine/ScoreEngine';
@@ -416,6 +417,9 @@ function handleMatchEnd(io: Server, state: GameState) {
     { status: 'finished' }
   ).catch(console.error);
 
+  // Cash game prize distribution
+  distributePrize(io, state, matchResult, winnerPlayer ?? null).catch(console.error);
+
   // Update user stats for all human players
   const humanPlayers = state.players.filter(p => !p.isBot);
   const roundsInMatch = state.roundNumber;
@@ -443,6 +447,50 @@ function handleMatchEnd(io: Server, state: GameState) {
     message: 'The match has ended',
     winner: matchResult.winnerUsername,
   });
+}
+
+// ── Prize Distribution ────────────────────────────────────────────────────────
+
+async function distributePrize(io: Server, state: GameState, matchResult: any, winnerPlayer: any) {
+  try {
+    const room = await Room.findOne({ code: state.roomId }).lean();
+    if (!room) return;
+    const entryFee: number = (room.config as any).entryFee ?? 0;
+    if (entryFee <= 0) return;
+
+    const paidIds: string[] = (room as any).paidPlayerIds ?? [];
+    const pot = entryFee * paidIds.length;
+    if (pot <= 0 || !winnerPlayer || winnerPlayer.isBot) return;
+
+    // Handle ties — split the pot evenly
+    const winnerIds: string[] = matchResult.winnerIds ?? [matchResult.winnerId];
+    const winnerPlayerIds = state.players
+      .filter(p => winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId))
+      .map(p => p.userId);
+
+    if (winnerPlayerIds.length === 0) return;
+    const share = Math.floor(pot / winnerPlayerIds.length);
+
+    for (const uid of winnerPlayerIds) {
+      const updated = await User.findByIdAndUpdate(uid, { $inc: { walletBalance: share } }, { new: true });
+      await Transaction.create({
+        userId: uid,
+        type: 'winning',
+        amount: share,
+        status: 'completed',
+        description: `Won ₹${share} in cash game (room ${state.roomId})`,
+        metadata: { roomCode: state.roomId },
+      });
+      // Notify winner's connected socket
+      for (const [, s] of io.sockets.sockets) {
+        if ((s as any).userId === uid) {
+          s.emit('wallet:prize_won', { amount: share, balance: updated?.walletBalance ?? 0 });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Prize] Distribution error:', err);
+  }
 }
 
 // ── Turn Timer ────────────────────────────────────────────────────────────────

@@ -322,9 +322,17 @@ export function LobbyPage() {
                             className="bg-dark-surface border border-dark-border rounded-xl p-3 sm:p-4 flex items-center justify-between gap-2 hover:border-neon-green/40 transition-colors"
                           >
                             <div className="min-w-0">
-                              <p className="font-medium text-dark-text text-sm truncate">{r.name}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-medium text-dark-text text-sm truncate">{r.name}</p>
+                                {r.entryFee > 0 && (
+                                  <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                    ₹{r.entryFee} entry
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-dark-muted text-xs">
                                 {r.playerCount}/{r.maxPlayers} players · {r.roundCount} rounds
+                                {r.entryFee > 0 && ` · Pot: ₹${r.entryFee * r.playerCount}`}
                               </p>
                             </div>
                             <Button

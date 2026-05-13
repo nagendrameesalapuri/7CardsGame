@@ -10,6 +10,7 @@ import { LobbyPage } from './pages/LobbyPage';
 import { GamePage } from './pages/GamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
+import { WalletPage } from './pages/WalletPage';
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { AdminPage } from './pages/AdminPage';
 import { SpectatorPage } from './pages/SpectatorPage';
@@ -82,6 +83,7 @@ export function App() {
           <Route path="/lobby" element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
           <Route path="/game" element={<ProtectedRoute><GamePage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
           <Route path="/admin/login" element={<AdminLoginPage />} />

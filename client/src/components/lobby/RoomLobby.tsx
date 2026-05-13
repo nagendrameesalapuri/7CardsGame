@@ -23,6 +23,7 @@ export function RoomLobby() {
   const allReady = room.players.every(p => p.isReady || p.isHost);
   const botCount = room.config.botCount ?? 0;
   const totalSlots = room.players.length + botCount;
+  const isCashGame = (room.config as any).entryFee > 0;
   const canStart = isHost && totalSlots >= 2 && allReady;
 
   const copyCode = () => {
@@ -58,9 +59,34 @@ export function RoomLobby() {
             <span className="px-2 py-1 bg-white/10 rounded text-xs text-white">{room.config.maxPlayers}P max</span>
             <span className="px-2 py-1 bg-white/10 rounded text-xs text-white">{room.config.roundCount} rounds</span>
             <span className="px-2 py-1 bg-white/10 rounded text-xs text-white">{room.config.turnTimeLimit}s turns</span>
+            {(room.config as any).entryFee > 0 && (
+              <span className="px-2 py-1 bg-yellow-500/30 border border-yellow-400/40 rounded text-xs text-yellow-300 font-bold">
+                ₹{(room.config as any).entryFee} entry
+              </span>
+            )}
             {room.config.isPrivate && <span className="px-2 py-1 bg-neon-purple/30 rounded text-xs text-neon-purple">Private</span>}
           </div>
         </div>
+
+        {/* Prize pool banner for cash games */}
+        {(room.config as any).entryFee > 0 && (
+          <div className="mx-4 mt-0 mb-1 rounded-xl px-4 py-3 flex items-center justify-between"
+            style={{ background: 'linear-gradient(135deg,rgba(234,179,8,0.12),rgba(234,179,8,0.04))', border: '1px solid rgba(234,179,8,0.25)' }}>
+            <div>
+              <p className="text-xs text-yellow-400/70 uppercase tracking-wider font-semibold">Cash Game</p>
+              <p className="text-sm text-yellow-200 mt-0.5">
+                Entry: <span className="font-bold text-yellow-300">₹{(room.config as any).entryFee}</span> per player
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-yellow-400/70 uppercase tracking-wider font-semibold">Prize Pool</p>
+              <p className="text-2xl font-bold text-yellow-400">
+                ₹{(room.config as any).entryFee * room.config.maxPlayers}
+              </p>
+              <p className="text-[10px] text-yellow-400/60">Winner takes all</p>
+            </div>
+          </div>
+        )}
 
         {/* Players */}
         <div className="p-4">
@@ -118,7 +144,7 @@ export function RoomLobby() {
                     </div>
                     <span className="text-xs text-dark-muted">Computer player</span>
                   </div>
-                  {isHost && (
+                  {isHost && !isCashGame && (
                     <button
                       onClick={() => setBots(botCount - 1)}
                       className="text-neon-red hover:text-red-400 text-lg font-bold w-7 h-7 flex items-center justify-center rounded-full hover:bg-neon-red/10 transition-colors"
@@ -131,8 +157,8 @@ export function RoomLobby() {
               ))}
             </AnimatePresence>
 
-            {/* Add AI Bot button (host only, when slots available) */}
-            {isHost && totalSlots < room.config.maxPlayers && (
+            {/* Add AI Bot button (host only, when slots available, free games only) */}
+            {isHost && !isCashGame && totalSlots < room.config.maxPlayers && (
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

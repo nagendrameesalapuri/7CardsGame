@@ -10,9 +10,10 @@ export function Header() {
   const location = useLocation();
 
   const navItems = [
-    { to: '/lobby', label: 'Play', icon: '🎮' },
-    { to: '/leaderboard', label: 'Board', icon: '🏆' },
-    { to: '/profile', label: 'Profile', icon: '👤' },
+    { to: '/lobby',       label: 'Play',    icon: '🎮' },
+    { to: '/leaderboard', label: 'Board',   icon: '🏆' },
+    { to: '/wallet',      label: 'Wallet',  icon: '💰' },
+    { to: '/profile',     label: 'Profile', icon: '👤' },
   ];
 
   return (
@@ -30,6 +31,7 @@ export function Header() {
           <nav className="hidden sm:flex items-center gap-6 text-sm text-dark-muted">
             <Link to="/lobby" className="hover:text-dark-text transition-colors">Play</Link>
             <Link to="/leaderboard" className="hover:text-dark-text transition-colors">Leaderboard</Link>
+            <Link to="/wallet" className="hover:text-dark-text transition-colors">Wallet</Link>
             <Link to="/profile" className="hover:text-dark-text transition-colors">Profile</Link>
           </nav>
 

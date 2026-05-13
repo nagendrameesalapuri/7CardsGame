@@ -1,5 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { Room, IRoom } from '../../models/Room';
+import { User } from '../../models/User';
+import { Transaction } from '../../models/Transaction';
 import { ClientGameState, Room as RoomType } from '../../../../shared/src/types';
 
 /** Generate a random 6-character uppercase room code. */
@@ -42,8 +44,31 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     turnTimeLimit?: number;
     allowBots?: boolean;
     botCount?: number;
+    entryFee?: number;
   }) => {
     try {
+      const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
+
+      // Cash game: creator must have enough balance to pay their own entry fee
+      if (entryFee > 0) {
+        const creator = await User.findById(userId).select('walletBalance isGuest');
+        if (!creator) return socket.emit('room:error', 'User not found');
+        if (creator.isGuest) return socket.emit('room:error', 'Guests cannot create cash game rooms');
+        if ((creator.walletBalance ?? 0) < entryFee) {
+          return socket.emit('room:error', `Insufficient balance. You need ₹${entryFee} to create this room.`);
+        }
+        // Deduct creator's entry fee
+        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
+        await Transaction.create({
+          userId,
+          type: 'entry_fee',
+          amount: entryFee,
+          status: 'completed',
+          description: `Entry fee for room (created)`,
+          metadata: {},
+        });
+      }
+
       let code: string;
       let attempts = 0;
       do {
@@ -72,11 +97,22 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           turnTimeLimit: data.turnTimeLimit ?? 30,
           allowBots: data.allowBots ?? true,
           botCount: Math.min(data.botCount ?? 0, 9),
+          entryFee,
         },
+        paidPlayerIds: entryFee > 0 ? [userId] : [],
       });
 
       await socket.join(room.code);
       socket.data.roomCode = room.code;
+
+      // Update transaction with room code now that room is created
+      if (entryFee > 0) {
+        await Transaction.findOneAndUpdate(
+          { userId, type: 'entry_fee', 'metadata.roomCode': { $exists: false } },
+          { 'metadata.roomCode': room.code },
+          { sort: { createdAt: -1 } }
+        );
+      }
 
       const dto = roomToDTO(room);
       console.log(`[Room] ${username} created room ${room.code}`);
@@ -115,6 +151,30 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       if (!alreadyIn && room.players.length >= room.config.maxPlayers) {
         console.log('[Room] Full:', room.players.length, '/', room.config.maxPlayers);
         return socket.emit('room:error', 'Room is full');
+      }
+
+      // Cash room: deduct entry fee if player hasn't paid yet
+      const entryFee = (room.config as any).entryFee ?? 0;
+      if (!alreadyIn && entryFee > 0) {
+        const user = await User.findById(userId).select('walletBalance isGuest');
+        if (!user) return socket.emit('room:error', 'User not found');
+        if (user.isGuest) return socket.emit('room:error', 'Guests cannot join cash games');
+        if ((user.walletBalance ?? 0) < entryFee) {
+          return socket.emit('room:error', `Insufficient balance. Entry fee: ₹${entryFee}`);
+        }
+        if (!room.paidPlayerIds) room.paidPlayerIds = [];
+        if (!room.paidPlayerIds.includes(userId)) {
+          await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
+          room.paidPlayerIds.push(userId);
+          await Transaction.create({
+            userId,
+            type: 'entry_fee',
+            amount: entryFee,
+            status: 'completed',
+            description: `Entry fee for room ${room.code}`,
+            metadata: { roomCode: room.code },
+          });
+        }
       }
 
       if (!alreadyIn) {
@@ -185,6 +245,21 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 export async function handleLeave(io: Server, socket: Socket, userId: string) {
   const room = await Room.findOne({ code: socket.data.roomCode });
   if (!room) return;
+
+  // Refund entry fee if game hasn't started yet
+  const entryFee = (room.config as any).entryFee ?? 0;
+  if (room.status === 'waiting' && entryFee > 0 && room.paidPlayerIds?.includes(userId)) {
+    await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } });
+    room.paidPlayerIds = room.paidPlayerIds.filter(id => id !== userId);
+    await Transaction.create({
+      userId,
+      type: 'refund',
+      amount: entryFee,
+      status: 'completed',
+      description: `Refund for leaving room ${room.code}`,
+      metadata: { roomCode: room.code },
+    });
+  }
 
   room.players = room.players.filter(p => p.userId !== userId);
   await socket.leave(room.code);

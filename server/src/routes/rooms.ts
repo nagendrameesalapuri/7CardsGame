@@ -36,6 +36,7 @@ router.get('/', requireAuth, async (_req: Request, res: Response) => {
         playerCount: r.players.length,
         maxPlayers: r.config.maxPlayers,
         roundCount: r.config.roundCount,
+        entryFee: (r.config as any).entryFee ?? 0,
         status: r.status,
         spectatorCount: getSpectatorCount(r.code),
         canSpectate: r.status === 'playing' && cfg.featureFlags.spectatorModeEnabled,

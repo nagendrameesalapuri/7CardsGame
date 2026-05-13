@@ -12,6 +12,8 @@ import {
 } from '../socket/handlers/gameHandler';
 import { getSpectatorCounts } from '../socket/handlers/spectatorHandler';
 import { getOnlineUserIds } from '../socket/index';
+import { WithdrawalRequest } from '../models/WithdrawalRequest';
+import { Transaction } from '../models/Transaction';
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -357,6 +359,90 @@ export default function createAdminRouter(io: Server) {
       });
     } catch {
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+  });
+
+  // ── Wallet: credit a user's wallet ──────────────────────────────────────────
+  router.post('/wallets/:userId/credit', async (req: Request, res: Response) => {
+    try {
+      const { amount, note } = req.body as { amount: number; note?: string };
+      if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+      const user = await User.findByIdAndUpdate(
+        req.params.userId,
+        { $inc: { walletBalance: amount } },
+        { new: true }
+      );
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      await Transaction.create({
+        userId: req.params.userId,
+        type: 'deposit',
+        amount,
+        status: 'completed',
+        description: note ? `[Admin] ${note}` : `[Admin] Manual credit of ₹${amount}`,
+      });
+      res.json({ balance: user.walletBalance, username: user.username });
+    } catch {
+      res.status(500).json({ error: 'Failed to credit wallet' });
+    }
+  });
+
+  // ── Wallet: list all users with balances ────────────────────────────────────
+  router.get('/wallets', async (_req: Request, res: Response) => {
+    try {
+      const users = await User.find({ walletBalance: { $gt: 0 } })
+        .select('username email avatar isGuest walletBalance createdAt')
+        .sort({ walletBalance: -1 })
+        .limit(200)
+        .lean();
+      res.json({ wallets: users.map(u => ({ id: u._id, username: u.username, email: u.email, avatar: u.avatar, isGuest: u.isGuest, balance: (u as any).walletBalance ?? 0 })) });
+    } catch {
+      res.status(500).json({ error: 'Failed to load wallets' });
+    }
+  });
+
+  // ── Withdrawal requests ──────────────────────────────────────────────────────
+  router.get('/withdrawals', async (_req: Request, res: Response) => {
+    try {
+      const list = await WithdrawalRequest.find()
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean();
+      res.json({ withdrawals: list });
+    } catch {
+      res.status(500).json({ error: 'Failed to load withdrawals' });
+    }
+  });
+
+  router.patch('/withdrawals/:id', async (req: Request, res: Response) => {
+    try {
+      const { status, adminNote } = req.body as { status: 'approved' | 'rejected'; adminNote?: string };
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be approved or rejected' });
+      }
+
+      const wr = await WithdrawalRequest.findById(req.params.id);
+      if (!wr) return res.status(404).json({ error: 'Request not found' });
+      if (wr.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
+
+      wr.status = status;
+      wr.adminNote = adminNote;
+      wr.processedAt = new Date();
+      await wr.save();
+
+      // If rejected → refund the held amount back to user
+      if (status === 'rejected') {
+        await User.findByIdAndUpdate(wr.userId, { $inc: { walletBalance: wr.amount } });
+      }
+
+      // Update linked transaction status
+      await Transaction.findOneAndUpdate(
+        { 'metadata.withdrawalRequestId': wr.id, type: 'withdrawal' },
+        { status: status === 'approved' ? 'completed' : 'failed' }
+      );
+
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to process withdrawal' });
     }
   });
 

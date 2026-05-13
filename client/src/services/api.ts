@@ -78,7 +78,26 @@ export const configApi = {
   getPublic: () => api.get<{ featureFlags: any; gameConfig: any }>('/admin/config/public'),
 };
 
+export const walletApi = {
+  get:           () => api.get<{ balance: number; isGuest: boolean; transactions: any[]; withdrawalRequests: any[] }>('/wallet'),
+  createOrder:   (amount: number) => api.post<{ orderId: string; amount: number; currency: string; keyId: string }>('/wallet/deposit/order', { amount }),
+  verifyDeposit: (data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string; amount: number }) =>
+    api.post<{ balance: number; message: string }>('/wallet/deposit/verify', data),
+  withdraw:      (data: { amount: number; upiId?: string; bankDetails?: { accountNumber: string; ifsc: string; accountName: string } }) =>
+    api.post<{ balance: number; message: string }>('/wallet/withdraw', data),
+  devAdd:        (amount: number) => api.post<{ balance: number; message: string }>('/wallet/dev/add', { amount }),
+};
+
 export const admin = {
+  getWithdrawals: () => adminApi.get<{ withdrawals: any[] }>('/withdrawals'),
+  processWithdrawal: (id: string, status: 'approved' | 'rejected', adminNote?: string) =>
+    adminApi.patch(`/withdrawals/${id}`, { status, adminNote }),
+  getWallets: () => adminApi.get<{ wallets: any[] }>('/wallets'),
+  creditWallet: (userId: string, amount: number, note?: string) =>
+    adminApi.post<{ balance: number; username: string }>(`/wallets/${userId}/credit`, { amount, note }),
+
+  // existing admin methods below
+
   login: (password: string) =>
     adminApi.post<{ token: string }>('/login', { password }),
 

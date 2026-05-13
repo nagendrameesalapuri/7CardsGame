@@ -18,6 +18,7 @@ import authRoutes from './routes/auth';
 import roomRoutes from './routes/rooms';
 import userRoutes from './routes/users';
 import gameRoutes from './routes/games';
+import walletRoutes from './routes/wallet';
 import createAdminRouter from './routes/admin';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
@@ -91,6 +92,7 @@ async function bootstrap() {
   app.use('/api/rooms', roomRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/games', gameRoutes);
+  app.use('/api/wallet', walletRoutes);
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
 

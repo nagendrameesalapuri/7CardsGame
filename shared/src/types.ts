@@ -107,6 +107,26 @@ export interface RoomConfig {
   turnTimeLimit: number;     // seconds, 15–60
   allowBots: boolean;
   botCount: number;
+  entryFee: number;          // 0 = free game, >0 = cash game
+}
+
+// ---- Wallet types ----
+
+export type TransactionType = 'deposit' | 'withdrawal' | 'winning' | 'entry_fee' | 'refund';
+
+export interface WalletTransaction {
+  _id: string;
+  type: TransactionType;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  description: string;
+  createdAt: string;
+}
+
+export interface WalletState {
+  balance: number;
+  isGuest: boolean;
+  transactions: WalletTransaction[];
 }
 
 export interface RoomPlayer {

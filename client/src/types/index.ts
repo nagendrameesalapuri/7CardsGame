@@ -5,4 +5,5 @@ export type {
   MatchResult, ChatMessage, RoomConfig, RoomPlayer, Room,
   ClientGameState, ClientPlayerState, GameAction, User, UserStats,
   SpectatorGameState, AdminFeatureFlags, AdminGameConfig, PublicAdminConfig,
+  TransactionType, WalletTransaction, WalletState,
 } from '../../../shared/src/types';
