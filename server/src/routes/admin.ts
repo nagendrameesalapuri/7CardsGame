@@ -428,17 +428,44 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
-  // ── Wallet: list all users with balances ────────────────────────────────────
+  // ── Wallet: list all registered (Google) users ──────────────────────────────
   router.get('/wallets', async (_req: Request, res: Response) => {
     try {
-      const users = await User.find({ walletBalance: { $gt: 0 } })
+      const users = await User.find({ isGuest: false })
         .select('username email avatar isGuest walletBalance createdAt')
-        .sort({ walletBalance: -1 })
-        .limit(200)
+        .sort({ username: 1 })
+        .limit(500)
         .lean();
       res.json({ wallets: users.map(u => ({ id: u._id, username: u.username, email: u.email, avatar: u.avatar, isGuest: u.isGuest, balance: (u as any).walletBalance ?? 0 })) });
     } catch {
       res.status(500).json({ error: 'Failed to load wallets' });
+    }
+  });
+
+  // ── Wallet: admin credit history ─────────────────────────────────────────────
+  router.get('/wallets/credits', async (_req: Request, res: Response) => {
+    try {
+      const txns = await Transaction.find({ description: /^\[Admin\]/ })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean();
+      // Enrich with username
+      const userIds = [...new Set(txns.map(t => t.userId))];
+      const users = await User.find({ _id: { $in: userIds } }).select('username email avatar').lean();
+      const userMap = Object.fromEntries(users.map(u => [String(u._id), u]));
+      res.json({
+        credits: txns.map(t => ({
+          id: t._id,
+          userId: t.userId,
+          username: userMap[t.userId]?.username ?? 'Unknown',
+          avatar: (userMap[t.userId] as any)?.avatar ?? '',
+          amount: t.amount,
+          description: t.description,
+          createdAt: t.createdAt,
+        })),
+      });
+    } catch {
+      res.status(500).json({ error: 'Failed to load credit history' });
     }
   });
 

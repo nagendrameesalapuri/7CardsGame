@@ -93,6 +93,7 @@ export const admin = {
   processWithdrawal: (id: string, status: 'approved' | 'rejected', adminNote?: string) =>
     adminApi.patch(`/withdrawals/${id}`, { status, adminNote }),
   getWallets: () => adminApi.get<{ wallets: any[] }>('/wallets'),
+  getAdminCredits: () => adminApi.get<{ credits: any[] }>('/wallets/credits'),
   creditWallet: (userId: string, amount: number, note?: string) =>
     adminApi.post<{ balance: number; username: string }>(`/wallets/${userId}/credit`, { amount, note }),
 

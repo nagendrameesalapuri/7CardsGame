@@ -624,6 +624,7 @@ function WithdrawalsSection() {
 
 function WalletsSection() {
   const [wallets, setWallets] = useState<any[]>([]);
+  const [credits, setCredits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dropdownSearch, setDropdownSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -635,8 +636,8 @@ function WalletsSection() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadWallets = useCallback(() => {
-    admin.getWallets()
-      .then(({ data }) => setWallets(data.wallets))
+    Promise.all([admin.getWallets(), admin.getAdminCredits()])
+      .then(([w, c]) => { setWallets(w.data.wallets); setCredits(c.data.credits); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -692,138 +693,167 @@ function WalletsSection() {
   if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
-    <div className="space-y-5 max-w-lg">
+    <div className="space-y-5">
       <h2 className="text-xl font-bold text-white">User Wallets</h2>
 
-      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
-        <p className="text-sm font-semibold text-white">💸 Add Money</p>
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
 
-        {/* ── User dropdown ── */}
-        <div>
-          <label className="text-xs text-dark-muted block mb-1.5">Select User</label>
-          <div className="relative" ref={dropdownRef}>
-            {/* Trigger / search input */}
-            {selected ? (
-              /* Selected state — show chip with clear */
-              <div
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer"
-                style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.35)' }}
-                onClick={() => { setSelected(null); setCreditResult(null); setDropdownOpen(true); }}
-              >
-                <Avatar avatar={selected.avatar} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{selected.username}</p>
-                  <p className="text-[11px] text-dark-muted truncate">{selected.email ?? (selected.isGuest ? 'Guest' : '—')}</p>
-                </div>
-                <div className="text-right flex-shrink-0 mr-1">
-                  <p className="text-xs text-dark-muted">Balance</p>
-                  <p className="text-sm font-bold text-neon-green">₹{selected.balance}</p>
-                </div>
-                <button
-                  onClick={e => { e.stopPropagation(); setSelected(null); setCreditResult(null); }}
-                  className="text-dark-muted hover:text-red-400 text-xl leading-none flex-shrink-0"
-                >×</button>
-              </div>
-            ) : (
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                </svg>
-                <input
-                  value={dropdownSearch}
-                  onChange={e => { setDropdownSearch(e.target.value); setDropdownOpen(true); }}
-                  onFocus={() => setDropdownOpen(true)}
-                  placeholder="Search by name, email or ID…"
-                  className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-9 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted pointer-events-none text-xs">▼</span>
-              </div>
-            )}
+        {/* ── Left: Add Money form ── */}
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <p className="text-sm font-semibold text-white">💸 Add Money</p>
 
-            {/* Dropdown list */}
-            {dropdownOpen && !selected && (
-              <div
-                className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-2xl"
-                style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '280px', overflowY: 'auto' }}
-              >
-                {filtered.length === 0 ? (
-                  <p className="text-dark-muted text-sm py-4 text-center">No users found</p>
-                ) : filtered.map((w, i) => (
+          {/* User dropdown */}
+          <div>
+            <label className="text-xs text-dark-muted block mb-1.5">Select User</label>
+            <div className="relative" ref={dropdownRef}>
+              {selected ? (
+                <div
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer"
+                  style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.35)' }}
+                  onClick={() => { setSelected(null); setCreditResult(null); setDropdownOpen(true); }}
+                >
+                  <Avatar avatar={selected.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{selected.username}</p>
+                    <p className="text-[11px] text-dark-muted truncate">{selected.email ?? '—'}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0 mr-1">
+                    <p className="text-xs text-dark-muted">Balance</p>
+                    <p className="text-sm font-bold text-neon-green">₹{selected.balance}</p>
+                  </div>
                   <button
-                    key={w.id}
-                    onMouseDown={() => handleSelect(w)}
-                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
-                  >
-                    <span className="text-dark-muted text-xs w-5 flex-shrink-0">#{i + 1}</span>
-                    <Avatar avatar={w.avatar} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                    onClick={e => { e.stopPropagation(); setSelected(null); setCreditResult(null); }}
+                    className="text-dark-muted hover:text-red-400 text-xl leading-none flex-shrink-0"
+                  >×</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    value={dropdownSearch}
+                    onChange={e => { setDropdownSearch(e.target.value); setDropdownOpen(true); }}
+                    onFocus={() => setDropdownOpen(true)}
+                    placeholder="Search by name, email or ID…"
+                    className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-8 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted pointer-events-none text-xs">▼</span>
+                </div>
+              )}
+
+              {dropdownOpen && !selected && (
+                <div
+                  className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-2xl"
+                  style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '260px', overflowY: 'auto' }}
+                >
+                  {filtered.length === 0 ? (
+                    <p className="text-dark-muted text-sm py-4 text-center">No users found</p>
+                  ) : filtered.map((w, i) => (
+                    <button
+                      key={w.id}
+                      onMouseDown={() => handleSelect(w)}
+                      className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                    >
+                      <span className="text-dark-muted text-xs w-5 flex-shrink-0">#{i + 1}</span>
+                      <Avatar avatar={w.avatar} size="sm" />
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-white truncate">{w.username}</p>
-                        {w.isGuest && <span className="text-[9px] bg-dark-border text-dark-muted px-1 rounded">Guest</span>}
+                        <p className="text-[11px] text-dark-muted truncate">{w.email ?? '—'}</p>
+                        <p className="text-[10px] text-dark-muted font-mono truncate opacity-50">{String(w.id)}</p>
                       </div>
-                      <p className="text-[11px] text-dark-muted truncate">{w.email ?? '—'}</p>
-                      <p className="text-[10px] text-dark-muted font-mono truncate opacity-60">{String(w.id)}</p>
-                    </div>
-                    <p className="font-bold text-neon-green text-sm flex-shrink-0">₹{w.balance}</p>
-                  </button>
-                ))}
-              </div>
-            )}
+                      <p className="font-bold text-neon-green text-sm flex-shrink-0">₹{w.balance}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* ── Amount ── */}
-        <div>
-          <label className="text-xs text-dark-muted block mb-1.5">Amount (₹)</label>
+          {/* Amount */}
+          <div>
+            <label className="text-xs text-dark-muted block mb-1.5">Amount (₹)</label>
+            <input
+              type="number"
+              value={creditAmount}
+              onChange={e => setCreditAmount(e.target.value)}
+              placeholder="e.g. 500"
+              className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-sm text-dark-text focus:outline-none focus:border-neon-green transition-colors"
+            />
+          </div>
+
+          {/* Quick presets */}
+          <div className="flex gap-2 flex-wrap">
+            {[50, 100, 500, 1000].map(amt => (
+              <button
+                key={amt}
+                onClick={() => setCreditAmount(String(amt))}
+                className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+                style={
+                  creditAmount === String(amt)
+                    ? { background: 'rgba(0,255,136,0.2)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+                    : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
+                }
+              >
+                ₹{amt}
+              </button>
+            ))}
+          </div>
+
+          {/* Note */}
           <input
-            type="number"
-            value={creditAmount}
-            onChange={e => setCreditAmount(e.target.value)}
-            placeholder="e.g. 500"
-            className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-sm text-dark-text focus:outline-none focus:border-neon-green transition-colors"
+            value={creditNote}
+            onChange={e => setCreditNote(e.target.value)}
+            placeholder="Note (optional) — e.g. Promo bonus"
+            className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-xs text-dark-text focus:outline-none focus:border-neon-green transition-colors"
           />
+
+          <button
+            onClick={handleCredit}
+            disabled={crediting || !selected}
+            className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
+            style={{ background: 'rgba(0,255,136,0.85)', color: '#0d1117' }}
+          >
+            {crediting ? 'Adding…' : selected ? `Add Money to ${selected.username}` : 'Select a user first'}
+          </button>
+
+          {creditResult && (
+            <p className="text-xs font-medium" style={{ color: creditResult.ok ? '#00e676' : '#ff6b6b' }}>
+              {creditResult.ok ? '✅' : '❌'} {creditResult.msg}
+            </p>
+          )}
         </div>
 
-        {/* Quick presets */}
-        <div className="flex gap-2 flex-wrap">
-          {[50, 100, 500, 1000].map(amt => (
-            <button
-              key={amt}
-              onClick={() => setCreditAmount(String(amt))}
-              className="text-xs px-3 py-1.5 rounded-lg transition-colors"
-              style={
-                creditAmount === String(amt)
-                  ? { background: 'rgba(0,255,136,0.2)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
-                  : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
-              }
-            >
-              ₹{amt}
-            </button>
-          ))}
+        {/* ── Right: Admin credit history ── */}
+        <div className="rounded-2xl p-5 space-y-3" style={cardStyle}>
+          <p className="text-sm font-semibold text-white">📋 Admin Credit History</p>
+          {credits.length === 0 ? (
+            <p className="text-dark-muted text-sm py-6 text-center">No admin credits yet</p>
+          ) : (
+            <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+              {credits.map(c => (
+                <div
+                  key={String(c.id)}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <Avatar avatar={c.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{c.username}</p>
+                    <p className="text-[11px] text-dark-muted truncate">
+                      {c.description.replace(/^\[Admin\]\s*/, '')}
+                    </p>
+                    <p className="text-[10px] text-dark-muted opacity-60">
+                      {new Date(c.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <p className="font-bold text-neon-green text-sm flex-shrink-0">+₹{c.amount}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Note */}
-        <input
-          value={creditNote}
-          onChange={e => setCreditNote(e.target.value)}
-          placeholder="Note (optional) — e.g. Promo bonus"
-          className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-xs text-dark-text focus:outline-none focus:border-neon-green transition-colors"
-        />
-
-        <button
-          onClick={handleCredit}
-          disabled={crediting || !selected}
-          className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
-          style={{ background: 'rgba(0,255,136,0.85)', color: '#0d1117' }}
-        >
-          {crediting ? 'Adding…' : selected ? `Add Money to ${selected.username}` : 'Select a user first'}
-        </button>
-
-        {creditResult && (
-          <p className="text-xs font-medium" style={{ color: creditResult.ok ? '#00e676' : '#ff6b6b' }}>
-            {creditResult.ok ? '✅' : '❌'} {creditResult.msg}
-          </p>
-        )}
       </div>
     </div>
   );
