@@ -370,7 +370,7 @@ function startNextRound(io: Server, state: GameState) {
   scheduleBotTurnIfNeeded(io, freshState);
 }
 
-function handleMatchEnd(io: Server, state: GameState) {
+async function handleMatchEnd(io: Server, state: GameState) {
   const matchResult = ScoreEngine.checkMatchOver(state) ?? {
     winnerId: state.players[0].id,
     winnerUsername: state.players[0].username,
