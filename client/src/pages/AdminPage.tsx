@@ -435,7 +435,7 @@ function GameConfigSection({ config, onSave }: { config: any; onSave: (data: any
       <div className="space-y-2">
         <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide">Players</p>
         <NumberInput label="Min Players" value={gc.minPlayers} min={2} max={gc.maxPlayers} onChange={v => set('minPlayers', v)} />
-        <NumberInput label="Max Players" value={gc.maxPlayers} min={gc.minPlayers} max={7} onChange={v => set('maxPlayers', v)} />
+        <NumberInput label="Max Players" value={gc.maxPlayers} min={gc.minPlayers} max={10} onChange={v => set('maxPlayers', v)} />
 
         <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide pt-2">Rounds</p>
         <NumberInput label="Min Rounds" value={gc.minRounds} min={1} max={gc.maxRounds} onChange={v => set('minRounds', v)} />
@@ -443,7 +443,7 @@ function GameConfigSection({ config, onSave }: { config: any; onSave: (data: any
 
         <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide pt-2">Limits</p>
         <NumberInput label="Max Spectators" value={gc.maxSpectators} min={0} max={50} onChange={v => set('maxSpectators', v)} />
-        <NumberInput label="Max Bots" value={gc.maxBots} min={0} max={6} onChange={v => set('maxBots', v)} />
+        <NumberInput label="Max Bots" value={gc.maxBots} min={0} max={9} onChange={v => set('maxBots', v)} />
       </div>
 
       <button

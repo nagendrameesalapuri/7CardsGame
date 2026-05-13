@@ -91,8 +91,8 @@ export function LobbyPage() {
 
   const maxBots = adminConfig?.gameConfig.maxBots ?? 4;
   const maxPlayersLimit = adminConfig?.gameConfig.maxPlayers ?? 6;
-  // Hard deck limit: 57 cards - 1 joker = 56, need ≥1 for discard → max 7 players → 6 bots max
-  const effectiveMaxBots = Math.min(maxBots, maxPlayersLimit - 1, 6);
+  // Double deck: 113 usable cards, 7 per player → max 10 players → 9 bots max
+  const effectiveMaxBots = Math.min(maxBots, maxPlayersLimit - 1, 9);
   const botOptions = Array.from({ length: effectiveMaxBots }, (_, i) => ({
     bots: i + 1,
     label: `${i + 1} Bot${i + 1 > 1 ? 's' : ''}`,
@@ -224,7 +224,7 @@ export function LobbyPage() {
               {botOptions.length === 0 ? (
                 <p className="text-dark-muted text-xs text-center py-4">AI games are currently disabled by admin</p>
               ) : (
-                <div className={`grid gap-2 ${botOptions.length <= 3 ? 'grid-cols-3' : botOptions.length <= 4 ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5'}`}>
+                <div className={`grid gap-2 ${botOptions.length <= 3 ? 'grid-cols-3' : botOptions.length <= 4 ? 'grid-cols-4' : botOptions.length <= 6 ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5'}`}>
                   {botOptions.map(({ bots, label, desc }) => (
                     <motion.button
                       key={bots}

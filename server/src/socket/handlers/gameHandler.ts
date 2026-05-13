@@ -116,10 +116,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         return socket.emit('game:error', 'Need at least 2 players to start');
       }
 
-      // Deck limit: 56 usable cards, need ≥1 for discard seed → max 7 players (7×7=49 dealt, 7 remain)
+      // Double deck: 113 usable cards, 7 per player → max 10 players (70 dealt, 43 remain for draw pile)
       const totalPlayers = room.players.length + room.config.botCount;
-      if (totalPlayers > 7) {
-        return socket.emit('game:error', `Too many players (max 7, got ${totalPlayers}). Reduce bot count.`);
+      if (totalPlayers > 10) {
+        return socket.emit('game:error', `Too many players (max 10, got ${totalPlayers}). Reduce bot count.`);
       }
 
       // Build player list (humans + bots)

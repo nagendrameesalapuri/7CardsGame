@@ -14,29 +14,31 @@ const BASE_VALUES: Record<Rank, number> = {
 };
 
 export class DeckManager {
-  /** Create a fresh 57-card deck: 52 standard + 5 printed jokers (unshuffled). */
+  /** Create a fresh double deck: 2×(52 standard + 5 printed jokers) = 114 cards (unshuffled). */
   static createDeck(): Card[] {
     const deck: Card[] = [];
-    for (const suit of SUITS) {
-      for (const rank of RANKS) {
+    for (let copy = 0; copy < 2; copy++) {
+      for (const suit of SUITS) {
+        for (const rank of RANKS) {
+          deck.push({
+            id: `${suit[0]}${rank}-${copy}-${uuidv4().slice(0, 6)}`,
+            suit,
+            rank,
+            value: BASE_VALUES[rank],
+            isJoker: false,
+          });
+        }
+      }
+      // 5 printed jokers per deck
+      for (let i = 0; i < 5; i++) {
         deck.push({
-          id: `${suit[0]}${rank}-${uuidv4().slice(0, 6)}`,
-          suit,
-          rank,
-          value: BASE_VALUES[rank],
-          isJoker: false,
+          id: `pj${copy}-${i}-${uuidv4().slice(0, 6)}`,
+          suit: 'none',
+          rank: 'Joker',
+          value: 0,
+          isJoker: true,
         });
       }
-    }
-    // Add 5 printed jokers — always wild regardless of paper joker
-    for (let i = 0; i < 5; i++) {
-      deck.push({
-        id: `pj${i}-${uuidv4().slice(0, 6)}`,
-        suit: 'none',
-        rank: 'Joker',
-        value: 0,
-        isJoker: true,
-      });
     }
     return deck;
   }
