@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -625,12 +625,14 @@ function WithdrawalsSection() {
 function WalletsSection() {
   const [wallets, setWallets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [dropdownSearch, setDropdownSearch] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditNote, setCreditNote] = useState('');
   const [crediting, setCrediting] = useState(false);
   const [creditResult, setCreditResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadWallets = useCallback(() => {
     admin.getWallets()
@@ -641,14 +643,32 @@ function WalletsSection() {
 
   useEffect(() => { loadWallets(); }, [loadWallets]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const filtered = wallets.filter(w => {
-    const q = search.toLowerCase();
+    const q = dropdownSearch.toLowerCase();
     return (
       w.username?.toLowerCase().includes(q) ||
       w.email?.toLowerCase().includes(q) ||
       String(w.id).toLowerCase().includes(q)
     );
   });
+
+  const handleSelect = (w: any) => {
+    setSelected(w);
+    setDropdownSearch('');
+    setDropdownOpen(false);
+    setCreditResult(null);
+  };
 
   const handleCredit = async () => {
     const amt = parseInt(creditAmount);
@@ -672,136 +692,138 @@ function WalletsSection() {
   if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 max-w-lg">
       <h2 className="text-xl font-bold text-white">User Wallets</h2>
 
-      {/* ── Search ── */}
-      <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-        </svg>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, email or ID…"
-          className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-9 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text text-lg leading-none">×</button>
-        )}
-      </div>
+      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+        <p className="text-sm font-semibold text-white">💸 Add Money</p>
 
-      <div className="grid lg:grid-cols-2 gap-4 items-start">
-
-        {/* ── User list ── */}
-        <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-          {filtered.length === 0 ? (
-            <p className="text-dark-muted text-sm py-6 text-center">No users found</p>
-          ) : filtered.map((w, i) => {
-            const isSelected = selected?.id === w.id;
-            return (
-              <button
-                key={w.id}
-                onClick={() => { setSelected(w); setCreditResult(null); }}
-                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3 transition-all"
-                style={{
-                  ...cardStyle,
-                  border: isSelected
-                    ? '1px solid rgba(0,255,136,0.5)'
-                    : '1px solid rgba(255,255,255,0.06)',
-                  background: isSelected ? 'rgba(0,255,136,0.06)' : cardStyle.background,
-                }}
+        {/* ── User dropdown ── */}
+        <div>
+          <label className="text-xs text-dark-muted block mb-1.5">Select User</label>
+          <div className="relative" ref={dropdownRef}>
+            {/* Trigger / search input */}
+            {selected ? (
+              /* Selected state — show chip with clear */
+              <div
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer"
+                style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.35)' }}
+                onClick={() => { setSelected(null); setCreditResult(null); setDropdownOpen(true); }}
               >
-                <span className="text-dark-muted text-xs w-5 flex-shrink-0">#{i + 1}</span>
-                <Avatar avatar={w.avatar} size="sm" />
+                <Avatar avatar={selected.avatar} size="sm" />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-white truncate">{w.username}</p>
-                    {w.isGuest && <span className="text-[9px] bg-dark-border text-dark-muted px-1 rounded">Guest</span>}
-                  </div>
-                  <p className="text-[11px] text-dark-muted truncate">{w.email ?? '—'}</p>
-                  <p className="text-[10px] text-dark-muted font-mono truncate">{String(w.id)}</p>
+                  <p className="text-sm font-semibold text-white truncate">{selected.username}</p>
+                  <p className="text-[11px] text-dark-muted truncate">{selected.email ?? (selected.isGuest ? 'Guest' : '—')}</p>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="font-bold text-neon-green text-sm">₹{w.balance}</p>
-                  {isSelected && <p className="text-[10px] text-neon-green">Selected ✓</p>}
+                <div className="text-right flex-shrink-0 mr-1">
+                  <p className="text-xs text-dark-muted">Balance</p>
+                  <p className="text-sm font-bold text-neon-green">₹{selected.balance}</p>
                 </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Credit form ── */}
-        <div className="rounded-2xl p-4 space-y-3 sticky top-4" style={cardStyle}>
-          <p className="text-sm font-semibold text-white">💸 Add Money</p>
-
-          {/* Selected user preview */}
-          {selected ? (
-            <div className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
-              <Avatar avatar={selected.avatar} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{selected.username}</p>
-                <p className="text-[11px] text-dark-muted">Current balance: <span className="text-neon-green font-bold">₹{selected.balance}</span></p>
+                <button
+                  onClick={e => { e.stopPropagation(); setSelected(null); setCreditResult(null); }}
+                  className="text-dark-muted hover:text-red-400 text-xl leading-none flex-shrink-0"
+                >×</button>
               </div>
-              <button onClick={() => { setSelected(null); setCreditResult(null); }} className="text-dark-muted hover:text-neon-red text-lg leading-none">×</button>
-            </div>
-          ) : (
-            <div className="px-3 py-3 rounded-xl text-center text-xs text-dark-muted" style={{ border: '1px dashed rgba(255,255,255,0.1)' }}>
-              ← Select a user from the list
-            </div>
-          )}
+            ) : (
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                </svg>
+                <input
+                  value={dropdownSearch}
+                  onChange={e => { setDropdownSearch(e.target.value); setDropdownOpen(true); }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="Search by name, email or ID…"
+                  className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-9 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted pointer-events-none text-xs">▼</span>
+              </div>
+            )}
 
-          <div>
-            <label className="text-xs text-dark-muted block mb-1">Amount (₹)</label>
-            <input
-              type="number"
-              value={creditAmount}
-              onChange={e => setCreditAmount(e.target.value)}
-              placeholder="e.g. 500"
-              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-sm text-dark-text focus:outline-none focus:border-neon-green"
-            />
-          </div>
-
-          {/* Quick amount presets */}
-          <div className="flex gap-2 flex-wrap">
-            {[50, 100, 500, 1000].map(amt => (
-              <button
-                key={amt}
-                onClick={() => setCreditAmount(String(amt))}
-                className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-                style={
-                  creditAmount === String(amt)
-                    ? { background: 'rgba(0,255,136,0.2)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
-                    : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
-                }
+            {/* Dropdown list */}
+            {dropdownOpen && !selected && (
+              <div
+                className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-2xl"
+                style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '280px', overflowY: 'auto' }}
               >
-                ₹{amt}
-              </button>
-            ))}
+                {filtered.length === 0 ? (
+                  <p className="text-dark-muted text-sm py-4 text-center">No users found</p>
+                ) : filtered.map((w, i) => (
+                  <button
+                    key={w.id}
+                    onMouseDown={() => handleSelect(w)}
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                  >
+                    <span className="text-dark-muted text-xs w-5 flex-shrink-0">#{i + 1}</span>
+                    <Avatar avatar={w.avatar} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold text-white truncate">{w.username}</p>
+                        {w.isGuest && <span className="text-[9px] bg-dark-border text-dark-muted px-1 rounded">Guest</span>}
+                      </div>
+                      <p className="text-[11px] text-dark-muted truncate">{w.email ?? '—'}</p>
+                      <p className="text-[10px] text-dark-muted font-mono truncate opacity-60">{String(w.id)}</p>
+                    </div>
+                    <p className="font-bold text-neon-green text-sm flex-shrink-0">₹{w.balance}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-
-          <input
-            value={creditNote}
-            onChange={e => setCreditNote(e.target.value)}
-            placeholder="Note (optional) — e.g. Promo bonus"
-            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
-          />
-
-          <button
-            onClick={handleCredit}
-            disabled={crediting || !selected}
-            className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
-            style={{ background: 'rgba(0,255,136,0.85)', color: '#0d1117' }}
-          >
-            {crediting ? 'Adding…' : selected ? `Add Money to ${selected.username}` : 'Select a user first'}
-          </button>
-
-          {creditResult && (
-            <p className="text-xs font-medium" style={{ color: creditResult.ok ? '#00e676' : '#ff6b6b' }}>
-              {creditResult.ok ? '✅' : '❌'} {creditResult.msg}
-            </p>
-          )}
         </div>
+
+        {/* ── Amount ── */}
+        <div>
+          <label className="text-xs text-dark-muted block mb-1.5">Amount (₹)</label>
+          <input
+            type="number"
+            value={creditAmount}
+            onChange={e => setCreditAmount(e.target.value)}
+            placeholder="e.g. 500"
+            className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-sm text-dark-text focus:outline-none focus:border-neon-green transition-colors"
+          />
+        </div>
+
+        {/* Quick presets */}
+        <div className="flex gap-2 flex-wrap">
+          {[50, 100, 500, 1000].map(amt => (
+            <button
+              key={amt}
+              onClick={() => setCreditAmount(String(amt))}
+              className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+              style={
+                creditAmount === String(amt)
+                  ? { background: 'rgba(0,255,136,0.2)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+                  : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
+              }
+            >
+              ₹{amt}
+            </button>
+          ))}
+        </div>
+
+        {/* Note */}
+        <input
+          value={creditNote}
+          onChange={e => setCreditNote(e.target.value)}
+          placeholder="Note (optional) — e.g. Promo bonus"
+          className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-xs text-dark-text focus:outline-none focus:border-neon-green transition-colors"
+        />
+
+        <button
+          onClick={handleCredit}
+          disabled={crediting || !selected}
+          className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
+          style={{ background: 'rgba(0,255,136,0.85)', color: '#0d1117' }}
+        >
+          {crediting ? 'Adding…' : selected ? `Add Money to ${selected.username}` : 'Select a user first'}
+        </button>
+
+        {creditResult && (
+          <p className="text-xs font-medium" style={{ color: creditResult.ok ? '#00e676' : '#ff6b6b' }}>
+            {creditResult.ok ? '✅' : '❌'} {creditResult.msg}
+          </p>
+        )}
       </div>
     </div>
   );
