@@ -10,6 +10,7 @@ import {
   getAllActiveRoomInfos, forceEndGame, kickPlayerFromGame,
   getActiveGame,
 } from '../socket/handlers/gameHandler';
+import { refundAbandonedGame } from '../socket/handlers/roomHandler';
 import { getSpectatorCounts } from '../socket/handlers/spectatorHandler';
 import { getOnlineUserIds } from '../socket/index';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
@@ -168,6 +169,12 @@ export default function createAdminRouter(io: Server) {
     try {
       const { code } = req.params;
 
+      // Refund entry fees if this was a cash game in progress
+      const room = await Room.findOne({ code: code.toUpperCase() });
+      if (room) {
+        await refundAbandonedGame(room);
+      }
+
       // Force-end in-memory game
       const ended = forceEndGame(io, code);
 
@@ -175,6 +182,7 @@ export default function createAdminRouter(io: Server) {
       await Room.deleteOne({ code: code.toUpperCase() });
 
       // Notify everyone in that room
+      io.to(code).emit('game:abandoned', { message: 'This room was ended by an admin. Entry fees have been refunded.' });
       io.to(code).emit('room:force_ended', { message: 'This room was ended by an admin' });
       io.socketsLeave(code);
 
@@ -227,7 +235,7 @@ export default function createAdminRouter(io: Server) {
 
       const [users, total] = await Promise.all([
         User.find(query)
-          .select('-guestToken -googleId -email')
+          .select('-guestToken -googleId')
           .sort({ createdAt: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
@@ -241,6 +249,7 @@ export default function createAdminRouter(io: Server) {
         users: users.map(u => ({
           id: u._id,
           username: u.username,
+          email: (u as any).email ?? null,
           avatar: u.avatar,
           isGuest: u.isGuest,
           isBanned: (u as any).isBanned ?? false,
@@ -330,6 +339,39 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: 'Failed to reset stats' });
+    }
+  });
+
+  // ── Delete all guest accounts ───────────────────────────────────────────────
+  router.delete('/users/guests', async (_req: Request, res: Response) => {
+    try {
+      const result = await User.deleteMany({ isGuest: true });
+      res.json({ success: true, deleted: result.deletedCount });
+    } catch {
+      res.status(500).json({ error: 'Failed to delete guest accounts' });
+    }
+  });
+
+  // ── Delete user account permanently ────────────────────────────────────────
+  router.delete('/users/:id', async (req: Request, res: Response) => {
+    try {
+      const user = await User.findById(req.params.id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Disconnect their socket if online
+      const sockets = await io.fetchSockets();
+      for (const s of sockets) {
+        if ((s as any).userId === req.params.id) {
+          s.emit('auth:kicked', { message: 'Your account has been deleted by an admin' });
+          s.disconnect(true);
+          break;
+        }
+      }
+
+      await User.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to delete user' });
     }
   });
 

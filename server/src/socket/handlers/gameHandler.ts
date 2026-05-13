@@ -377,7 +377,21 @@ function handleMatchEnd(io: Server, state: GameState) {
     finalScores: state.players.map(p => ({ playerId: p.id, username: p.username, totalScore: p.totalScore })),
   };
 
-  io.to(state.roomId).emit('game:match_end', matchResult);
+  // Attach prize info to match result if this is a cash game
+  const roomForPrize = await Room.findOne({ code: state.roomId }).lean().catch(() => null);
+  const entryFeeForResult: number = roomForPrize ? ((roomForPrize.config as any).entryFee ?? 0) : 0;
+  const paidCountForResult: number = roomForPrize ? ((roomForPrize as any).paidPlayerIds?.length ?? 0) : 0;
+  const prizePoolForResult = entryFeeForResult * paidCountForResult;
+  const winnerCountForResult = (matchResult.winnerIds ?? [matchResult.winnerId]).length;
+  const matchResultWithPrize = {
+    ...matchResult,
+    ...(prizePoolForResult > 0 ? {
+      prizePool: prizePoolForResult,
+      prizePerWinner: Math.floor(prizePoolForResult / Math.max(1, winnerCountForResult)),
+    } : {}),
+  };
+
+  io.to(state.roomId).emit('game:match_end', matchResultWithPrize);
 
   // Persist final result with player scores.
   // Use roundResult.playerResults when available — state.players[].totalScore

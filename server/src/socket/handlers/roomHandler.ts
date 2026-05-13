@@ -242,12 +242,32 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
   });
 }
 
+/** Refund the entry fee to every player who paid in a cash game room. */
+export async function refundAbandonedGame(room: IRoom) {
+  const entryFee = (room.config as any).entryFee ?? 0;
+  if (entryFee <= 0 || !room.paidPlayerIds?.length) return;
+
+  for (const pid of room.paidPlayerIds) {
+    await User.findByIdAndUpdate(pid, { $inc: { walletBalance: entryFee } });
+    await Transaction.create({
+      userId: pid,
+      type: 'refund',
+      amount: entryFee,
+      status: 'completed',
+      description: `Refund — game abandoned in room ${room.code}`,
+      metadata: { roomCode: room.code },
+    });
+  }
+  room.paidPlayerIds = [];
+}
+
 export async function handleLeave(io: Server, socket: Socket, userId: string) {
   const room = await Room.findOne({ code: socket.data.roomCode });
   if (!room) return;
 
-  // Refund entry fee if game hasn't started yet
   const entryFee = (room.config as any).entryFee ?? 0;
+
+  // Refund this player if they leave before the game starts
   if (room.status === 'waiting' && entryFee > 0 && room.paidPlayerIds?.includes(userId)) {
     await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } });
     room.paidPlayerIds = room.paidPlayerIds.filter(id => id !== userId);
@@ -263,6 +283,17 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
 
   room.players = room.players.filter(p => p.userId !== userId);
   await socket.leave(room.code);
+
+  // If game was in progress and no human players remain → abandoned, refund everyone
+  const humanPlayersLeft = room.players.filter(p => !p.isBot).length;
+  if (room.status === 'playing' && humanPlayersLeft === 0) {
+    await refundAbandonedGame(room);
+    await Room.deleteOne({ _id: room._id });
+    io.to(room.code).emit('game:abandoned', {
+      message: 'All players left — entry fees have been refunded.',
+    });
+    return;
+  }
 
   if (room.players.length === 0) {
     await Room.deleteOne({ _id: room._id });

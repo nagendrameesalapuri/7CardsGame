@@ -24,13 +24,13 @@ export default {
           bg: '#f5f0e8',
           border: '#c8b89a',
         },
-        // Dark theme
+        // Theme-aware colours (switch via CSS variables in index.css)
         dark: {
-          bg: '#0d1117',
-          surface: '#161b22',
-          border: '#30363d',
-          text: '#e6edf3',
-          muted: '#8b949e',
+          bg:      'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          border:  'var(--color-border)',
+          text:    'var(--color-text)',
+          muted:   'var(--color-muted)',
         },
       },
       fontFamily: {

@@ -86,6 +86,8 @@ export interface MatchResult {
   winnerIds?: string[];       // all tied match winners
   winnerUsername: string;     // "Player A & Player B" on tie
   finalScores: { playerId: string; username: string; totalScore: number }[];
+  prizePool?: number;         // total pot for cash games
+  prizePerWinner?: number;    // amount each winner receives
 }
 
 export interface ChatMessage {

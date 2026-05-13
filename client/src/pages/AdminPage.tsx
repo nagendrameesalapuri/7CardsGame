@@ -217,44 +217,98 @@ function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Debounce search — only fire query 400 ms after user stops typing
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchUsers = useCallback(() => {
-    admin.getUsers({ page, search: search || undefined }).then(r => {
+    setLoading(true);
+    admin.getUsers({ page, search: debouncedSearch || undefined }).then(r => {
       setUsers(r.data.users);
       setTotalPages(r.data.pages);
+      setTotal(r.data.total);
       setLoading(false);
     }).catch(console.error);
-  }, [page, search]);
+  }, [page, debouncedSearch]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   const doAction = async (fn: () => Promise<any>) => {
     await fn().catch(console.error);
     fetchUsers();
   };
 
+  const copyId = (id: string) => {
+    navigator.clipboard.writeText(String(id));
+    setCopiedId(String(id));
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-white">User Management</h2>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-lg font-bold text-white">User Management</h2>
+        <div className="flex items-center gap-2">
+          {!loading && <span className="text-xs text-dark-muted">{total} user{total !== 1 ? 's' : ''}</span>}
+          <button
+            onClick={async () => {
+              if (!confirm('Delete ALL guest accounts? This cannot be undone.')) return;
+              try {
+                const { data } = await admin.deleteAllGuests();
+                fetchUsers();
+                alert(`Deleted ${data.deleted} guest account${data.deleted !== 1 ? 's' : ''}`);
+              } catch {
+                alert('Failed to delete guest accounts');
+              }
+            }}
+            className="text-[11px] px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
+            style={{ background: 'rgba(255,59,92,0.15)', color: '#ff3b5c', border: '1px solid rgba(255,59,92,0.35)' }}
+          >
+            🗑 Delete All Guests
+          </button>
+        </div>
+      </div>
 
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search by username…"
-        className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-purple-500 transition-colors"
-      />
+      {/* Search bar */}
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by username or email…"
+          className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-9 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-purple-500 transition-colors"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text text-lg leading-none"
+          >×</button>
+        )}
+      </div>
 
       {loading ? (
         <p className="text-dark-muted text-sm animate-pulse">Loading users…</p>
+      ) : users.length === 0 ? (
+        <div className="text-center py-10 text-dark-muted text-sm" style={cardStyle}>
+          {search ? `No users found for "${search}"` : 'No users yet'}
+        </div>
       ) : (
         <div className="space-y-2">
           {users.map(u => (
             <motion.div
-              key={u.id}
+              key={String(u.id)}
               layout
               className="p-3 rounded-xl flex items-center gap-3"
               style={{ ...cardStyle, opacity: u.isBanned ? 0.6 : 1 }}
@@ -264,15 +318,33 @@ function UsersSection() {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm text-dark-text truncate">{u.username}</span>
                   {u.isOnline && <span className="w-1.5 h-1.5 rounded-full bg-neon-green flex-shrink-0" title="Online" />}
-                  {u.isGuest && <span className="text-[10px] text-dark-muted">Guest</span>}
+                  {u.isGuest && <span className="text-[10px] bg-dark-border text-dark-muted px-1.5 py-0.5 rounded">Guest</span>}
                   {u.isBanned && <span className="text-[10px] text-neon-red font-bold">BANNED</span>}
                 </div>
-                <p className="text-[11px] text-dark-muted">
-                  {u.stats.gamesPlayed}G · {u.stats.gamesWon}W · {u.stats.gamesPlayed > 0 ? Math.round(u.stats.gamesWon / u.stats.gamesPlayed * 100) : 0}%
+                {u.email && <p className="text-[11px] text-dark-muted truncate">{u.email}</p>}
+                {/* ID row with copy button */}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[10px] text-dark-muted font-mono truncate max-w-[160px]" title={String(u.id)}>
+                    {String(u.id)}
+                  </span>
+                  <button
+                    onClick={() => copyId(String(u.id))}
+                    className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded transition-all font-medium"
+                    style={
+                      copiedId === String(u.id)
+                        ? { background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }
+                        : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
+                    }
+                  >
+                    {copiedId === String(u.id) ? '✓ Copied' : 'Copy ID'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-dark-muted mt-0.5">
+                  {u.stats.gamesPlayed}G · {u.stats.gamesWon}W · {u.stats.gamesPlayed > 0 ? Math.round(u.stats.gamesWon / u.stats.gamesPlayed * 100) : 0}% win
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
                 {u.isBanned ? (
                   <button
                     onClick={() => doAction(() => admin.unbanUser(u.id))}
@@ -299,6 +371,15 @@ function UsersSection() {
                   className="text-[11px] px-2 py-1 rounded-lg font-semibold"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
                 >Reset</button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Permanently delete "${u.username}"? This cannot be undone.`))
+                      doAction(() => admin.deleteUser(u.id));
+                  }}
+                  className="text-[11px] px-2 py-1 rounded-lg font-semibold"
+                  style={{ background: 'rgba(255,59,92,0.2)', color: '#ff3b5c', border: '1px solid rgba(255,59,92,0.5)' }}
+                  title="Delete account permanently"
+                >🗑 Delete</button>
               </div>
             </motion.div>
           ))}
@@ -544,11 +625,12 @@ function WithdrawalsSection() {
 function WalletsSection() {
   const [wallets, setWallets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creditUserId, setCreditUserId] = useState('');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<any | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditNote, setCreditNote] = useState('');
   const [crediting, setCrediting] = useState(false);
-  const [creditResult, setCreditResult] = useState<string | null>(null);
+  const [creditResult, setCreditResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const loadWallets = useCallback(() => {
     admin.getWallets()
@@ -559,19 +641,29 @@ function WalletsSection() {
 
   useEffect(() => { loadWallets(); }, [loadWallets]);
 
+  const filtered = wallets.filter(w => {
+    const q = search.toLowerCase();
+    return (
+      w.username?.toLowerCase().includes(q) ||
+      w.email?.toLowerCase().includes(q) ||
+      String(w.id).toLowerCase().includes(q)
+    );
+  });
+
   const handleCredit = async () => {
     const amt = parseInt(creditAmount);
-    if (!creditUserId.trim()) return setCreditResult('❌ Enter a User ID');
-    if (!amt || amt <= 0) return setCreditResult('❌ Enter a valid amount');
+    if (!selected) return setCreditResult({ ok: false, msg: 'Select a user first' });
+    if (!amt || amt <= 0) return setCreditResult({ ok: false, msg: 'Enter a valid amount' });
     setCrediting(true);
     setCreditResult(null);
     try {
-      const { data } = await admin.creditWallet(creditUserId.trim(), amt, creditNote || undefined);
-      setCreditResult(`✅ Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}`);
-      setCreditUserId(''); setCreditAmount(''); setCreditNote('');
+      const { data } = await admin.creditWallet(String(selected.id), amt, creditNote || undefined);
+      setCreditResult({ ok: true, msg: `Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}` });
+      setCreditAmount('');
+      setCreditNote('');
       loadWallets();
     } catch (err: any) {
-      setCreditResult(`❌ ${err?.response?.data?.error ?? 'Failed'}`);
+      setCreditResult({ ok: false, msg: err?.response?.data?.error ?? 'Failed' });
     } finally {
       setCrediting(false);
     }
@@ -580,22 +672,85 @@ function WalletsSection() {
   if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <h2 className="text-xl font-bold text-white">User Wallets</h2>
 
-      {/* ── Credit wallet form ── */}
-      <div className="rounded-2xl p-4 space-y-3" style={cardStyle}>
-        <p className="text-sm font-semibold text-white">💸 Add Money to User Wallet</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div>
-            <label className="text-xs text-dark-muted block mb-1">User ID</label>
-            <input
-              value={creditUserId}
-              onChange={e => setCreditUserId(e.target.value)}
-              placeholder="Paste MongoDB user _id"
-              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text font-mono focus:outline-none focus:border-neon-green"
-            />
-          </div>
+      {/* ── Search ── */}
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email or ID…"
+          className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-9 py-2.5 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text text-lg leading-none">×</button>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
+
+        {/* ── User list ── */}
+        <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+          {filtered.length === 0 ? (
+            <p className="text-dark-muted text-sm py-6 text-center">No users found</p>
+          ) : filtered.map((w, i) => {
+            const isSelected = selected?.id === w.id;
+            return (
+              <button
+                key={w.id}
+                onClick={() => { setSelected(w); setCreditResult(null); }}
+                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3 transition-all"
+                style={{
+                  ...cardStyle,
+                  border: isSelected
+                    ? '1px solid rgba(0,255,136,0.5)'
+                    : '1px solid rgba(255,255,255,0.06)',
+                  background: isSelected ? 'rgba(0,255,136,0.06)' : cardStyle.background,
+                }}
+              >
+                <span className="text-dark-muted text-xs w-5 flex-shrink-0">#{i + 1}</span>
+                <Avatar avatar={w.avatar} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-white truncate">{w.username}</p>
+                    {w.isGuest && <span className="text-[9px] bg-dark-border text-dark-muted px-1 rounded">Guest</span>}
+                  </div>
+                  <p className="text-[11px] text-dark-muted truncate">{w.email ?? '—'}</p>
+                  <p className="text-[10px] text-dark-muted font-mono truncate">{String(w.id)}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-bold text-neon-green text-sm">₹{w.balance}</p>
+                  {isSelected && <p className="text-[10px] text-neon-green">Selected ✓</p>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Credit form ── */}
+        <div className="rounded-2xl p-4 space-y-3 sticky top-4" style={cardStyle}>
+          <p className="text-sm font-semibold text-white">💸 Add Money</p>
+
+          {/* Selected user preview */}
+          {selected ? (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
+              <Avatar avatar={selected.avatar} size="sm" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{selected.username}</p>
+                <p className="text-[11px] text-dark-muted">Current balance: <span className="text-neon-green font-bold">₹{selected.balance}</span></p>
+              </div>
+              <button onClick={() => { setSelected(null); setCreditResult(null); }} className="text-dark-muted hover:text-neon-red text-lg leading-none">×</button>
+            </div>
+          ) : (
+            <div className="px-3 py-3 rounded-xl text-center text-xs text-dark-muted" style={{ border: '1px dashed rgba(255,255,255,0.1)' }}>
+              ← Select a user from the list
+            </div>
+          )}
+
           <div>
             <label className="text-xs text-dark-muted block mb-1">Amount (₹)</label>
             <input
@@ -603,58 +758,51 @@ function WalletsSection() {
               value={creditAmount}
               onChange={e => setCreditAmount(e.target.value)}
               placeholder="e.g. 500"
-              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
+              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-sm text-dark-text focus:outline-none focus:border-neon-green"
             />
           </div>
-        </div>
-        <input
-          value={creditNote}
-          onChange={e => setCreditNote(e.target.value)}
-          placeholder="Note (optional) — e.g. Promo bonus"
-          className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
-        />
-        <button
-          onClick={handleCredit}
-          disabled={crediting}
-          className="px-4 py-2 rounded-lg bg-neon-green text-dark-bg text-xs font-bold hover:bg-green-400 transition-colors disabled:opacity-50"
-        >
-          {crediting ? 'Adding…' : 'Add Money'}
-        </button>
-        {creditResult && (
-          <p className="text-xs mt-1" style={{ color: creditResult.startsWith('✅') ? '#00e676' : '#ff6b6b' }}>
-            {creditResult}
-          </p>
-        )}
-      </div>
 
-      {/* ── Wallet balances list ── */}
-      {wallets.length === 0 ? (
-        <p className="text-dark-muted text-sm py-4 text-center">No users with balance yet</p>
-      ) : (
-        <div className="space-y-2">
-          {wallets.map((w, i) => (
-            <div key={w.id} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={cardStyle}>
-              <div className="flex items-center gap-3">
-                <span className="text-dark-muted text-sm w-6">#{i + 1}</span>
-                <div>
-                  <p className="text-sm font-semibold text-white">{w.username}</p>
-                  <p className="text-[10px] text-dark-muted font-mono break-all">{w.id}</p>
-                  <p className="text-xs text-dark-muted">{w.email ?? (w.isGuest ? 'Guest' : '—')}</p>
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-neon-green font-bold">₹{w.balance}</p>
-                <button
-                  onClick={() => setCreditUserId(w.id)}
-                  className="text-[10px] text-dark-muted hover:text-neon-green transition-colors mt-0.5"
-                >
-                  Use ID ↑
-                </button>
-              </div>
-            </div>
-          ))}
+          {/* Quick amount presets */}
+          <div className="flex gap-2 flex-wrap">
+            {[50, 100, 500, 1000].map(amt => (
+              <button
+                key={amt}
+                onClick={() => setCreditAmount(String(amt))}
+                className="text-xs px-2.5 py-1 rounded-lg transition-colors"
+                style={
+                  creditAmount === String(amt)
+                    ? { background: 'rgba(0,255,136,0.2)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+                    : { background: 'rgba(255,255,255,0.05)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.08)' }
+                }
+              >
+                ₹{amt}
+              </button>
+            ))}
+          </div>
+
+          <input
+            value={creditNote}
+            onChange={e => setCreditNote(e.target.value)}
+            placeholder="Note (optional) — e.g. Promo bonus"
+            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-xs text-dark-text focus:outline-none focus:border-neon-green"
+          />
+
+          <button
+            onClick={handleCredit}
+            disabled={crediting || !selected}
+            className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
+            style={{ background: 'rgba(0,255,136,0.85)', color: '#0d1117' }}
+          >
+            {crediting ? 'Adding…' : selected ? `Add Money to ${selected.username}` : 'Select a user first'}
+          </button>
+
+          {creditResult && (
+            <p className="text-xs font-medium" style={{ color: creditResult.ok ? '#00e676' : '#ff6b6b' }}>
+              {creditResult.ok ? '✅' : '❌'} {creditResult.msg}
+            </p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

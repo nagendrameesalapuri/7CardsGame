@@ -135,6 +135,7 @@ type EventMap = {
   'game:can_resume': { roomCode: string };
   'game:round_ready_update': { readyUserIds: string[]; total: number };
   'game:force_ended': { message: string };
+  'game:abandoned': { message: string };
   'chat:received': ChatMessage;
   'lobby:rooms_updated': void;
   'spectate:state': SpectatorGameState;

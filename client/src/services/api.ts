@@ -117,6 +117,8 @@ export const admin = {
   unbanUser: (id: string) => adminApi.post(`/users/${id}/unban`),
   kickUser: (id: string) => adminApi.post(`/users/${id}/kick`),
   resetUserStats: (id: string) => adminApi.post(`/users/${id}/reset-stats`),
+  deleteUser: (id: string) => adminApi.delete(`/users/${id}`),
+  deleteAllGuests: () => adminApi.delete<{ deleted: number }>('/users/guests'),
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>('/leaderboard'),
   resetLeaderboard: () => adminApi.post('/leaderboard/reset'),

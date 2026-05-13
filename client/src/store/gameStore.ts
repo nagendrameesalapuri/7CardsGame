@@ -319,6 +319,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     unsubs.push(on('game:force_ended', handleForceEnded));
     unsubs.push(on('room:force_ended', handleForceEnded));
 
+    // Game abandoned (all players left mid-game) — show refund notice
+    const handleAbandoned = ({ message }: { message: string }) => {
+      notify.info(message ?? 'Game abandoned — entry fees have been refunded', { duration: 7000 });
+      set({ game: null, room: null, matchResult: null, forceEndedMsg: message ?? 'Game abandoned' });
+    };
+    unsubs.push(on('game:abandoned', handleAbandoned));
+
     return () => unsubs.forEach(u => u());
   },
 
