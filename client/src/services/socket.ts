@@ -122,6 +122,7 @@ export const socketChat = {
 export const socketTournament = {
   start:  (entryFee: number) => getSocket().emit('tournament:start', { entryFee }),
   status: ()                 => getSocket().emit('tournament:status'),
+  cancel: ()                 => getSocket().emit('tournament:cancel'),
 };
 
 // ── Event listener helpers (typed) ───────────────────────────────────────────
@@ -159,6 +160,7 @@ type EventMap = {
   'tournament:resumed':       { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; roomCode: string | null };
   'tournament:game_result':   { gameNumber: number; playerWins: number; botWins: number; draws: number; isDraw: boolean; playerWon: boolean; playerScore: number; botScore: number; tournamentOver: boolean; won?: boolean; overallDraw?: boolean; prizeAmount?: number; totalReturn?: number; nextGameNumber?: number; nextRoomCode?: string };
   'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
+  'tournament:cancelled':     { refunded: boolean; amount: number };
   'tournament:error':         string;
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];

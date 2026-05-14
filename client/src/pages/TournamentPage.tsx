@@ -165,6 +165,8 @@ export function TournamentPage() {
   const [tab, setTab] = useState<'play' | 'history'>('play');
   const [activeTournament, setActiveTournament] = useState<ActiveTournamentStatus | null>(null);
   const [statusChecked, setStatusChecked] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/'); return; }
@@ -177,10 +179,18 @@ export function TournamentPage() {
       setStatusChecked(true);
       setActiveTournament(result);
     });
+    const unsub5 = on('tournament:cancelled', ({ refunded, amount }) => {
+      setCancelling(false);
+      setConfirmCancel(false);
+      setActiveTournament(null);
+      if (refunded) {
+        setBalance(prev => prev !== null ? prev + amount : prev);
+      }
+    });
     socketTournament.status();
 
     walletApi.get().then(r => setBalance(r.data.balance)).catch(() => {});
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents]);
 
   const handleStart = (fee: number) => {
@@ -197,6 +207,13 @@ export function TournamentPage() {
     setSelectedFee(activeTournament.entryFee);
     socketTournament.start(activeTournament.entryFee);
     const unsub = on('tournament:error', () => { setStarting(false); setSelectedFee(null); unsub(); });
+  };
+
+  const handleCancel = () => {
+    if (cancelling) return;
+    setCancelling(true);
+    socketTournament.cancel();
+    const unsub = on('tournament:error', () => { setCancelling(false); unsub(); });
   };
 
   if (!isAuthenticated) return null;
@@ -266,18 +283,66 @@ export function TournamentPage() {
                 </div>
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleResume}
-                disabled={starting}
-                className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }}
-              >
-                {starting && selectedFee === activeTournament.entryFee
-                  ? '⏳ Resuming…'
-                  : `▶ Resume Game ${activeTournament.gameNumber} (₹${activeTournament.entryFee} entry)`}
-              </motion.button>
+              {/* Confirm cancel dialog */}
+              {confirmCancel ? (
+                <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(255,107,107,0.08)', border: '1px solid rgba(255,107,107,0.3)' }}>
+                  <p className="text-sm font-bold text-red-400">Cancel this tournament?</p>
+                  {activeTournament.gameNumber === 1 ? (
+                    <p className="text-xs text-dark-muted">
+                      You haven't played any games yet.{' '}
+                      <span className="text-neon-green font-semibold">₹{activeTournament.entryFee} will be fully refunded</span> to your wallet.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-dark-muted">
+                      You've already played {activeTournament.gameNumber - 1} game{activeTournament.gameNumber - 1 > 1 ? 's' : ''}.{' '}
+                      <span className="text-red-400 font-semibold">No refund</span> — entry fee is forfeited once a game has been played.
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConfirmCancel(false)}
+                      disabled={cancelling}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold text-dark-muted hover:text-white transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      Keep Playing
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      disabled={cancelling}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+                      style={{ background: 'rgba(255,107,107,0.2)', border: '1px solid rgba(255,107,107,0.4)', color: '#ff6b6b' }}
+                    >
+                      {cancelling ? '⏳ Cancelling…' : activeTournament.gameNumber === 1 ? 'Yes, Cancel & Refund' : 'Yes, Forfeit'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleResume}
+                    disabled={starting}
+                    className="flex-1 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }}
+                  >
+                    {starting && selectedFee === activeTournament.entryFee
+                      ? '⏳ Resuming…'
+                      : `▶ Resume Game ${activeTournament.gameNumber}`}
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setConfirmCancel(true)}
+                    disabled={starting}
+                    className="py-3 px-4 rounded-xl font-bold text-sm disabled:opacity-50"
+                    style={{ background: 'rgba(255,107,107,0.12)', border: '1px solid rgba(255,107,107,0.3)', color: '#ff6b6b' }}
+                  >
+                    ✕ Cancel
+                  </motion.button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -196,6 +196,42 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
     }
   });
 
+  // Cancel active tournament (refund only if 0 games played)
+  socket.on('tournament:cancel', async () => {
+    try {
+      const t = await Tournament.findOne({ userId, status: 'active' });
+      if (!t) return socket.emit('tournament:error', 'No active tournament found');
+
+      const refund = t.gamesPlayed === 0;
+
+      t.status = 'lost';
+      t.completedAt = new Date();
+      await t.save();
+
+      // Clean up the room
+      if (t.currentRoomCode) {
+        await Room.deleteOne({ code: t.currentRoomCode }).catch(() => {});
+      }
+
+      if (refund) {
+        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: t.entryFee } });
+        await Transaction.create({
+          userId,
+          type: 'refund',
+          amount: t.entryFee,
+          status: 'completed',
+          description: 'Tournament cancelled before first game — entry fee refunded',
+          metadata: { tournamentId: t.id },
+        });
+      }
+
+      socket.emit('tournament:cancelled', { refunded: refund, amount: t.entryFee });
+    } catch (err) {
+      console.error('[Tournament] Cancel error:', err);
+      socket.emit('tournament:error', 'Failed to cancel tournament');
+    }
+  });
+
   // Client queries active tournament status (e.g. on page load)
   socket.on('tournament:status', async () => {
     try {
