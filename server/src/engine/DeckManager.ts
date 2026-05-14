@@ -14,10 +14,14 @@ const BASE_VALUES: Record<Rank, number> = {
 };
 
 export class DeckManager {
-  /** Create a fresh double deck: 2×(52 standard + 5 printed jokers) = 114 cards (unshuffled). */
-  static createDeck(): Card[] {
+  /**
+   * Create a deck with the given number of copies.
+   * Each copy = 52 standard cards + 2 printed jokers = 54 cards.
+   * Use copies=1 for 2–3 players (54 cards) and copies=2 for 4+ players (108 cards).
+   */
+  static createDeck(copies: number = 1): Card[] {
     const deck: Card[] = [];
-    for (let copy = 0; copy < 2; copy++) {
+    for (let copy = 0; copy < copies; copy++) {
       for (const suit of SUITS) {
         for (const rank of RANKS) {
           deck.push({
@@ -29,8 +33,8 @@ export class DeckManager {
           });
         }
       }
-      // 5 printed jokers per deck
-      for (let i = 0; i < 5; i++) {
+      // 2 printed jokers per deck copy (52 + 2 = 54 per copy)
+      for (let i = 0; i < 2; i++) {
         deck.push({
           id: `pj${copy}-${i}-${uuidv4().slice(0, 6)}`,
           suit: 'none',
