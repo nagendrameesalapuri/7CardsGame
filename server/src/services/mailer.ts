@@ -1,22 +1,6 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 const ADMIN_EMAIL = 'nagendra.meesala.puri@gmail.com';
-
-function getTransporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!user || !pass) throw new Error('SMTP_USER / SMTP_PASS not configured');
-
-  // Strip spaces from App Password — Railway/copy-paste often includes them
-  const cleanPass = pass.replace(/\s/g, '');
-
-  return nodemailer.createTransport({
-    host:   'smtp.gmail.com',
-    port:   465,
-    secure: true, // SSL
-    auth:   { user, pass: cleanPass },
-  });
-}
 
 export async function sendDepositRequestEmail(opts: {
   username: string;
@@ -25,6 +9,9 @@ export async function sendDepositRequestEmail(opts: {
   utrNumber: string;
   requestedAt: Date;
 }): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY not configured');
+
   const { username, userId, amount, utrNumber, requestedAt } = opts;
 
   const dateStr = requestedAt.toLocaleString('en-IN', {
@@ -33,6 +20,8 @@ export async function sendDepositRequestEmail(opts: {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: true,
   });
+
+  const resend = new Resend(apiKey);
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
@@ -75,11 +64,12 @@ export async function sendDepositRequestEmail(opts: {
     </div>
   `;
 
-  const transporter = getTransporter();
-  await transporter.sendMail({
-    from:    `"7 Cards Show" <${process.env.SMTP_USER}>`,
+  const { error } = await resend.emails.send({
+    from:    '7 Cards Show <onboarding@resend.dev>',
     to:      ADMIN_EMAIL,
-    subject: `[7Cards] Deposit ₹${amount} from ${username} — UTR: ${utrNumber}`,
+    subject: `[7Cards] Deposit &#8377;${amount} from ${username} — UTR: ${utrNumber}`,
     html,
   });
+
+  if (error) throw new Error(`Resend error: ${JSON.stringify(error)}`);
 }
