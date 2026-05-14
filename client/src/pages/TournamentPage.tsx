@@ -66,22 +66,32 @@ function HistoryTab() {
   return (
     <div className="space-y-3">
       {history.map((t: any) => {
-        const meta = STATUS_META[t.status] ?? STATUS_META.active;
-        const isCancelled = t.status === 'cancelled';
+        const isCancelled    = t.status === 'cancelled';
+        const isFailedStart  = t.status === 'lost' && t.gamesPlayed === 0;
+        const isNormalLost   = t.status === 'lost' && t.gamesPlayed > 0;
+        const effectiveMeta  = isFailedStart
+          ? { label: 'Not Started', color: '#6b7280', icon: '⚠️' }
+          : (STATUS_META[t.status] ?? STATUS_META.active);
+        const meta = effectiveMeta;
+
         const prizeColor =
-          t.status === 'won'       ? '#00ff88' :
-          t.status === 'draw'      ? '#fbbf24' :
-          t.status === 'cancelled' ? '#00ff88' :
-          t.status === 'lost'      ? '#ff6b6b' : '#60a5fa';
+          t.status === 'won'                    ? '#00ff88' :
+          t.status === 'draw'                   ? '#fbbf24' :
+          isCancelled && t.gamesPlayed === 0    ? '#00ff88' :
+          isCancelled                           ? '#ff6b6b' :
+          isFailedStart                         ? '#6b7280' :
+          isNormalLost                          ? '#ff6b6b' : '#60a5fa';
 
         const prizeLine =
-          t.status === 'won'       ? `+₹${t.prizeAmount} prize` :
-          t.status === 'draw'      ? `₹${t.entryFee} refunded` :
-          t.status === 'cancelled' ? `₹${t.entryFee} refunded` :
-          t.status === 'lost'      ? `−₹${t.entryFee} lost` :
+          t.status === 'won'                    ? `+₹${t.prizeAmount} prize` :
+          t.status === 'draw'                   ? `₹${t.entryFee} refunded` :
+          isCancelled && t.gamesPlayed === 0    ? `₹${t.entryFee} refunded` :
+          isCancelled                           ? `−₹${t.entryFee} forfeited` :
+          isFailedStart                         ? `₹${t.entryFee} entry` :
+          isNormalLost                          ? `−₹${t.entryFee} lost` :
           'In progress';
 
-        const cardBorder = isCancelled
+        const cardBorder = (isCancelled || isFailedStart)
           ? '1px solid rgba(156,163,175,0.15)'
           : '1px solid rgba(255,255,255,0.07)';
 
@@ -103,8 +113,14 @@ function HistoryTab() {
               <span className="text-xs text-dark-muted">{formatDate(t.createdAt)}</span>
             </div>
 
-            {/* Cancelled with no games played — show simple refund notice */}
-            {isCancelled && t.gamesPlayed === 0 ? (
+            {/* Failed to start (old records: status=lost, 0 games) */}
+            {isFailedStart ? (
+              <div className="rounded-lg px-3 py-2 mb-2 flex items-center gap-2"
+                style={{ background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)' }}>
+                <span className="text-xs">⚠️</span>
+                <span className="text-xs text-dark-muted font-semibold">Tournament didn't start — no games were played</span>
+              </div>
+            ) : isCancelled && t.gamesPlayed === 0 ? (
               <div className="rounded-lg px-3 py-2 mb-2 flex items-center gap-2"
                 style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.15)' }}>
                 <span className="text-xs">💰</span>
