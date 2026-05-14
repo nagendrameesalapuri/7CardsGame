@@ -9,7 +9,8 @@ test.describe('Leaderboard', () => {
   });
 
   test('leaderboard page loads', async ({ page }) => {
-    await expect(page.getByText(/leaderboard/i).first()).toBeVisible();
+    // Use heading role to find the page h1 (avoids hidden desktop nav links on mobile)
+    await expect(page.getByRole('heading', { name: /leaderboard/i })).toBeVisible();
   });
 
   test('shows player rankings or empty state', async ({ page }) => {

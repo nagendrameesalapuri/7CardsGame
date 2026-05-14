@@ -23,7 +23,7 @@ export async function adminLogin(page: Page, password = TEST_ADMIN_PASS) {
   await page.goto('/admin/login');
   await page.waitForLoadState('domcontentloaded');
   await page.getByPlaceholder(/password/i).fill(password);
-  await page.getByRole('button', { name: /login/i }).click();
+  await page.getByRole('button', { name: /access dashboard/i }).click();
   await page.waitForURL(/\/admin(?!\/login)/, { timeout: 10000 });
 }
 

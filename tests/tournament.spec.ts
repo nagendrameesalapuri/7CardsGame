@@ -13,14 +13,15 @@ test.describe('Tournament', () => {
   });
 
   test('play and history tabs are present', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /play/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /history/i })).toBeVisible();
+    // Tab buttons: "⚔️ Play" and "📋 History" — use first() since multiple /play/ buttons may exist
+    await expect(page.getByRole('button', { name: /play/i }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /history/i }).first()).toBeVisible();
   });
 
   test('tournament format section is visible', async ({ page }) => {
     await expect(page.getByText(/tournament format/i)).toBeVisible();
-    await expect(page.getByText(/3 games|up to 3/i)).toBeVisible();
-    await expect(page.getByText(/first to 2/i)).toBeVisible();
+    await expect(page.getByText(/up to 3 games/i).or(page.getByText(/3 games/i)).first()).toBeVisible();
+    await expect(page.getByText(/first to 2/i).first()).toBeVisible();
   });
 
   test('starter tier card shows ₹10 entry', async ({ page }) => {
@@ -34,8 +35,8 @@ test.describe('Tournament', () => {
   });
 
   test('prize amounts are shown correctly', async ({ page }) => {
-    await expect(page.getByText(/₹15/).first()).toBeVisible(); // starter prize
-    await expect(page.getByText(/₹25/).first()).toBeVisible(); // champion prize
+    await expect(page.getByText(/₹15/).first()).toBeVisible();
+    await expect(page.getByText(/₹25/).first()).toBeVisible();
   });
 
   test('tie refund rule notice is visible', async ({ page }) => {
@@ -48,8 +49,7 @@ test.describe('Tournament', () => {
   });
 
   test('history tab switches view', async ({ page }) => {
-    await page.getByRole('button', { name: /history/i }).click();
-    // Should show history content or empty state
+    await page.getByRole('button').filter({ hasText: /history/i }).first().click();
     await expect(
       page.getByText(/no tournament|play your first|history/i).first()
     ).toBeVisible({ timeout: 5000 });

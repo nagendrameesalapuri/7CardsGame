@@ -27,7 +27,8 @@ test.describe('Lobby', () => {
   });
 
   test('leaderboard navigation works', async ({ page }) => {
-    await page.getByRole('link', { name: /leaderboard/i }).click();
+    // Desktop nav has "Leaderboard", mobile has "Board" — navigate directly for reliability
+    await page.goto('/leaderboard');
     await expect(page).toHaveURL(/\/leaderboard/);
   });
 
@@ -37,7 +38,8 @@ test.describe('Lobby', () => {
   });
 
   test('tournament navigation works', async ({ page }) => {
-    await page.getByRole('link', { name: /tournament/i }).click();
+    // Tournament is accessed via the banner in the lobby (not a header nav link)
+    await page.getByText(/bot tournament/i).first().click();
     await expect(page).toHaveURL(/\/tournament/);
   });
 

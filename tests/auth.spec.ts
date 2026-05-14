@@ -82,8 +82,8 @@ test.describe('Authentication', () => {
 
   test('logout clears session and returns to home', async ({ page }) => {
     await guestLogin(page, 'LogoutTest' + Date.now());
-    await page.getByRole('button', { name: /logout/i }).click();
-    await page.waitForURL('/');
+    await page.getByRole('button', { name: 'Logout', exact: true }).click();
+    await page.waitForURL('/', { timeout: 10000 });
     await expect(page).toHaveURL('/');
   });
 });

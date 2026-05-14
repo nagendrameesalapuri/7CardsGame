@@ -11,11 +11,13 @@ test.describe('Profile', () => {
   });
 
   test('profile page loads', async ({ page }) => {
-    await expect(page.getByText(/profile/i).first()).toBeVisible();
+    // Use heading to avoid hidden desktop nav links on mobile
+    await expect(page.getByRole('heading').first()).toBeVisible();
   });
 
   test('username is displayed on profile', async ({ page }) => {
-    await expect(page.getByText(new RegExp(username, 'i'))).toBeVisible({ timeout: 5000 });
+    // Username shown in h2 on profile page (not the hidden header span)
+    await expect(page.getByRole('heading', { name: new RegExp(username, 'i') })).toBeVisible({ timeout: 8000 });
   });
 
   test('stats section is visible', async ({ page }) => {

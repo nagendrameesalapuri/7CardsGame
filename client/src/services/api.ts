@@ -43,7 +43,8 @@ adminApi.interceptors.request.use((config) => {
 adminApi.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // Only redirect on 401 for non-login endpoints (login itself returns 401 on wrong password)
+    if (err.response?.status === 401 && !err.config?.url?.includes('/login')) {
       localStorage.removeItem('adminToken');
       window.location.href = '/admin/login';
     }
