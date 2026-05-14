@@ -18,10 +18,11 @@ import { VoiceChat } from './VoiceChat';
 export function GameBoard() {
   const { user } = useAuthStore();
   const {
-    game, matchResult, isMyTurn, canShow, underAttack, handTotal,
+    game, room, matchResult, isMyTurn, canShow, underAttack, handTotal,
     roundReadyUpdate, readyForNextRound,
     subscribeToEvents, leaveRoom,
   } = useGameStore();
+  const entryFee: number = (room?.config as any)?.entryFee ?? 0;
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
 
   useEffect(() => {
@@ -62,6 +63,15 @@ export function GameBoard() {
             <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
             <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
           </div>
+          {entryFee > 0 ? (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
+              💰 Bet ₹{entryFee}
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex-shrink-0">
+              🎮 Free
+            </span>
+          )}
         </div>
 
         <TurnTimer

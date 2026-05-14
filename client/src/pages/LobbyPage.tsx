@@ -12,6 +12,7 @@ import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
 import { JoinRoomModal } from '../components/lobby/JoinRoomModal';
 import { Button } from '../components/ui/Button';
 import { HistoryTab } from '../components/lobby/HistoryTab';
+import { SupportModal } from '../components/lobby/SupportModal';
 import { PublicAdminConfig } from '../types';
 
 type Tab = 'play' | 'history';
@@ -23,6 +24,7 @@ export function LobbyPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
@@ -111,23 +113,31 @@ export function LobbyPage() {
         </motion.div>
 
         {/* ── Tabs ──────────────────────────────────────────────────── */}
-        <div className="flex gap-1 mb-4 sm:mb-8 bg-dark-surface border border-dark-border rounded-xl p-1 w-fit mx-auto">
-          {([
-            { key: 'play', label: '🎮 Play' },
-            { key: 'history', label: '📋 History' },
-          ] as { key: Tab; label: string }[]).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all ${
-                activeTab === tab.key
-                  ? 'bg-neon-green text-dark-bg shadow'
-                  : 'text-dark-muted hover:text-dark-text'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-center gap-3 mb-4 sm:mb-8">
+          <div className="flex gap-1 bg-dark-surface border border-dark-border rounded-xl p-1">
+            {([
+              { key: 'play', label: '🎮 Play' },
+              { key: 'history', label: '📋 History' },
+            ] as { key: Tab; label: string }[]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-neon-green text-dark-bg shadow'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowSupport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dark-border text-dark-muted hover:text-dark-text hover:border-dark-text/40 transition-all text-xs font-medium"
+          >
+            🎧 Support
+          </button>
         </div>
 
         {/* ── Resume game banner ─────────────────────────────────────── */}
@@ -452,6 +462,7 @@ export function LobbyPage() {
 
       <CreateRoomModal isOpen={showCreate} onClose={() => setShowCreate(false)} adminConfig={adminConfig} />
       <JoinRoomModal isOpen={showJoin} onClose={() => setShowJoin(false)} />
+      <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
     </Layout>
   );
 }

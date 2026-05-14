@@ -83,6 +83,12 @@ export const configApi = {
   getPublic: () => api.get<{ featureFlags: any; gameConfig: any }>('/admin/config/public'),
 };
 
+export const supportApi = {
+  submit: (data: { category: string; subject: string; message: string }) =>
+    api.post<{ ticket: any }>('/support', data),
+  mine: () => api.get<{ tickets: any[] }>('/support/mine'),
+};
+
 export const walletApi = {
   get:            () => api.get<{ balance: number; isGuest: boolean; transactions: any[]; withdrawalRequests: any[]; depositRequests: any[] }>('/wallet'),
   requestDeposit: (amount: number, utrNumber: string) =>
@@ -133,6 +139,11 @@ export const admin = {
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>('/leaderboard'),
   resetLeaderboard: () => adminApi.post('/leaderboard/reset'),
+
+  getSupport: (status?: string) =>
+    adminApi.get<{ tickets: any[]; summary: any }>('/support', { params: { status } }),
+  updateSupport: (id: string, data: { status?: string; adminNote?: string; adminReply?: string }) =>
+    adminApi.patch(`/support/${id}`, data),
 };
 
 export default api;

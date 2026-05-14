@@ -22,7 +22,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'deposits' | 'withdrawals' | 'wallets' | 'tournaments';
+type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'deposits' | 'withdrawals' | 'wallets' | 'tournaments' | 'support';
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -1163,6 +1163,195 @@ function TournamentsSection() {
   );
 }
 
+// ── Support Section ────────────────────────────────────────────────────────────
+
+const STATUS_COLORS: Record<string, string> = {
+  open:        'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+  in_progress: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  resolved:    'bg-neon-green/20 text-neon-green border-neon-green/30',
+};
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Open', in_progress: 'In Progress', resolved: 'Resolved',
+};
+const CAT_LABELS: Record<string, string> = {
+  payment: '💳 Payment', game: '🎮 Game', account: '👤 Account', bug: '🐛 Bug', other: '💬 Other',
+};
+
+function SupportSection() {
+  const [data, setData]         = useState<{ tickets: any[]; summary: any } | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState('all');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft]   = useState<Record<string, string>>({});
+  const [noteDraft, setNoteDraft]     = useState<Record<string, string>>({});
+  const [saving, setSaving]     = useState<string | null>(null);
+
+  const load = useCallback((f = filter) => {
+    setLoading(true);
+    admin.getSupport(f)
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  useEffect(() => { load(); }, []);
+
+  const applyFilter = (f: string) => { setFilter(f); load(f); };
+
+  const save = async (id: string, status?: string) => {
+    setSaving(id);
+    try {
+      await admin.updateSupport(id, {
+        ...(status ? { status } : {}),
+        adminNote:  noteDraft[id] ?? undefined,
+        adminReply: replyDraft[id] ?? undefined,
+      });
+      load();
+      setExpanded(null);
+    } catch { /* keep open */ } finally { setSaving(null); }
+  };
+
+  const tickets = data?.tickets ?? [];
+  const summary = data?.summary ?? { open: 0, in_progress: 0, resolved: 0 };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold text-dark-text">🎧 Support Tickets</h2>
+        <div className="flex gap-3 text-xs">
+          <span className="px-2 py-1 rounded-lg bg-yellow-500/20 text-yellow-300">{summary.open} Open</span>
+          <span className="px-2 py-1 rounded-lg bg-blue-500/20 text-blue-300">{summary.in_progress} In Progress</span>
+          <span className="px-2 py-1 rounded-lg bg-neon-green/20 text-neon-green">{summary.resolved} Resolved</span>
+        </div>
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {['all', 'open', 'in_progress', 'resolved'].map(f => (
+          <button
+            key={f}
+            onClick={() => applyFilter(f)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              filter === f ? 'bg-purple-500/30 text-purple-300 border border-purple-500/40' : 'text-dark-muted hover:text-dark-text border border-dark-border'
+            }`}
+          >
+            {f === 'all' ? 'All' : f === 'in_progress' ? 'In Progress' : f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <button onClick={() => load()} className="ml-auto text-xs text-dark-muted hover:text-dark-text">⟳ Refresh</button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16 text-dark-muted animate-pulse">Loading tickets…</div>
+      ) : tickets.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-dark-border rounded-2xl text-dark-muted">
+          <p className="text-4xl mb-2">🎧</p>
+          <p>No support tickets{filter !== 'all' ? ` with status "${filter}"` : ''}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tickets.map((t: any) => {
+            const isOpen = expanded === t._id;
+            return (
+              <div key={t._id} className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden">
+                {/* Row */}
+                <div
+                  className="flex items-start gap-3 p-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                  onClick={() => {
+                    setExpanded(isOpen ? null : t._id);
+                    if (!replyDraft[t._id]) setReplyDraft(d => ({ ...d, [t._id]: t.adminReply ?? '' }));
+                    if (!noteDraft[t._id])  setNoteDraft(d => ({ ...d, [t._id]: t.adminNote ?? '' }));
+                  }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${STATUS_COLORS[t.status]}`}>
+                        {STATUS_LABELS[t.status]}
+                      </span>
+                      <span className="text-[10px] text-dark-muted bg-white/5 px-1.5 py-0.5 rounded-full">
+                        {CAT_LABELS[t.category] ?? t.category}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-dark-text text-sm truncate">{t.subject}</p>
+                    <p className="text-dark-muted text-xs mt-0.5">
+                      @{t.username} · {new Date(t.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="text-dark-muted text-xs flex-shrink-0 mt-1">{isOpen ? '▲' : '▼'}</span>
+                </div>
+
+                {/* Expanded */}
+                {isOpen && (
+                  <div className="border-t border-dark-border p-4 space-y-4">
+                    {/* User message */}
+                    <div>
+                      <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-1">User Message</p>
+                      <p className="text-dark-text text-sm whitespace-pre-wrap bg-dark-bg rounded-xl p-3">{t.message}</p>
+                    </div>
+
+                    {/* Admin Reply */}
+                    <div>
+                      <label className="block text-xs font-semibold text-dark-muted uppercase tracking-wide mb-1">
+                        Reply to User
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={replyDraft[t._id] ?? ''}
+                        onChange={e => setReplyDraft(d => ({ ...d, [t._id]: e.target.value }))}
+                        placeholder="Write a reply that will be visible to the user…"
+                        className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-dark-text placeholder:text-dark-muted focus:outline-none focus:border-neon-green resize-none"
+                      />
+                    </div>
+
+                    {/* Internal Note */}
+                    <div>
+                      <label className="block text-xs font-semibold text-dark-muted uppercase tracking-wide mb-1">
+                        Internal Note <span className="font-normal normal-case">(not shown to user)</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={noteDraft[t._id] ?? ''}
+                        onChange={e => setNoteDraft(d => ({ ...d, [t._id]: e.target.value }))}
+                        placeholder="Admin-only note…"
+                        className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-dark-text placeholder:text-dark-muted focus:outline-none focus:border-purple-500 resize-none"
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => save(t._id, 'in_progress')}
+                        disabled={!!saving}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition-all disabled:opacity-50"
+                      >
+                        Mark In Progress
+                      </button>
+                      <button
+                        onClick={() => save(t._id, 'resolved')}
+                        disabled={!!saving}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-neon-green/20 text-neon-green border border-neon-green/30 hover:bg-neon-green/30 transition-all disabled:opacity-50"
+                      >
+                        Mark Resolved
+                      </button>
+                      <button
+                        onClick={() => save(t._id)}
+                        disabled={!!saving}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 text-dark-text hover:bg-white/15 transition-all disabled:opacity-50"
+                      >
+                        {saving === t._id ? 'Saving…' : 'Save Reply & Note'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
@@ -1174,6 +1363,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: 'withdrawals',  icon: '💸', label: 'Withdrawals' },
   { key: 'wallets',      icon: '💰', label: 'Wallets' },
   { key: 'tournaments',  icon: '⚔️', label: 'Tournaments' },
+  { key: 'support',      icon: '🎧', label: 'Support' },
   { key: 'features',     icon: '⚙️', label: 'Features' },
   { key: 'gameconfig',   icon: '🎯', label: 'Game Config' },
 ];
@@ -1337,6 +1527,7 @@ export function AdminPage() {
             {section === 'withdrawals'  && <WithdrawalsSection />}
             {section === 'wallets'      && <WalletsSection />}
             {section === 'tournaments'  && <TournamentsSection />}
+            {section === 'support'      && <SupportSection />}
             {section === 'features'     && <FeaturesSection config={config} onSave={saveConfig} />}
             {section === 'gameconfig'   && <GameConfigSection config={config} onSave={saveConfig} />}
           </motion.div>

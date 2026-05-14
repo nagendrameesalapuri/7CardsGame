@@ -30,6 +30,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
     turnTimeLimit: 30,
     entryFee: 0,
   });
+  const [entryFeeText, setEntryFeeText] = useState('');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
   const isCashGame      = form.entryFee > 0;
@@ -141,7 +142,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setForm(f => ({ ...f, entryFee: 0 }))}
+              onClick={() => { setForm(f => ({ ...f, entryFee: 0 })); setEntryFeeText(''); }}
               className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
                 form.entryFee === 0
                   ? 'bg-neon-green text-dark-bg shadow-md shadow-green-400/20'
@@ -153,7 +154,11 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             <button
               type="button"
               disabled={isGuest}
-              onClick={() => setForm(f => ({ ...f, entryFee: f.entryFee > 0 ? f.entryFee : 10 }))}
+              onClick={() => {
+                const fee = form.entryFee > 0 ? form.entryFee : 10;
+                setForm(f => ({ ...f, entryFee: fee }));
+                setEntryFeeText(String(fee));
+              }}
               className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 form.entryFee > 0 && !isGuest
                   ? 'bg-yellow-400 text-dark-bg shadow-md shadow-yellow-400/20'
@@ -169,13 +174,21 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-muted text-sm font-medium">₹</span>
               <input
-                type="number"
-                min="1"
+                type="text"
+                inputMode="numeric"
                 autoFocus
-                value={form.entryFee}
+                value={entryFeeText}
                 onChange={e => {
-                  const val = parseInt(e.target.value);
-                  setForm(f => ({ ...f, entryFee: isNaN(val) || val < 1 ? 1 : val }));
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setEntryFeeText(raw);
+                  const val = parseInt(raw, 10);
+                  if (!isNaN(val) && val >= 1) setForm(f => ({ ...f, entryFee: val }));
+                }}
+                onBlur={() => {
+                  const val = parseInt(entryFeeText, 10);
+                  const clamped = isNaN(val) || val < 1 ? 1 : val;
+                  setForm(f => ({ ...f, entryFee: clamped }));
+                  setEntryFeeText(String(clamped));
                 }}
                 placeholder="Enter bet amount per player"
                 className="w-full bg-dark-bg border border-yellow-400/40 rounded-lg pl-7 pr-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-yellow-400 transition-colors"

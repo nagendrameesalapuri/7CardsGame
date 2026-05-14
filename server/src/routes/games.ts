@@ -43,6 +43,7 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
           totalScore: pr.totalScore,
         })),
       })),
+      entryFee: (g as any).entryFee ?? 0,
       roundsPlayed: g.rounds.length,
       startedAt: g.startedAt,
       endedAt: g.endedAt,

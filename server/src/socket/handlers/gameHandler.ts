@@ -122,6 +122,7 @@ export async function startRoomGame(io: Server, roomCode: string): Promise<void>
     roomId: room.code,
     players: allPlayers.map(p => ({ userId: p.userId, username: p.username, avatar: p.avatar, totalScore: 0, isBot: p.isBot })),
     roundCount: config.roundCount,
+    entryFee: (room.config as any).entryFee ?? 0,
     status: 'playing',
   });
 
@@ -208,6 +209,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           isBot: p.isBot,
         })),
         roundCount: config.roundCount,
+        entryFee: (room.config as any).entryFee ?? 0,
         status: 'playing',
       });
 

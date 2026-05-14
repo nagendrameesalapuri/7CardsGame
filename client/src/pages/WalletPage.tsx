@@ -346,6 +346,8 @@ export function WalletPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
 
+  const TX_PAGE_SIZE = 10;
+
   const [balance, setBalance]               = useState(0);
   const [isGuest, setIsGuest]               = useState(false);
   const [transactions, setTransactions]     = useState<WalletTransaction[]>([]);
@@ -354,6 +356,7 @@ export function WalletPage() {
   const [loading, setLoading]               = useState(true);
   const [showAdd, setShowAdd]               = useState(false);
   const [showWithdraw, setShowWithdraw]     = useState(false);
+  const [txPage, setTxPage]                 = useState(1);
 
   const load = useCallback(async () => {
     try {
@@ -505,38 +508,82 @@ export function WalletPage() {
 
           {/* Transaction history */}
           <div>
-            <h2 className="text-sm font-bold text-dark-muted uppercase tracking-wider mb-3">Transaction History</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-dark-muted uppercase tracking-wider">Transaction History</h2>
+              {transactions.length > TX_PAGE_SIZE && (
+                <span className="text-xs text-dark-muted">
+                  {Math.min(txPage * TX_PAGE_SIZE, transactions.length)} of {transactions.length}
+                </span>
+              )}
+            </div>
             {transactions.length === 0 ? (
               <div className="text-center py-10 text-dark-muted text-sm">No transactions yet</div>
             ) : (
-              <div className="space-y-2">
-                {transactions.map(tx => (
-                  <div key={tx._id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                    style={{
-                      background: isDebit(tx.type) ? 'rgba(255,60,60,0.04)' : tx.type === 'winning' ? 'rgba(255,215,0,0.04)' : 'rgba(255,255,255,0.03)',
-                      border: isDebit(tx.type) ? '1px solid rgba(255,60,60,0.1)' : tx.type === 'winning' ? '1px solid rgba(255,215,0,0.12)' : '1px solid rgba(255,255,255,0.05)',
-                    }}>
-                    <span className="text-xl flex-shrink-0">{TX_ICONS[tx.type] ?? '💳'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={clsx('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-dark-text')}>
-                        {TX_LABELS[tx.type] ?? tx.type}
-                      </p>
-                      <p className="text-xs text-dark-muted truncate">{tx.description}</p>
-                      <p className="text-[10px] text-dark-muted opacity-70">
-                        {new Date(tx.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </p>
+              <>
+                <div className="space-y-2">
+                  {transactions.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map(tx => (
+                    <div key={tx._id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                      style={{
+                        background: isDebit(tx.type) ? 'rgba(255,60,60,0.04)' : tx.type === 'winning' ? 'rgba(255,215,0,0.04)' : 'rgba(255,255,255,0.03)',
+                        border: isDebit(tx.type) ? '1px solid rgba(255,60,60,0.1)' : tx.type === 'winning' ? '1px solid rgba(255,215,0,0.12)' : '1px solid rgba(255,255,255,0.05)',
+                      }}>
+                      <span className="text-xl flex-shrink-0">{TX_ICONS[tx.type] ?? '💳'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={clsx('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-dark-text')}>
+                          {TX_LABELS[tx.type] ?? tx.type}
+                        </p>
+                        <p className="text-xs text-dark-muted truncate">{tx.description}</p>
+                        <p className="text-[10px] text-dark-muted opacity-70">
+                          {new Date(tx.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className={clsx('text-sm font-bold', TX_COLORS[tx.type] ?? 'text-dark-text')}>
+                          {isDebit(tx.type) ? '-' : '+'}₹{tx.amount}
+                        </p>
+                        <span className={clsx('text-[10px] px-1.5 py-0.5 rounded-full', STATUS_PILL[tx.status] ?? 'bg-dark-border text-dark-muted')}>
+                          {tx.status}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={clsx('text-sm font-bold', TX_COLORS[tx.type] ?? 'text-dark-text')}>
-                        {isDebit(tx.type) ? '-' : '+'}₹{tx.amount}
-                      </p>
-                      <span className={clsx('text-[10px] px-1.5 py-0.5 rounded-full', STATUS_PILL[tx.status] ?? 'bg-dark-border text-dark-muted')}>
-                        {tx.status}
-                      </span>
+                  ))}
+                </div>
+
+                {/* Pagination controls */}
+                {transactions.length > TX_PAGE_SIZE && (
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-border">
+                    <button
+                      onClick={() => setTxPage(p => Math.max(1, p - 1))}
+                      disabled={txPage === 1}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      ← Previous
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.ceil(transactions.length / TX_PAGE_SIZE) }, (_, i) => i + 1).map(p => (
+                        <button
+                          key={p}
+                          onClick={() => setTxPage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                            p === txPage
+                              ? 'bg-neon-green text-dark-bg'
+                              : 'text-dark-muted hover:text-dark-text hover:bg-white/5'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
                     </div>
+                    <button
+                      onClick={() => setTxPage(p => Math.min(Math.ceil(transactions.length / TX_PAGE_SIZE), p + 1))}
+                      disabled={txPage >= Math.ceil(transactions.length / TX_PAGE_SIZE)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </motion.div>

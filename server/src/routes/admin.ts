@@ -17,6 +17,7 @@ import { getOnlineUserIds } from '../socket/index';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
 import { DepositRequest } from '../models/DepositRequest';
 import { Transaction } from '../models/Transaction';
+import { SupportTicket } from '../models/SupportTicket';
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -640,6 +641,39 @@ export default function createAdminRouter(io: Server) {
       res.json({ message: `Reset stats for ${result.modifiedCount} users` });
     } catch {
       res.status(500).json({ error: 'Failed to reset leaderboard' });
+    }
+  });
+
+  // ── Support Tickets ─────────────────────────────────────────────────────────
+  router.get('/support', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const filter = status && status !== 'all' ? { status } : {};
+      const tickets = await SupportTicket.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean();
+      const openCount       = await SupportTicket.countDocuments({ status: 'open' });
+      const inProgressCount = await SupportTicket.countDocuments({ status: 'in_progress' });
+      const resolvedCount   = await SupportTicket.countDocuments({ status: 'resolved' });
+      res.json({ tickets, summary: { open: openCount, in_progress: inProgressCount, resolved: resolvedCount } });
+    } catch {
+      res.status(500).json({ error: 'Failed to load support tickets' });
+    }
+  });
+
+  router.patch('/support/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { status, adminNote, adminReply } = req.body;
+      const update: any = {};
+      if (status)     update.status     = status;
+      if (adminNote !== undefined) update.adminNote = adminNote;
+      if (adminReply !== undefined) update.adminReply = adminReply;
+      const ticket = await SupportTicket.findByIdAndUpdate(req.params.id, update, { new: true });
+      if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+      res.json({ ticket });
+    } catch {
+      res.status(500).json({ error: 'Failed to update ticket' });
     }
   });
 

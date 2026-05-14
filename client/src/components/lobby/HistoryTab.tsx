@@ -33,6 +33,7 @@ interface GameHistoryEntry {
     isBot: boolean;
     isWinner: boolean;
   }>;
+  entryFee: number;
   rounds: RoundEntry[];
   roundsPlayed: number;
   startedAt: string;
@@ -104,6 +105,7 @@ export function HistoryTab() {
           totalScore: finalScoreMap[p.username] ?? p.totalScore,
         }));
 
+        const isBetMatch = (game.entryFee ?? 0) > 0;
         const iWon = game.winnerId === user?.id ||
           game.players.some(p => p.userId === user?.id && p.isWinner);
         const myPlayer = playersWithFinalScore.find(p => p.userId === user?.id);
@@ -128,9 +130,20 @@ export function HistoryTab() {
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{iWon ? '🏆' : '💀'}</span>
                   <div>
-                    <p className={clsx('font-bold text-sm', iWon ? 'text-neon-green' : 'text-neon-red')}>
-                      {iWon ? 'Victory' : 'Defeat'}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className={clsx('font-bold text-sm', iWon ? 'text-neon-green' : 'text-neon-red')}>
+                        {iWon ? 'Victory' : 'Defeat'}
+                      </p>
+                      {isBetMatch ? (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                          💰 Bet ₹{game.entryFee}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                          🎮 Free
+                        </span>
+                      )}
+                    </div>
                     <p className="text-dark-muted text-xs">
                       {game.roundsPlayed}{game.roundCount ? `/${game.roundCount}` : ''} rounds · {timeAgo(game.endedAt)}
                     </p>
