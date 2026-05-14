@@ -6,6 +6,7 @@ import { AdminConfig, getAdminConfig } from '../models/AdminConfig';
 import { User } from '../models/User';
 import { Room } from '../models/Room';
 import { Game } from '../models/Game';
+import { Tournament } from '../models/Tournament';
 import {
   getAllActiveRoomInfos, forceEndGame, kickPlayerFromGame,
   getActiveGame,
@@ -73,6 +74,9 @@ export default function createAdminRouter(io: Server) {
         }
         if (typeof featureFlags.publicRoomsEnabled === 'boolean') {
           cfg.featureFlags.publicRoomsEnabled = featureFlags.publicRoomsEnabled;
+        }
+        if (typeof featureFlags.tournamentBannerEnabled === 'boolean') {
+          cfg.featureFlags.tournamentBannerEnabled = featureFlags.tournamentBannerEnabled;
         }
       }
 
@@ -512,6 +516,63 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: 'Failed to process withdrawal' });
+    }
+  });
+
+  // ── Tournament history (admin view) ────────────────────────────────────────
+  router.get('/tournaments', async (req: Request, res: Response) => {
+    try {
+      const page   = Math.max(1, parseInt((req.query.page as string) ?? '1'));
+      const limit  = 50;
+      const status = req.query.status as string | undefined;
+      const filter: Record<string, any> = {};
+      if (status && ['active', 'won', 'lost', 'draw'].includes(status)) filter.status = status;
+
+      const [tournaments, total] = await Promise.all([
+        Tournament.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        Tournament.countDocuments(filter),
+      ]);
+
+      const userIds = [...new Set(tournaments.map(t => t.userId))];
+      const users   = await User.find({ _id: { $in: userIds } }).select('username avatar email').lean();
+      const userMap = Object.fromEntries(users.map(u => [String(u._id), u]));
+
+      const [totalWon, totalLost, totalDraw, totalActive, totalPrize] = await Promise.all([
+        Tournament.countDocuments({ status: 'won' }),
+        Tournament.countDocuments({ status: 'lost' }),
+        Tournament.countDocuments({ status: 'draw' }),
+        Tournament.countDocuments({ status: 'active' }),
+        Tournament.aggregate([
+          { $match: { status: 'won' } },
+          { $group: { _id: null, total: { $sum: '$prizeAmount' } } },
+        ]).then(r => r[0]?.total ?? 0),
+      ]);
+
+      res.json({
+        tournaments: tournaments.map(t => ({
+          id:          t._id,
+          userId:      t.userId,
+          username:    userMap[t.userId]?.username ?? 'Unknown',
+          avatar:      (userMap[t.userId] as any)?.avatar ?? '',
+          email:       (userMap[t.userId] as any)?.email ?? '',
+          entryFee:    t.entryFee,
+          prizeAmount: t.prizeAmount,
+          status:      t.status,
+          gamesPlayed: t.gamesPlayed,
+          playerWins:  t.playerWins,
+          botWins:     t.botWins,
+          draws:       (t as any).draws ?? 0,
+          gameResults: t.gameResults,
+          createdAt:   t.createdAt,
+          completedAt: (t as any).completedAt ?? null,
+        })),
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        summary: { totalWon, totalLost, totalDraw, totalActive, totalPrizePaid: totalPrize },
+      });
+    } catch {
+      res.status(500).json({ error: 'Failed to load tournament history' });
     }
   });
 

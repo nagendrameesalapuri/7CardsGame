@@ -272,17 +272,23 @@ function OpponentChip({
         </div>
       )}
 
-      {/* Colored initials circle */}
+      {/* Avatar: profile picture or initials fallback */}
       <div className={clsx(
-        'w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br flex items-center justify-center font-black text-white shadow-md',
-        color,
+        'w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden flex items-center justify-center font-black text-white shadow-md relative',
+        (!player.avatar || (!player.avatar.startsWith('http') && !player.avatar.startsWith('data:'))) && `bg-gradient-to-br ${color}`,
         isCurrentTurn && 'ring-2 ring-neon-green ring-offset-1 ring-offset-black/50',
         isAttackTarget && 'ring-2 ring-neon-red ring-offset-1 ring-offset-black/50',
       )}>
-        {player.isBot
-          ? <span className="text-[10px] font-black">AI</span>
-          : <span className="text-sm">{initials}</span>
-        }
+        {player.avatar && (player.avatar.startsWith('http') || player.avatar.startsWith('data:')) ? (
+          <img src={player.avatar} alt={player.username} className="w-full h-full object-cover" />
+        ) : player.isBot ? (
+          <span className="text-[10px] font-black">AI</span>
+        ) : (
+          <span className="text-sm">{initials}</span>
+        )}
+        {player.isBot && (
+          <span className="absolute -top-0.5 -right-0.5 bg-neon-blue rounded-full w-3.5 h-3.5 flex items-center justify-center text-[7px] font-black text-dark-bg leading-none">AI</span>
+        )}
       </div>
 
       <span className="text-dark-text text-[10px] sm:text-xs font-semibold truncate w-full text-center leading-tight">

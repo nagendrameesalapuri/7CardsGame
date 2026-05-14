@@ -6,6 +6,7 @@ import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './ha
 import { registerChatHandlers } from './handlers/chatHandler';
 import { registerVoiceHandlers } from './handlers/voiceHandler';
 import { registerSpectatorHandlers } from './handlers/spectatorHandler';
+import { registerTournamentHandlers } from './handlers/tournamentHandler';
 
 // In-memory set of online user IDs
 const onlineUsers = new Map<string, string>(); // userId → socketId
@@ -77,6 +78,7 @@ export function initSocketIO(io: Server) {
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
     registerSpectatorHandlers(io, socket);
+    registerTournamentHandlers(io, socket);
 
     // Notify client if they have an active game they can resume
     if (!isSpectator) {

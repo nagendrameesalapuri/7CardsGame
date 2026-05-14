@@ -12,7 +12,6 @@ interface CreateRoomModalProps {
   adminConfig?: PublicAdminConfig | null;
 }
 
-const ENTRY_FEE_PRESETS = [0, 10, 25, 50, 100, 200];
 
 export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModalProps) {
   const { createRoom } = useGameStore();
@@ -138,23 +137,51 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             )}
           </div>
 
-          <div className="flex gap-2 flex-wrap">
-            {ENTRY_FEE_PRESETS.map(fee => (
-              <button
-                key={fee}
-                type="button"
-                disabled={isGuest}
-                onClick={() => setForm(f => ({ ...f, entryFee: fee }))}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                  form.entryFee === fee && !isGuest
-                    ? 'bg-yellow-400 text-dark-bg shadow-md shadow-yellow-400/20'
-                    : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-yellow-400/50'
-                }`}
-              >
-                {fee === 0 ? 'Free' : `₹${fee}`}
-              </button>
-            ))}
+          {/* Free / Bet Match toggle */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, entryFee: 0 }))}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                form.entryFee === 0
+                  ? 'bg-neon-green text-dark-bg shadow-md shadow-green-400/20'
+                  : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-neon-green/50'
+              }`}
+            >
+              🎮 Free
+            </button>
+            <button
+              type="button"
+              disabled={isGuest}
+              onClick={() => setForm(f => ({ ...f, entryFee: f.entryFee > 0 ? f.entryFee : 10 }))}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                form.entryFee > 0 && !isGuest
+                  ? 'bg-yellow-400 text-dark-bg shadow-md shadow-yellow-400/20'
+                  : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-yellow-400/50'
+              }`}
+            >
+              🎰 Bet Match
+            </button>
           </div>
+
+          {/* Bet amount input — shown only when Bet Match is active */}
+          {isCashGame && !isGuest && (
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-muted text-sm font-medium">₹</span>
+              <input
+                type="number"
+                min="1"
+                autoFocus
+                value={form.entryFee}
+                onChange={e => {
+                  const val = parseInt(e.target.value);
+                  setForm(f => ({ ...f, entryFee: isNaN(val) || val < 1 ? 1 : val }));
+                }}
+                placeholder="Enter bet amount per player"
+                className="w-full bg-dark-bg border border-yellow-400/40 rounded-lg pl-7 pr-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-yellow-400 transition-colors"
+              />
+            </div>
+          )}
 
           {/* Wallet balance indicator */}
           {!isGuest && walletBalance !== null && (

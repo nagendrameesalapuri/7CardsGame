@@ -6,7 +6,23 @@ import { admin } from '../services/api';
 import { on } from '../services/socket';
 import { Avatar } from '../components/ui/Avatar';
 
-type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'withdrawals' | 'wallets';
+// Status badge helper shared across sections
+function StatusBadge({ status }: { status: string }) {
+  const MAP: Record<string, { color: string; bg: string; label: string }> = {
+    won:    { color: '#00ff88', bg: 'rgba(0,255,136,0.12)',   label: 'Won'    },
+    lost:   { color: '#ff6b6b', bg: 'rgba(255,107,107,0.12)', label: 'Lost'   },
+    draw:   { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)',  label: 'Draw'   },
+    active: { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  label: 'Active' },
+  };
+  const m = MAP[status] ?? MAP.active;
+  return (
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ color: m.color, background: m.bg }}>
+      {m.label}
+    </span>
+  );
+}
+
+type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'withdrawals' | 'wallets' | 'tournaments';
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -480,6 +496,12 @@ function FeaturesSection({ config, onSave }: { config: any; onSave: (data: any) 
           value={flags.publicRoomsEnabled}
           onChange={v => setFlags((f: any) => ({ ...f, publicRoomsEnabled: v }))}
         />
+        <Toggle
+          label="Tournament Banner"
+          desc="Show the Bot Tournament banner on the lobby page"
+          value={flags.tournamentBannerEnabled ?? true}
+          onChange={v => setFlags((f: any) => ({ ...f, tournamentBannerEnabled: v }))}
+        />
       </div>
 
       <button
@@ -859,6 +881,183 @@ function WalletsSection() {
   );
 }
 
+// ── Tournaments Section ────────────────────────────────────────────────────────
+
+function TournamentsSection() {
+  const [data, setData]       = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState('');
+  const [page, setPage]       = useState(1);
+
+  const load = useCallback((p = 1, s = filter) => {
+    setLoading(true);
+    admin.getTournaments({ page: p, status: s || undefined })
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  useEffect(() => { load(1); }, []);
+
+  const applyFilter = (s: string) => {
+    setFilter(s);
+    setPage(1);
+    load(1, s);
+  };
+
+  const changePage = (p: number) => {
+    setPage(p);
+    load(p);
+  };
+
+  const STATUS_FILTERS = [
+    { value: '', label: 'All' },
+    { value: 'active', label: 'Active' },
+    { value: 'won',    label: 'Won' },
+    { value: 'lost',   label: 'Lost' },
+    { value: 'draw',   label: 'Draw' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Summary cards */}
+      {data?.summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: 'Active',     value: data.summary.totalActive,    color: '#60a5fa' },
+            { label: 'Won',        value: data.summary.totalWon,       color: '#00ff88' },
+            { label: 'Lost',       value: data.summary.totalLost,      color: '#ff6b6b' },
+            { label: 'Draws',      value: data.summary.totalDraw,      color: '#fbbf24' },
+            { label: 'Prize Paid', value: `₹${data.summary.totalPrizePaid}`, color: '#ffd700' },
+          ].map(s => (
+            <div key={s.label} className="rounded-2xl p-3 text-center" style={cardStyle}>
+              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">{s.label}</p>
+              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {STATUS_FILTERS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => applyFilter(f.value)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={filter === f.value
+              ? { background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+              : { background: 'rgba(255,255,255,0.04)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <div className="w-6 h-6 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : !data?.tournaments?.length ? (
+        <p className="text-center text-dark-muted py-10">No tournaments found.</p>
+      ) : (
+        <div className="space-y-2">
+          {data.tournaments.map((t: any) => (
+            <div key={t.id} className="rounded-2xl p-4 space-y-2" style={cardStyle}>
+              {/* Row 1: user + status + fee */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar avatar={t.avatar} username={t.username} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-dark-text truncate">{t.username}</p>
+                    <p className="text-[10px] text-dark-muted truncate">{t.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <StatusBadge status={t.status} />
+                  <span className="text-xs text-dark-muted">₹{t.entryFee}</span>
+                </div>
+              </div>
+
+              {/* Row 2: game dots + series score */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: 3 }, (_, i) => {
+                    const gr = t.gameResults?.[i];
+                    const bg = !gr
+                      ? 'rgba(255,255,255,0.05)'
+                      : gr.isDraw
+                      ? 'rgba(251,191,36,0.2)'
+                      : gr.playerWon
+                      ? 'rgba(0,255,136,0.2)'
+                      : 'rgba(255,107,107,0.2)';
+                    const border = !gr
+                      ? 'rgba(255,255,255,0.08)'
+                      : gr.isDraw
+                      ? 'rgba(251,191,36,0.5)'
+                      : gr.playerWon
+                      ? 'rgba(0,255,136,0.5)'
+                      : 'rgba(255,107,107,0.5)';
+                    return (
+                      <div
+                        key={i}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ background: bg, border: `1px solid ${border}` }}
+                      >
+                        {!gr ? String(i + 1) : gr.isDraw ? '=' : gr.playerWon ? '✓' : '✗'}
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="text-xs text-dark-muted">
+                  {t.playerWins}W – {t.botWins}L{(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ''} · {t.gamesPlayed} game{t.gamesPlayed !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Row 3: prize / refund + date */}
+              <div className="flex justify-between items-center text-xs">
+                <span style={{ color: t.status === 'won' ? '#00ff88' : t.status === 'draw' ? '#fbbf24' : t.status === 'lost' ? '#ff6b6b' : '#60a5fa' }}>
+                  {t.status === 'won'
+                    ? `+₹${t.prizeAmount} prize`
+                    : t.status === 'draw'
+                    ? `₹${t.entryFee} refunded`
+                    : t.status === 'lost'
+                    ? `−₹${t.entryFee}`
+                    : 'In progress'}
+                </span>
+                <span className="text-dark-muted">
+                  {new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && data.pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <button
+            onClick={() => changePage(page - 1)}
+            disabled={page <= 1}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
+            style={{ background: 'rgba(255,255,255,0.06)', color: '#e6edf3' }}
+          >← Prev</button>
+          <span className="text-xs text-dark-muted self-center">
+            Page {page} of {data.pages} ({data.total} total)
+          </span>
+          <button
+            onClick={() => changePage(page + 1)}
+            disabled={page >= data.pages}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
+            style={{ background: 'rgba(255,255,255,0.06)', color: '#e6edf3' }}
+          >Next →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
@@ -868,6 +1067,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: 'leaderboard',  icon: '🏆', label: 'Leaderboard' },
   { key: 'withdrawals',  icon: '💸', label: 'Withdrawals' },
   { key: 'wallets',      icon: '💰', label: 'Wallets' },
+  { key: 'tournaments',  icon: '⚔️', label: 'Tournaments' },
   { key: 'features',     icon: '⚙️', label: 'Features' },
   { key: 'gameconfig',   icon: '🎯', label: 'Game Config' },
 ];
@@ -1029,6 +1229,7 @@ export function AdminPage() {
             {section === 'leaderboard'  && <LeaderboardSection />}
             {section === 'withdrawals'  && <WithdrawalsSection />}
             {section === 'wallets'      && <WalletsSection />}
+            {section === 'tournaments'  && <TournamentsSection />}
             {section === 'features'     && <FeaturesSection config={config} onSave={saveConfig} />}
             {section === 'gameconfig'   && <GameConfigSection config={config} onSave={saveConfig} />}
           </motion.div>

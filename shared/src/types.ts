@@ -236,6 +236,7 @@ export interface SpectatorGameState {
 export interface AdminFeatureFlags {
   spectatorModeEnabled: boolean;
   publicRoomsEnabled: boolean;
+  tournamentBannerEnabled: boolean;
 }
 
 export interface AdminGameConfig {

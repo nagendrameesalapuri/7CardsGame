@@ -50,23 +50,14 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
 
       // Cash game: creator must have enough balance to pay their own entry fee
+      let creator = null;
       if (entryFee > 0) {
-        const creator = await User.findById(userId).select('walletBalance isGuest');
+        creator = await User.findById(userId).select('walletBalance isGuest');
         if (!creator) return socket.emit('room:error', 'User not found');
         if (creator.isGuest) return socket.emit('room:error', 'Guests cannot create cash game rooms');
         if ((creator.walletBalance ?? 0) < entryFee) {
           return socket.emit('room:error', `Insufficient balance. You need ₹${entryFee} to create this room.`);
         }
-        // Deduct creator's entry fee
-        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
-        await Transaction.create({
-          userId,
-          type: 'entry_fee',
-          amount: entryFee,
-          status: 'completed',
-          description: `Entry fee for room (created)`,
-          metadata: {},
-        });
       }
 
       let code: string;
@@ -75,6 +66,19 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         code = generateRoomCode();
         attempts++;
       } while (await Room.exists({ code }) && attempts < 10);
+
+      // Deduct entry fee now that we have the room code
+      if (entryFee > 0 && creator) {
+        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
+        await Transaction.create({
+          userId,
+          type: 'entry_fee',
+          amount: entryFee,
+          status: 'completed',
+          description: `Entry fee — room ${code}`,
+          metadata: { roomCode: code },
+        });
+      }
 
       const room = await Room.create({
         code,
@@ -104,15 +108,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
       await socket.join(room.code);
       socket.data.roomCode = room.code;
-
-      // Update transaction with room code now that room is created
-      if (entryFee > 0) {
-        await Transaction.findOneAndUpdate(
-          { userId, type: 'entry_fee', 'metadata.roomCode': { $exists: false } },
-          { 'metadata.roomCode': room.code },
-          { sort: { createdAt: -1 } }
-        );
-      }
 
       const dto = roomToDTO(room);
       console.log(`[Room] ${username} created room ${room.code}`);
@@ -171,7 +166,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
             type: 'entry_fee',
             amount: entryFee,
             status: 'completed',
-            description: `Entry fee for room ${room.code}`,
+            description: `Entry fee — room ${room.code}`,
             metadata: { roomCode: room.code },
           });
         }

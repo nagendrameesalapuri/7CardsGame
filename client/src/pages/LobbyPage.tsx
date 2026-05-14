@@ -158,6 +158,45 @@ export function LobbyPage() {
 
         {activeTab === 'play' && (
           <>
+            {/* ── Tournament Banner (admin-controlled) ────────────────── */}
+            {(adminConfig?.featureFlags as any)?.tournamentBannerEnabled !== false && <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 relative overflow-hidden rounded-2xl cursor-pointer group"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,150,0,0.12) 0%, rgba(255,60,100,0.12) 50%, rgba(180,0,255,0.12) 100%)',
+                border: '1px solid rgba(255,180,0,0.35)',
+              }}
+              onClick={() => navigate('/tournament')}
+            >
+              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'linear-gradient(135deg, rgba(255,150,0,0.06) 0%, rgba(255,60,100,0.06) 100%)' }} />
+              <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full blur-3xl pointer-events-none"
+                style={{ background: 'rgba(255,180,0,0.15)' }} />
+              <div className="flex items-center gap-4 px-5 py-4">
+                <div className="text-4xl flex-shrink-0">⚔️</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-base font-black text-white">Bot Tournament</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(255,180,0,0.2)', color: '#fbbf24', border: '1px solid rgba(255,180,0,0.3)' }}>
+                      NEW
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-muted mt-0.5">
+                    Play 3 games vs bots · Win ₹15–₹25 · Entry ₹10 or ₹20
+                  </p>
+                </div>
+                <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-xl transition-all group-hover:scale-105"
+                    style={{ background: 'linear-gradient(135deg, #f59e0b, #ef4444)', color: '#fff' }}>
+                    Play Now →
+                  </span>
+                  <span className="text-[10px] text-dark-muted">Win up to ₹45</span>
+                </div>
+              </div>
+            </motion.div>}
+
             {/* ── Play vs AI ─────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}

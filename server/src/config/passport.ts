@@ -19,15 +19,20 @@ export function configurePassport(): void {
         },
         async (_accessToken, _refreshToken, profile, done) => {
           try {
+            const googleAvatar = profile.photos?.[0]?.value ?? null;
             let user = await User.findOne({ googleId: profile.id });
             if (!user) {
               user = await User.create({
                 googleId: profile.id,
                 username: profile.displayName?.slice(0, 20) ?? `Player${Date.now()}`,
                 email: profile.emails?.[0]?.value,
-                avatar: profile.photos?.[0]?.value ?? 'avatar_1',
+                avatar: googleAvatar ?? 'avatar_1',
                 isGuest: false,
               });
+            } else if (googleAvatar && user.avatar !== googleAvatar) {
+              // Keep avatar in sync with Google profile photo
+              user.avatar = googleAvatar;
+              await user.save();
             }
             done(null, user as any);
           } catch (err) {

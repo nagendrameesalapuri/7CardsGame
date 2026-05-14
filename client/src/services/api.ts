@@ -74,6 +74,10 @@ export const gamesApi = {
   history: () => api.get<{ games: any[] }>('/games/history'),
 };
 
+export const tournamentsApi = {
+  history: () => api.get<{ tournaments: any[] }>('/tournaments'),
+};
+
 export const configApi = {
   getPublic: () => api.get<{ featureFlags: any; gameConfig: any }>('/admin/config/public'),
 };
@@ -111,6 +115,9 @@ export const admin = {
   endRoom: (code: string) => adminApi.delete(`/rooms/${code}`),
   kickFromRoom: (code: string, userId: string) =>
     adminApi.post(`/rooms/${code}/kick/${userId}`),
+
+  getTournaments: (params?: { page?: number; status?: string }) =>
+    adminApi.get<{ tournaments: any[]; total: number; page: number; pages: number; summary: any }>('/tournaments', { params }),
 
   getUsers: (params?: { page?: number; search?: string }) =>
     adminApi.get<{ users: any[]; total: number; page: number; pages: number }>('/users', { params }),

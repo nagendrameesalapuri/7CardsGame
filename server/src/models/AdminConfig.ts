@@ -4,6 +4,7 @@ export interface IAdminConfig extends Document {
   featureFlags: {
     spectatorModeEnabled: boolean;
     publicRoomsEnabled: boolean;
+    tournamentBannerEnabled: boolean;
   };
   gameConfig: {
     minPlayers: number;
@@ -19,8 +20,9 @@ export interface IAdminConfig extends Document {
 const AdminConfigSchema = new Schema<IAdminConfig>(
   {
     featureFlags: {
-      spectatorModeEnabled: { type: Boolean, default: true },
-      publicRoomsEnabled:   { type: Boolean, default: true },
+      spectatorModeEnabled:    { type: Boolean, default: true },
+      publicRoomsEnabled:      { type: Boolean, default: true },
+      tournamentBannerEnabled: { type: Boolean, default: true },
     },
     gameConfig: {
       minPlayers:    { type: Number, default: 2, min: 2, max: 10 },

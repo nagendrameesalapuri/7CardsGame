@@ -19,19 +19,27 @@ declare global {
 const PRESET_AMOUNTS = [50, 100, 500, 1000];
 
 const TX_ICONS: Record<string, string> = {
-  deposit: '⬇️',
+  deposit:    '⬇️',
   withdrawal: '⬆️',
-  winning: '🏆',
-  entry_fee: '🎮',
-  refund: '↩️',
+  winning:    '🏆',
+  entry_fee:  '🎮',
+  refund:     '↩️',
+};
+
+const TX_LABELS: Record<string, string> = {
+  deposit:    'Deposit',
+  withdrawal: 'Withdrawal',
+  winning:    'Prize Won',
+  entry_fee:  'Entry Fee',
+  refund:     'Refund',
 };
 
 const TX_COLORS: Record<string, string> = {
-  deposit: 'text-green-400',
-  winning: 'text-yellow-400',
-  refund: 'text-blue-400',
+  deposit:    'text-green-400',
+  winning:    'text-yellow-400',
+  refund:     'text-blue-400',
   withdrawal: 'text-red-400',
-  entry_fee: 'text-red-400',
+  entry_fee:  'text-red-400',
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -481,13 +489,23 @@ export function WalletPage() {
                   <div
                     key={tx._id}
                     className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+                    style={{
+                      background: isDebit(tx.type)
+                        ? 'rgba(255,60,60,0.04)'
+                        : tx.type === 'winning' ? 'rgba(255,215,0,0.04)' : 'rgba(255,255,255,0.03)',
+                      border: isDebit(tx.type)
+                        ? '1px solid rgba(255,60,60,0.1)'
+                        : tx.type === 'winning' ? '1px solid rgba(255,215,0,0.12)' : '1px solid rgba(255,255,255,0.05)',
+                    }}
                   >
-                    <span className="text-xl">{TX_ICONS[tx.type] ?? '💳'}</span>
+                    <span className="text-xl flex-shrink-0">{TX_ICONS[tx.type] ?? '💳'}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-dark-text truncate">{tx.description}</p>
-                      <p className="text-xs text-dark-muted">
-                        {new Date(tx.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      <p className={clsx('text-sm font-semibold', TX_COLORS[tx.type] ?? 'text-dark-text')}>
+                        {TX_LABELS[tx.type] ?? tx.type}
+                      </p>
+                      <p className="text-xs text-dark-muted truncate">{tx.description}</p>
+                      <p className="text-[10px] text-dark-muted opacity-70">
+                        {new Date(tx.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
