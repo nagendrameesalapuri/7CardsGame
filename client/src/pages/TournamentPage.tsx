@@ -144,6 +144,16 @@ function HistoryTab() {
   );
 }
 
+interface ActiveTournamentStatus {
+  tournamentId: string;
+  gameNumber: number;
+  playerWins: number;
+  botWins: number;
+  entryFee: number;
+  prizeAmount: number;
+  currentRoomCode: string | null;
+}
+
 export function TournamentPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
@@ -153,14 +163,24 @@ export function TournamentPage() {
   const [starting, setStarting] = useState(false);
   const [selectedFee, setSelectedFee] = useState<number | null>(null);
   const [tab, setTab] = useState<'play' | 'history'>('play');
+  const [activeTournament, setActiveTournament] = useState<ActiveTournamentStatus | null>(null);
+  const [statusChecked, setStatusChecked] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/'); return; }
     const unsub1 = subscribe();
     const unsub2 = subscribeToEvents();
     const unsub3 = on('game:state', () => navigate('/game'));
+
+    // Check if user has an active tournament they can resume
+    const unsub4 = on('tournament:status_result', (result) => {
+      setStatusChecked(true);
+      setActiveTournament(result);
+    });
+    socketTournament.status();
+
     walletApi.get().then(r => setBalance(r.data.balance)).catch(() => {});
-    return () => { unsub1(); unsub2(); unsub3(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents]);
 
   const handleStart = (fee: number) => {
@@ -168,6 +188,14 @@ export function TournamentPage() {
     setStarting(true);
     setSelectedFee(fee);
     socketTournament.start(fee);
+    const unsub = on('tournament:error', () => { setStarting(false); setSelectedFee(null); unsub(); });
+  };
+
+  const handleResume = () => {
+    if (!activeTournament || starting) return;
+    setStarting(true);
+    setSelectedFee(activeTournament.entryFee);
+    socketTournament.start(activeTournament.entryFee);
     const unsub = on('tournament:error', () => { setStarting(false); setSelectedFee(null); unsub(); });
   };
 
@@ -185,6 +213,74 @@ export function TournamentPage() {
             Play up to 3 games against bots. First to win 2 games takes the prize. Tie = entry refunded.
           </p>
         </motion.div>
+
+        {/* Active tournament resume banner */}
+        <AnimatePresence>
+          {statusChecked && activeTournament && !active && (
+            <motion.div
+              initial={{ opacity: 0, y: -12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              className="rounded-2xl p-5"
+              style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.35)' }}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-2xl">🔄</span>
+                <div>
+                  <p className="text-sm font-bold text-blue-400">Tournament In Progress</p>
+                  <p className="text-xs text-dark-muted">You have an unfinished tournament — pick up where you left off</p>
+                </div>
+              </div>
+
+              {/* Series score */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: 3 }, (_, i) => {
+                    const filled = i < activeTournament.gameNumber - 1;
+                    return (
+                      <div
+                        key={i}
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                        style={{
+                          background: filled ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${filled ? 'rgba(96,165,250,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                          color: filled ? '#60a5fa' : '#4b5563',
+                        }}
+                      >
+                        {filled ? '✓' : String(i + 1)}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 text-sm">
+                  <span>
+                    <span className="text-dark-muted">You </span>
+                    <span className="font-bold text-neon-green">{activeTournament.playerWins}</span>
+                  </span>
+                  <span className="text-dark-muted">–</span>
+                  <span>
+                    <span className="text-dark-muted">Bot </span>
+                    <span className="font-bold text-red-400">{activeTournament.botWins}</span>
+                  </span>
+                  <span className="text-xs text-dark-muted self-center">· Game {activeTournament.gameNumber}</span>
+                </div>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleResume}
+                disabled={starting}
+                className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }}
+              >
+                {starting && selectedFee === activeTournament.entryFee
+                  ? '⏳ Resuming…'
+                  : `▶ Resume Game ${activeTournament.gameNumber} (₹${activeTournament.entryFee} entry)`}
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Tabs */}
         <div className="flex rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -266,12 +362,14 @@ export function TournamentPage() {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => handleStart(tier.fee)}
-                      disabled={starting || (balance !== null && balance < tier.fee) || user?.isGuest}
+                      disabled={starting || (balance !== null && balance < tier.fee) || user?.isGuest || !!activeTournament}
                       className="w-full py-3 rounded-xl font-bold text-sm transition-all mt-auto disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: tier.color, color: '#0d1117' }}
                     >
                       {starting && selectedFee === tier.fee
                         ? '⏳ Starting…'
+                        : activeTournament
+                        ? 'Resume Active Tournament'
                         : user?.isGuest
                         ? 'Sign in to Play'
                         : `Enter for ₹${tier.fee}`}
@@ -297,6 +395,7 @@ export function TournamentPage() {
                   <li>• Win → entry fee + prize instantly added to wallet</li>
                   <li>• Lose → entry fee forfeited (max 3 games played)</li>
                   <li>• <strong className="text-yellow-400">Tie after 3 games</strong> → entry fee fully refunded, no winner</li>
+                  <li>• 🔄 If you close or go back, <strong className="text-blue-400">resume your tournament</strong> anytime from this page</li>
                 </ul>
               </div>
             </motion.div>

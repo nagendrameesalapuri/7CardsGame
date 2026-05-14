@@ -14,8 +14,72 @@ import {
 import { refundAbandonedGame } from '../socket/handlers/roomHandler';
 import { getSpectatorCounts } from '../socket/handlers/spectatorHandler';
 import { getOnlineUserIds } from '../socket/index';
-import { WithdrawalRequest } from '../models/WithdrawalRequest';
+import { WithdrawalRequest, IWithdrawalRequest } from '../models/WithdrawalRequest';
 import { Transaction } from '../models/Transaction';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Razorpay = require('razorpay');
+
+function getRazorpay() {
+  const key_id     = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) throw new Error('Razorpay keys not configured');
+  return new Razorpay({ key_id, key_secret });
+}
+
+/**
+ * Triggers a Razorpay payout to the user's UPI/bank account.
+ * Requires RAZORPAY_ACCOUNT_NUMBER env var (Razorpay X current account).
+ * Returns the Razorpay payout ID, or null if not configured / fails.
+ */
+async function triggerRazorpayPayout(wr: IWithdrawalRequest): Promise<{ payoutId: string; payoutStatus: string } | null> {
+  const accountNumber = process.env.RAZORPAY_ACCOUNT_NUMBER;
+  if (!accountNumber) return null;
+
+  const rzp = getRazorpay();
+
+  // 1. Create contact
+  const contact = await rzp.contacts.create({
+    name:  wr.username,
+    type:  'vendor',
+  });
+
+  // 2. Create fund account (UPI or bank)
+  let fundAccount: any;
+  if (wr.upiId) {
+    fundAccount = await rzp.fundAccount.create({
+      contact_id:   contact.id,
+      account_type: 'vpa',
+      vpa:          { address: wr.upiId },
+    });
+  } else if (wr.bankDetails?.accountNumber) {
+    fundAccount = await rzp.fundAccount.create({
+      contact_id:   contact.id,
+      account_type: 'bank_account',
+      bank_account: {
+        name:           wr.bankDetails.accountName,
+        ifsc:           wr.bankDetails.ifsc,
+        account_number: wr.bankDetails.accountNumber,
+      },
+    });
+  } else {
+    return null;
+  }
+
+  // 3. Create payout
+  const payout = await rzp.payouts.create({
+    account_number:       accountNumber,
+    fund_account_id:      fundAccount.id,
+    amount:               Math.round(wr.amount * 100), // paise
+    currency:             'INR',
+    mode:                 wr.upiId ? 'UPI' : 'IMPS',
+    purpose:              'payout',
+    queue_if_low_balance: true,
+    narration:            '7Cards Game Withdrawal',
+  });
+
+  return { payoutId: payout.id, payoutStatus: payout.status };
+}
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -500,12 +564,30 @@ export default function createAdminRouter(io: Server) {
       wr.status = status;
       wr.adminNote = adminNote;
       wr.processedAt = new Date();
-      await wr.save();
 
       // If rejected → refund the held amount back to user
       if (status === 'rejected') {
         await User.findByIdAndUpdate(wr.userId, { $inc: { walletBalance: wr.amount } });
       }
+
+      // If approved → attempt instant Razorpay payout
+      let payoutTriggered = false;
+      if (status === 'approved') {
+        try {
+          const result = await triggerRazorpayPayout(wr);
+          if (result) {
+            wr.razorpayPayoutId = result.payoutId;
+            wr.payoutStatus     = result.payoutStatus as any;
+            payoutTriggered     = true;
+            console.log(`[Razorpay Payout] Triggered payout ${result.payoutId} for withdrawal ${wr.id}`);
+          }
+        } catch (payoutErr) {
+          // Don't fail the admin approval — log and fall through to manual processing
+          console.error('[Razorpay Payout] Failed to trigger payout:', payoutErr);
+        }
+      }
+
+      await wr.save();
 
       // Update linked transaction status
       await Transaction.findOneAndUpdate(
@@ -513,7 +595,7 @@ export default function createAdminRouter(io: Server) {
         { status: status === 'approved' ? 'completed' : 'failed' }
       );
 
-      res.json({ success: true });
+      res.json({ success: true, payoutTriggered });
     } catch {
       res.status(500).json({ error: 'Failed to process withdrawal' });
     }
