@@ -107,6 +107,16 @@ export function ProfilePage() {
               </p>
               {user.email && <p className="text-dark-muted text-sm">{user.email}</p>}
 
+              <p className="text-dark-muted text-xs mt-1 font-mono flex items-center gap-2">
+                ID: <span className="text-dark-text select-all">{user.id}</span>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(user.id); notify.success('ID copied!'); }}
+                  className="text-neon-green hover:text-green-400 text-[10px] underline underline-offset-2"
+                >
+                  Copy
+                </button>
+              </p>
+
               <div className="flex gap-3 mt-4">
                 {editMode ? (
                   <>

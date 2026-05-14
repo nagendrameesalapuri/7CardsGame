@@ -18,10 +18,11 @@ import { VoiceChat } from './VoiceChat';
 export function GameBoard() {
   const { user } = useAuthStore();
   const {
-    game, matchResult, isMyTurn, canShow, underAttack, handTotal,
+    game, room, matchResult, isMyTurn, canShow, underAttack, handTotal,
     roundReadyUpdate, readyForNextRound,
     subscribeToEvents, leaveRoom,
   } = useGameStore();
+  const entryFee: number = (room?.config as any)?.entryFee ?? 0;
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
 
   useEffect(() => {
@@ -62,6 +63,15 @@ export function GameBoard() {
             <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
             <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
           </div>
+          {entryFee > 0 ? (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
+              💰 Bet ₹{entryFee}
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex-shrink-0">
+              🎮 Free
+            </span>
+          )}
         </div>
 
         <TurnTimer
@@ -272,17 +282,23 @@ function OpponentChip({
         </div>
       )}
 
-      {/* Colored initials circle */}
+      {/* Avatar: profile picture or initials fallback */}
       <div className={clsx(
-        'w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br flex items-center justify-center font-black text-white shadow-md',
-        color,
+        'w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden flex items-center justify-center font-black text-white shadow-md relative',
+        (!player.avatar || (!player.avatar.startsWith('http') && !player.avatar.startsWith('data:'))) && `bg-gradient-to-br ${color}`,
         isCurrentTurn && 'ring-2 ring-neon-green ring-offset-1 ring-offset-black/50',
         isAttackTarget && 'ring-2 ring-neon-red ring-offset-1 ring-offset-black/50',
       )}>
-        {player.isBot
-          ? <span className="text-[10px] font-black">AI</span>
-          : <span className="text-sm">{initials}</span>
-        }
+        {player.avatar && (player.avatar.startsWith('http') || player.avatar.startsWith('data:')) ? (
+          <img src={player.avatar} alt={player.username} className="w-full h-full object-cover" />
+        ) : player.isBot ? (
+          <span className="text-[10px] font-black">AI</span>
+        ) : (
+          <span className="text-sm">{initials}</span>
+        )}
+        {player.isBot && (
+          <span className="absolute -top-0.5 -right-0.5 bg-neon-blue rounded-full w-3.5 h-3.5 flex items-center justify-center text-[7px] font-black text-dark-bg leading-none">AI</span>
+        )}
       </div>
 
       <span className="text-dark-text text-[10px] sm:text-xs font-semibold truncate w-full text-center leading-tight">

@@ -4,6 +4,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Light theme (no .dark class) ─────────────────────────────────────────── */
+:root {
+  --color-bg:      #f4f1eb;
+  --color-surface: #ffffff;
+  --color-border:  #ddd5c5;
+  --color-text:    #1e2330;
+  --color-muted:   #6b7280;
+}
+
+/* ── Dark theme (.dark class on <html>) ────────────────────────────────────── */
+:root.dark {
+  --color-bg:      #0d1117;
+  --color-surface: #161b22;
+  --color-border:  #30363d;
+  --color-text:    #e6edf3;
+  --color-muted:   #8b949e;
+}
+
 @layer base {
   * { box-sizing: border-box; }
 

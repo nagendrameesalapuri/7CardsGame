@@ -19,6 +19,7 @@ export interface IRoom extends Document {
   config: RoomConfig;
   status: 'waiting' | 'playing' | 'finished';
   gameId: string | null;
+  paidPlayerIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,7 +40,8 @@ const RoomConfigSchema = new Schema<RoomConfig>({
   isPrivate: { type: Boolean, default: false },
   turnTimeLimit: { type: Number, default: 30, min: 15, max: 60 },
   allowBots: { type: Boolean, default: true },
-  botCount: { type: Number, default: 0, min: 0, max: 9 },
+  botCount:  { type: Number, default: 0, min: 0, max: 9 },
+  entryFee:  { type: Number, default: 0, min: 0, max: 10000 },
 }, { _id: false });
 
 const RoomSchema = new Schema<IRoom>(
@@ -49,8 +51,9 @@ const RoomSchema = new Schema<IRoom>(
     hostId: { type: String, required: true },
     players: [RoomPlayerSchema],
     config: { type: RoomConfigSchema, default: () => ({}) },
-    status: { type: String, enum: ['waiting', 'playing', 'finished'], default: 'waiting' },
-    gameId: { type: String, default: null },
+    status:         { type: String, enum: ['waiting', 'playing', 'finished'], default: 'waiting' },
+    gameId:         { type: String, default: null },
+    paidPlayerIds:  [{ type: String }],
   },
   { timestamps: true }
 );

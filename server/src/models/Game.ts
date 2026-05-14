@@ -22,6 +22,7 @@ export interface IGame extends Document {
     playerResults: RoundResult['playerResults'];
     endedAt: Date;
   }>;
+  entryFee: number;
   status: 'playing' | 'finished';
   startedAt: Date;
   endedAt?: Date;
@@ -50,6 +51,7 @@ const GameSchema = new Schema<IGame>({
     endedAt: Date,
     _id: false,
   }],
+  entryFee: { type: Number, default: 0 },
   status: { type: String, enum: ['playing', 'finished'], default: 'playing' },
   startedAt: { type: Date, default: Date.now },
   endedAt: Date,

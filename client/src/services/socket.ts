@@ -88,6 +88,7 @@ export const socketRoom = {
     turnTimeLimit?: number;
     allowBots?: boolean;
     botCount?: number;
+    entryFee?: number;
   }) => getSocket().emit('room:create', data),
 
   join: (code: string) => getSocket().emit('room:join', code),
@@ -116,6 +117,14 @@ export const socketChat = {
   react: (emoji: string) => getSocket().emit('chat:reaction', emoji),
 };
 
+// ── Tournament events ─────────────────────────────────────────────────────────
+
+export const socketTournament = {
+  start:  (entryFee: number) => getSocket().emit('tournament:start', { entryFee }),
+  status: ()                 => getSocket().emit('tournament:status'),
+  cancel: ()                 => getSocket().emit('tournament:cancel'),
+};
+
 // ── Event listener helpers (typed) ───────────────────────────────────────────
 
 type EventMap = {
@@ -134,6 +143,7 @@ type EventMap = {
   'game:can_resume': { roomCode: string };
   'game:round_ready_update': { readyUserIds: string[]; total: number };
   'game:force_ended': { message: string };
+  'game:abandoned': { message: string };
   'chat:received': ChatMessage;
   'lobby:rooms_updated': void;
   'spectate:state': SpectatorGameState;
@@ -144,6 +154,14 @@ type EventMap = {
   'auth:banned': { message: string };
   'auth:kicked': { message: string };
   'admin:config_updated': PublicAdminConfig;
+  'wallet:prize_won': { amount: number; balance: number };
+  // Tournament
+  'tournament:started':       { tournamentId: string; gameNumber: number; entryFee: number; prizeAmount: number; roomCode: string };
+  'tournament:resumed':       { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; roomCode: string | null };
+  'tournament:game_result':   { gameNumber: number; playerWins: number; botWins: number; draws: number; isDraw: boolean; playerWon: boolean; playerScore: number; botScore: number; tournamentOver: boolean; won?: boolean; overallDraw?: boolean; prizeAmount?: number; totalReturn?: number; nextGameNumber?: number; nextRoomCode?: string };
+  'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
+  'tournament:cancelled':     { refunded: boolean; amount: number };
+  'tournament:error':         string;
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };

@@ -3,16 +3,36 @@
 // Used by both server and client
 // ============================================================
 
-export type Suit = 'hearts' | 'diamonds' | 'clubs' | 'spades' | 'none';
-export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'Joker';
-export type DrawSource = 'deck' | 'discard';
-export type GameStatus = 'waiting' | 'dealing' | 'playing' | 'show_called' | 'round_end' | 'match_end';
+export type Suit = "hearts" | "diamonds" | "clubs" | "spades" | "none";
+export type Rank =
+  | "A"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "7"
+  | "8"
+  | "9"
+  | "10"
+  | "J"
+  | "Q"
+  | "K"
+  | "Joker";
+export type DrawSource = "deck" | "discard";
+export type GameStatus =
+  | "waiting"
+  | "dealing"
+  | "playing"
+  | "show_called"
+  | "round_end"
+  | "match_end";
 
 export interface Card {
   id: string;
   suit: Suit;
   rank: Rank;
-  value: number;   // 0 for jokers, 1 for A, 10 for J/Q/K, face value otherwise
+  value: number; // 0 for jokers, 1 for A, 10 for J/Q/K, face value otherwise
   isJoker: boolean;
 }
 
@@ -21,8 +41,8 @@ export interface PlayerState {
   userId: string;
   username: string;
   avatar: string;
-  hand: Card[];        // full hand — only sent to the owning player
-  handCount: number;   // visible to all players
+  hand: Card[]; // full hand — only sent to the owning player
+  handCount: number; // visible to all players
   totalScore: number;
   roundScore: number | null;
   isConnected: boolean;
@@ -48,15 +68,15 @@ export interface GameState {
   deck: Card[];
   discardPile: Card[];
   jokerRank: Rank;
-  jokerCard: Card;          // the physical card drawn to determine joker rank
+  jokerCard: Card; // the physical card drawn to determine joker rank
   currentPlayerIndex: number;
   turnNumber: number;
-  turnStartTime: string;    // ISO string
-  turnTimeLimit: number;    // seconds
+  turnStartTime: string; // ISO string
+  turnTimeLimit: number; // seconds
   attackChain: AttackChain | null;
   roundCount: number;
   roundNumber: number;
-  drawnCard: Card | null;   // card just drawn this turn (before discard)
+  drawnCard: Card | null; // card just drawn this turn (before discard)
   hasDrawnThisTurn: boolean;
   showPlayerId: string | null;
   roundResult: RoundResult | null;
@@ -65,8 +85,8 @@ export interface GameState {
 }
 
 export interface RoundResult {
-  winnerId: string;           // primary winner (show player when they win; first tied winner otherwise)
-  winnerIds: string[];        // all players who tied for lowest — each receives 0 round points
+  winnerId: string; // primary winner (show player when they win; first tied winner otherwise)
+  winnerIds: string[]; // all players who tied for lowest — each receives 0 round points
   showPlayerId: string;
   showPlayerWon: boolean;
   playerResults: PlayerRoundResult[];
@@ -83,9 +103,11 @@ export interface PlayerRoundResult {
 
 export interface MatchResult {
   winnerId: string;
-  winnerIds?: string[];       // all tied match winners
-  winnerUsername: string;     // "Player A & Player B" on tie
+  winnerIds?: string[]; // all tied match winners
+  winnerUsername: string; // "Player A & Player B" on tie
   finalScores: { playerId: string; username: string; totalScore: number }[];
+  prizePool?: number; // total pot for cash games
+  prizePerWinner?: number; // amount each winner receives
 }
 
 export interface ChatMessage {
@@ -94,19 +116,44 @@ export interface ChatMessage {
   username: string;
   avatar: string;
   message: string;
-  type: 'chat' | 'system' | 'reaction';
+  type: "chat" | "system" | "reaction";
   timestamp: string;
 }
 
 // ---- Room types ----
 
 export interface RoomConfig {
-  maxPlayers: number;        // 2–5
+  maxPlayers: number; // 2–5
   roundCount: number;
   isPrivate: boolean;
-  turnTimeLimit: number;     // seconds, 15–60
+  turnTimeLimit: number; // seconds, 15–60
   allowBots: boolean;
   botCount: number;
+  entryFee: number; // 0 = free game, >0 = cash game
+}
+
+// ---- Wallet types ----
+
+export type TransactionType =
+  | "deposit"
+  | "withdrawal"
+  | "winning"
+  | "entry_fee"
+  | "refund";
+
+export interface WalletTransaction {
+  _id: string;
+  type: TransactionType;
+  amount: number;
+  status: "pending" | "completed" | "failed";
+  description: string;
+  createdAt: string;
+}
+
+export interface WalletState {
+  balance: number;
+  isGuest: boolean;
+  transactions: WalletTransaction[];
 }
 
 export interface RoomPlayer {
@@ -120,12 +167,12 @@ export interface RoomPlayer {
 
 export interface Room {
   id: string;
-  code: string;             // 6-char join code
+  code: string; // 6-char join code
   name: string;
   hostId: string;
   players: RoomPlayer[];
   config: RoomConfig;
-  status: 'waiting' | 'playing' | 'finished';
+  status: "waiting" | "playing" | "finished";
   gameId: string | null;
   createdAt: string;
 }
@@ -153,7 +200,7 @@ export interface ClientGameState {
   showPlayerId: string | null;
   roundResult: RoundResult | null;
   chatMessages: ChatMessage[];
-  myHand: Card[];          // only the requesting player's hand
+  myHand: Card[]; // only the requesting player's hand
   myPlayerId: string;
 }
 
@@ -174,7 +221,7 @@ export interface ClientPlayerState {
 // ---- Socket event payloads ----
 
 export interface GameAction {
-  type: 'draw' | 'discard' | 'skip' | 'attack' | 'show' | 'penalty' | 'system';
+  type: "draw" | "discard" | "skip" | "attack" | "show" | "penalty" | "system";
   playerId: string;
   cards?: Card[];
   source?: DrawSource;
@@ -214,6 +261,7 @@ export interface SpectatorGameState {
 export interface AdminFeatureFlags {
   spectatorModeEnabled: boolean;
   publicRoomsEnabled: boolean;
+  tournamentBannerEnabled: boolean;
 }
 
 export interface AdminGameConfig {
@@ -225,9 +273,19 @@ export interface AdminGameConfig {
   maxBots: number;
 }
 
+export interface AdminWalletConfig {
+  depositEnabled: boolean;
+  withdrawEnabled: boolean;
+  upiId: string;
+  upiName: string;
+  qrEnabled: boolean;
+  qrCodeUrl: string;
+}
+
 export interface PublicAdminConfig {
   featureFlags: AdminFeatureFlags;
   gameConfig: AdminGameConfig;
+  walletConfig: AdminWalletConfig;
 }
 
 // ---- User / Auth ----

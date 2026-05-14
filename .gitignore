@@ -30,3 +30,8 @@ Thumbs.db
 
 # Vite cache
 client/.vite/
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/

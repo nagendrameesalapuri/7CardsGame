@@ -8,6 +8,7 @@ export interface IUser extends Document {
   isGuest: boolean;
   isBanned: boolean;
   guestToken?: string;
+  walletBalance: number;
   stats: {
     gamesPlayed: number;
     gamesWon: number;
@@ -30,7 +31,8 @@ const UserSchema = new Schema<IUser>(
     avatar: { type: String, default: 'avatar_1' },
     isGuest: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
-    guestToken: { type: String, sparse: true, unique: true },
+    guestToken:    { type: String, sparse: true, unique: true },
+    walletBalance: { type: Number, default: 0, min: 0 },
     stats: {
       gamesPlayed: { type: Number, default: 0 },
       gamesWon: { type: Number, default: 0 },

@@ -9,6 +9,8 @@ import { Server, Socket } from 'socket.io';
 import { Room } from '../../models/Room';
 import { Game } from '../../models/Game';
 import { User } from '../../models/User';
+import { Transaction } from '../../models/Transaction';
+import { Tournament } from '../../models/Tournament';
 import { GameEngine, GameConfig } from '../../engine/GameEngine';
 import { BotPlayer } from '../../engine/BotPlayer';
 import { ScoreEngine } from '../../engine/ScoreEngine';
@@ -81,6 +83,52 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
 
   Room.findOneAndUpdate({ code: roomCode }, { status: 'finished' }).catch(console.error);
   return true;
+}
+
+// ── Shared game initializer (used by room:start and tournament handler) ─────────
+
+export async function startRoomGame(io: Server, roomCode: string): Promise<void> {
+  const room = await Room.findOne({ code: roomCode });
+  if (!room) return;
+
+  const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => ({
+    userId: `bot_${uuidv4().slice(0, 6)}`,
+    username: `Bot ${i + 1}`,
+    avatar: `bot_${i + 1}`,
+    isBot: true,
+  }));
+
+  const allPlayers = [
+    ...room.players.map(p => ({ userId: p.userId, username: p.username, avatar: p.avatar, isBot: p.isBot })),
+    ...botPlayers,
+  ].map(p => ({ ...p, id: uuidv4() }));
+
+  const config: GameConfig = {
+    roomId: room.code,
+    players: allPlayers,
+    roundCount: room.config.roundCount,
+    turnTimeLimit: room.config.turnTimeLimit,
+  };
+
+  const gameState = GameEngine.initializeGame(config);
+  activeGames.set(gameState.id, gameState);
+  roomToGame.set(room.code, gameState.id);
+
+  room.status = 'playing';
+  room.gameId = gameState.id;
+  await room.save();
+
+  await Game.create({
+    roomId: room.code,
+    players: allPlayers.map(p => ({ userId: p.userId, username: p.username, avatar: p.avatar, totalScore: 0, isBot: p.isBot })),
+    roundCount: config.roundCount,
+    entryFee: (room.config as any).entryFee ?? 0,
+    status: 'playing',
+  });
+
+  broadcastGameState(io, gameState);
+  startTurnTimer(io, gameState.id);
+  scheduleBotTurnIfNeeded(io, gameState);
 }
 
 export function kickPlayerFromGame(io: Server, roomCode: string, userId: string): boolean {
@@ -161,6 +209,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           isBot: p.isBot,
         })),
         roundCount: config.roundCount,
+        entryFee: (room.config as any).entryFee ?? 0,
         status: 'playing',
       });
 
@@ -369,14 +418,28 @@ function startNextRound(io: Server, state: GameState) {
   scheduleBotTurnIfNeeded(io, freshState);
 }
 
-function handleMatchEnd(io: Server, state: GameState) {
+async function handleMatchEnd(io: Server, state: GameState) {
   const matchResult = ScoreEngine.checkMatchOver(state) ?? {
     winnerId: state.players[0].id,
     winnerUsername: state.players[0].username,
     finalScores: state.players.map(p => ({ playerId: p.id, username: p.username, totalScore: p.totalScore })),
   };
 
-  io.to(state.roomId).emit('game:match_end', matchResult);
+  // Attach prize info to match result if this is a cash game
+  const roomForPrize = await Room.findOne({ code: state.roomId }).lean().catch(() => null);
+  const entryFeeForResult: number = roomForPrize ? ((roomForPrize.config as any).entryFee ?? 0) : 0;
+  const paidCountForResult: number = roomForPrize ? ((roomForPrize as any).paidPlayerIds?.length ?? 0) : 0;
+  const prizePoolForResult = entryFeeForResult * paidCountForResult;
+  const winnerCountForResult = (matchResult.winnerIds ?? [matchResult.winnerId]).length;
+  const matchResultWithPrize = {
+    ...matchResult,
+    ...(prizePoolForResult > 0 ? {
+      prizePool: prizePoolForResult,
+      prizePerWinner: Math.floor(prizePoolForResult / Math.max(1, winnerCountForResult)),
+    } : {}),
+  };
+
+  io.to(state.roomId).emit('game:match_end', matchResultWithPrize);
 
   // Persist final result with player scores.
   // Use roundResult.playerResults when available — state.players[].totalScore
@@ -416,6 +479,9 @@ function handleMatchEnd(io: Server, state: GameState) {
     { status: 'finished' }
   ).catch(console.error);
 
+  // Cash game prize distribution
+  distributePrize(io, state, matchResult, winnerPlayer ?? null).catch(console.error);
+
   // Update user stats for all human players
   const humanPlayers = state.players.filter(p => !p.isBot);
   const roundsInMatch = state.roundNumber;
@@ -443,6 +509,207 @@ function handleMatchEnd(io: Server, state: GameState) {
     message: 'The match has ended',
     winner: matchResult.winnerUsername,
   });
+
+  // Tournament hook — runs async, non-blocking
+  handleTournamentMatchEnd(io, state, matchResult).catch(console.error);
+}
+
+// ── Tournament match-end logic ────────────────────────────────────────────────
+
+const TOURNAMENT_PRIZE: Record<number, number> = { 10: 15, 20: 25 };
+
+async function handleTournamentMatchEnd(io: Server, state: GameState, matchResult: any) {
+  const tournament = await Tournament.findOne({ currentRoomCode: state.roomId, status: 'active' });
+  if (!tournament) return;
+
+  // Use roundResult scores (last-round totals) if available; fall back to in-memory totals
+  const getScore = (userId: string) => {
+    if (state.roundResult) {
+      const pr = state.roundResult.playerResults.find(r => {
+        const p = state.players.find(pl => pl.id === r.playerId);
+        return p?.userId === userId;
+      });
+      if (pr) return pr.totalScore;
+    }
+    return state.players.find(p => p.userId === userId)?.totalScore ?? 0;
+  };
+  const getBotScore = () => {
+    const bots = state.players.filter(p => p.isBot);
+    if (state.roundResult) {
+      const botTotals = bots.map(b => {
+        const pr = state.roundResult!.playerResults.find(r => r.playerId === b.id);
+        return pr?.totalScore ?? b.totalScore;
+      });
+      return Math.min(...botTotals);
+    }
+    return Math.min(...bots.map(p => p.totalScore));
+  };
+
+  const humanScore    = getScore(tournament.userId);
+  const bestBotScore  = getBotScore();
+  const isDraw        = humanScore === bestBotScore;
+  const playerWon     = humanScore < bestBotScore;   // strict: lower score wins, equal = draw
+
+  tournament.gamesPlayed++;
+  if (isDraw)       tournament.draws++;
+  else if (playerWon) tournament.playerWins++;
+  else              tournament.botWins++;
+
+  tournament.gameResults.push({
+    gameNumber:  tournament.gamesPlayed,
+    playerScore: humanScore,
+    botScore:    bestBotScore,
+    playerWon,
+    isDraw,
+  });
+
+  // Tournament ends when someone reaches 2 wins OR all 3 games are played
+  const MAX_GAMES    = 3;
+  const tournamentOver =
+    tournament.playerWins >= 2 ||
+    tournament.botWins >= 2 ||
+    tournament.gamesPlayed >= MAX_GAMES;
+
+  const payload: Record<string, any> = {
+    gameNumber:  tournament.gamesPlayed,
+    playerWins:  tournament.playerWins,
+    botWins:     tournament.botWins,
+    draws:       tournament.draws,
+    isDraw,
+    playerWon,
+    playerScore: humanScore,
+    botScore:    bestBotScore,
+    tournamentOver,
+  };
+
+  if (tournamentOver) {
+    tournament.completedAt    = new Date();
+    tournament.currentRoomCode = null;
+
+    const overallWon  = tournament.playerWins >= 2 ||
+      (tournament.gamesPlayed >= MAX_GAMES && tournament.playerWins > tournament.botWins);
+    const overallLost = tournament.botWins >= 2 ||
+      (tournament.gamesPlayed >= MAX_GAMES && tournament.botWins > tournament.playerWins);
+    const overallDraw = !overallWon && !overallLost;   // playerWins === botWins after 3 games
+
+    if (overallWon) {
+      tournament.status = 'won';
+      const prize       = TOURNAMENT_PRIZE[tournament.entryFee] ?? 0;
+      const totalReturn = tournament.entryFee + prize;
+      await User.findByIdAndUpdate(tournament.userId, { $inc: { walletBalance: totalReturn } });
+      await Transaction.create({
+        userId: tournament.userId,
+        type: 'winning',
+        amount: totalReturn,
+        status: 'completed',
+        description: `Tournament won — ₹${prize} prize + ₹${tournament.entryFee} entry back`,
+        metadata: { tournamentId: tournament.id },
+      });
+      payload.won         = true;
+      payload.prizeAmount = prize;
+      payload.totalReturn = totalReturn;
+    } else if (overallDraw) {
+      tournament.status = 'draw';
+      // Refund entry fee on overall draw — no winner
+      await User.findByIdAndUpdate(tournament.userId, { $inc: { walletBalance: tournament.entryFee } });
+      await Transaction.create({
+        userId: tournament.userId,
+        type: 'refund',
+        amount: tournament.entryFee,
+        status: 'completed',
+        description: `Tournament draw — entry fee ₹${tournament.entryFee} refunded`,
+        metadata: { tournamentId: tournament.id },
+      });
+      payload.won        = false;
+      payload.overallDraw = true;
+      payload.totalReturn = tournament.entryFee;
+    } else {
+      tournament.status = 'lost';
+      payload.won = false;
+    }
+
+    await tournament.save();
+  } else {
+    // Save updated stats first so they're never lost if room creation fails
+    await tournament.save();
+
+    // Prepare next game room (game starts only when player explicitly resumes)
+    const user = await User.findById(tournament.userId).select('username avatar');
+    if (!user) return;
+
+    let nextCode: string;
+    let attempts = 0;
+    do {
+      nextCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      attempts++;
+    } while (await Room.exists({ code: nextCode }) && attempts < 10);
+
+    await Room.create({
+      code: nextCode,
+      name: `Tournament — ${user.username}`.slice(0, 30),
+      hostId: tournament.userId,
+      players: [{ userId: tournament.userId, username: user.username, avatar: user.avatar, isReady: true, isHost: true, isBot: false }],
+      config: { maxPlayers: 2, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0 },
+      paidPlayerIds: [],
+      status: 'waiting',
+    });
+
+    tournament.currentRoomCode = nextCode;
+    await tournament.save();
+
+    payload.nextGameNumber = tournament.gamesPlayed + 1;
+    payload.nextRoomCode   = nextCode;
+    // NOTE: we do NOT join the socket or call startRoomGame here.
+    // The game starts when the player clicks "Continue" which triggers tournament:start (resume path).
+  }
+
+  // Emit result to the player
+  const playerSocket = [...io.sockets.sockets.values()].find(s => (s as any).userId === tournament.userId);
+  if (playerSocket) playerSocket.emit('tournament:game_result', payload);
+}
+
+// ── Prize Distribution ────────────────────────────────────────────────────────
+
+async function distributePrize(io: Server, state: GameState, matchResult: any, winnerPlayer: any) {
+  try {
+    const room = await Room.findOne({ code: state.roomId }).lean();
+    if (!room) return;
+    const entryFee: number = (room.config as any).entryFee ?? 0;
+    if (entryFee <= 0) return;
+
+    const paidIds: string[] = (room as any).paidPlayerIds ?? [];
+    const pot = entryFee * paidIds.length;
+    if (pot <= 0 || !winnerPlayer || winnerPlayer.isBot) return;
+
+    // Handle ties — split the pot evenly
+    const winnerIds: string[] = matchResult.winnerIds ?? [matchResult.winnerId];
+    const winnerPlayerIds = state.players
+      .filter(p => winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId))
+      .map(p => p.userId);
+
+    if (winnerPlayerIds.length === 0) return;
+    const share = Math.floor(pot / winnerPlayerIds.length);
+
+    for (const uid of winnerPlayerIds) {
+      const updated = await User.findByIdAndUpdate(uid, { $inc: { walletBalance: share } }, { new: true });
+      await Transaction.create({
+        userId: uid,
+        type: 'winning',
+        amount: share,
+        status: 'completed',
+        description: `Prize won — room ${state.roomId}${winnerPlayerIds.length > 1 ? ' (split)' : ''}`,
+        metadata: { roomCode: state.roomId },
+      });
+      // Notify winner's connected socket
+      for (const [, s] of io.sockets.sockets) {
+        if ((s as any).userId === uid) {
+          s.emit('wallet:prize_won', { amount: share, balance: updated?.walletBalance ?? 0 });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Prize] Distribution error:', err);
+  }
 }
 
 // ── Turn Timer ────────────────────────────────────────────────────────────────

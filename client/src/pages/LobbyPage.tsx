@@ -12,6 +12,7 @@ import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
 import { JoinRoomModal } from '../components/lobby/JoinRoomModal';
 import { Button } from '../components/ui/Button';
 import { HistoryTab } from '../components/lobby/HistoryTab';
+import { SupportModal } from '../components/lobby/SupportModal';
 import { PublicAdminConfig } from '../types';
 
 type Tab = 'play' | 'history';
@@ -23,6 +24,7 @@ export function LobbyPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
@@ -111,23 +113,31 @@ export function LobbyPage() {
         </motion.div>
 
         {/* ── Tabs ──────────────────────────────────────────────────── */}
-        <div className="flex gap-1 mb-4 sm:mb-8 bg-dark-surface border border-dark-border rounded-xl p-1 w-fit mx-auto">
-          {([
-            { key: 'play', label: '🎮 Play' },
-            { key: 'history', label: '📋 History' },
-          ] as { key: Tab; label: string }[]).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all ${
-                activeTab === tab.key
-                  ? 'bg-neon-green text-dark-bg shadow'
-                  : 'text-dark-muted hover:text-dark-text'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-center gap-3 mb-4 sm:mb-8">
+          <div className="flex gap-1 bg-dark-surface border border-dark-border rounded-xl p-1">
+            {([
+              { key: 'play', label: '🎮 Play' },
+              { key: 'history', label: '📋 History' },
+            ] as { key: Tab; label: string }[]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-neon-green text-dark-bg shadow'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowSupport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dark-border text-dark-muted hover:text-dark-text hover:border-dark-text/40 transition-all text-xs font-medium"
+          >
+            🎧 Support
+          </button>
         </div>
 
         {/* ── Resume game banner ─────────────────────────────────────── */}
@@ -158,6 +168,45 @@ export function LobbyPage() {
 
         {activeTab === 'play' && (
           <>
+            {/* ── Tournament Banner (admin-controlled) ────────────────── */}
+            {(adminConfig?.featureFlags as any)?.tournamentBannerEnabled !== false && <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 relative overflow-hidden rounded-2xl cursor-pointer group"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,150,0,0.12) 0%, rgba(255,60,100,0.12) 50%, rgba(180,0,255,0.12) 100%)',
+                border: '1px solid rgba(255,180,0,0.35)',
+              }}
+              onClick={() => navigate('/tournament')}
+            >
+              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'linear-gradient(135deg, rgba(255,150,0,0.06) 0%, rgba(255,60,100,0.06) 100%)' }} />
+              <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full blur-3xl pointer-events-none"
+                style={{ background: 'rgba(255,180,0,0.15)' }} />
+              <div className="flex items-center gap-4 px-5 py-4">
+                <div className="text-4xl flex-shrink-0">⚔️</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-base font-black text-white">Bot Tournament</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(255,180,0,0.2)', color: '#fbbf24', border: '1px solid rgba(255,180,0,0.3)' }}>
+                      NEW
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-muted mt-0.5">
+                    Play 3 games vs bots · Win ₹15–₹25 · Entry ₹10 or ₹20
+                  </p>
+                </div>
+                <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-xl transition-all group-hover:scale-105"
+                    style={{ background: 'linear-gradient(135deg, #f59e0b, #ef4444)', color: '#fff' }}>
+                    Play Now →
+                  </span>
+                  <span className="text-[10px] text-dark-muted">Win up to ₹45</span>
+                </div>
+              </div>
+            </motion.div>}
+
             {/* ── Play vs AI ─────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -322,9 +371,17 @@ export function LobbyPage() {
                             className="bg-dark-surface border border-dark-border rounded-xl p-3 sm:p-4 flex items-center justify-between gap-2 hover:border-neon-green/40 transition-colors"
                           >
                             <div className="min-w-0">
-                              <p className="font-medium text-dark-text text-sm truncate">{r.name}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-medium text-dark-text text-sm truncate">{r.name}</p>
+                                {r.entryFee > 0 && (
+                                  <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                    ₹{r.entryFee} entry
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-dark-muted text-xs">
                                 {r.playerCount}/{r.maxPlayers} players · {r.roundCount} rounds
+                                {r.entryFee > 0 && ` · Pot: ₹${r.entryFee * r.playerCount}`}
                               </p>
                             </div>
                             <Button
@@ -405,6 +462,7 @@ export function LobbyPage() {
 
       <CreateRoomModal isOpen={showCreate} onClose={() => setShowCreate(false)} adminConfig={adminConfig} />
       <JoinRoomModal isOpen={showJoin} onClose={() => setShowJoin(false)} />
+      <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
     </Layout>
   );
 }
