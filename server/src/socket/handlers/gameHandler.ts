@@ -628,9 +628,12 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
 
     await tournament.save();
   } else {
-    // Prepare next game room
+    // Save updated stats first so they're never lost if room creation fails
+    await tournament.save();
+
+    // Prepare next game room (game starts only when player explicitly resumes)
     const user = await User.findById(tournament.userId).select('username avatar');
-    if (!user) { await tournament.save(); return; }
+    if (!user) return;
 
     let nextCode: string;
     let attempts = 0;
@@ -639,13 +642,11 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
       attempts++;
     } while (await Room.exists({ code: nextCode }) && attempts < 10);
 
-    const playerSocket = [...io.sockets.sockets.values()].find(s => (s as any).userId === tournament.userId);
-
     await Room.create({
       code: nextCode,
-      name: `Tournament — ${user.username}`,
+      name: `Tournament — ${user.username}`.slice(0, 30),
       hostId: tournament.userId,
-      players: [{ userId: tournament.userId, username: user.username, avatar: user.avatar, isReady: true, isHost: true, isBot: false, socketId: playerSocket?.id }],
+      players: [{ userId: tournament.userId, username: user.username, avatar: user.avatar, isReady: true, isHost: true, isBot: false }],
       config: { maxPlayers: 2, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0 },
       paidPlayerIds: [],
       status: 'waiting',
@@ -654,14 +655,10 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
     tournament.currentRoomCode = nextCode;
     await tournament.save();
 
-    if (playerSocket) {
-      await playerSocket.join(nextCode);
-      playerSocket.data.roomCode = nextCode;
-    }
-    await startRoomGame(io, nextCode);
-
     payload.nextGameNumber = tournament.gamesPlayed + 1;
     payload.nextRoomCode   = nextCode;
+    // NOTE: we do NOT join the socket or call startRoomGame here.
+    // The game starts when the player clicks "Continue" which triggers tournament:start (resume path).
   }
 
   // Emit result to the player

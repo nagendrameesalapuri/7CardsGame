@@ -120,6 +120,10 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
           if (existing.currentRoomCode) {
             await socket.join(existing.currentRoomCode);
             socket.data.roomCode = existing.currentRoomCode;
+            // Start the game if it hasn't been started yet (next-game rooms are created idle)
+            if (!getActiveGame(existing.currentRoomCode)) {
+              await startRoomGame(io, existing.currentRoomCode);
+            }
             emitGameStateToSocket(socket, existing.currentRoomCode, userId);
           }
           return socket.emit('tournament:resumed', {

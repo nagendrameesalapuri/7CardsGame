@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { on, socketGame } from '../services/socket';
+import { on, socketTournament } from '../services/socket';
 import { notify } from '../services/notify';
 
 export interface TournamentGameResult {
@@ -103,10 +103,11 @@ export const useTournamentStore = create<TournamentStore>((set, get) => ({
   clearResult: () => set({ gameResult: null }),
 
   continueToNextGame: () => {
-    const { gameResult } = get();
+    const { gameResult, entryFee } = get();
     if (!gameResult?.nextRoomCode) return;
-    socketGame.reconnect(gameResult.nextRoomCode);
     set({ gameResult: null, gameNumber: gameResult.nextGameNumber ?? get().gameNumber + 1 });
+    // Trigger the resume path: server will start the next game room and emit game:state
+    socketTournament.start(entryFee);
   },
 
   reset: () => set({
