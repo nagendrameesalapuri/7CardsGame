@@ -393,7 +393,6 @@ export function WalletPage() {
     );
   }
 
-  const pendingDeposits    = depositRequests.filter(d => d.status === 'pending');
   const pendingWithdrawals = withdrawalRequests.filter(w => w.status === 'pending');
 
   return (
@@ -436,21 +435,53 @@ export function WalletPage() {
             </div>
           )}
 
-          {/* Pending deposit banner */}
-          {pendingDeposits.length > 0 && (
-            <div className="rounded-2xl p-4"
-              style={{ background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.15)' }}>
-              <p className="text-xs font-semibold text-neon-green uppercase tracking-wider mb-2">⏳ Deposit Under Review</p>
-              {pendingDeposits.map((d: any) => (
-                <div key={d._id} className="flex justify-between items-center py-1.5">
-                  <div>
-                    <p className="text-sm text-white font-medium">₹{d.amount}</p>
-                    <p className="text-xs text-dark-muted font-mono">UTR: {d.utrNumber}</p>
+          {/* Deposit request statuses */}
+          {depositRequests.length > 0 && (
+            <div className="space-y-2">
+              {depositRequests.map((d: any) => {
+                const isPending  = d.status === 'pending';
+                const isApproved = d.status === 'approved';
+                const isRejected = d.status === 'rejected';
+                return (
+                  <div key={d._id} className="rounded-2xl px-4 py-3"
+                    style={{
+                      background: isRejected ? 'rgba(255,60,60,0.05)' : isApproved ? 'rgba(0,255,136,0.05)' : 'rgba(251,191,36,0.05)',
+                      border: `1px solid ${isRejected ? 'rgba(255,60,60,0.2)' : isApproved ? 'rgba(0,255,136,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                    }}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {isPending ? '⏳' : isApproved ? '✅' : '❌'} Deposit ₹{d.amount}
+                        </p>
+                        <p className="text-xs text-dark-muted font-mono mt-0.5">UTR: {d.utrNumber}</p>
+                        <p className="text-[10px] text-dark-muted mt-0.5">
+                          {new Date(d.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={clsx('text-[10px] px-2 py-0.5 rounded-full font-semibold mt-0.5',
+                        isRejected ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          : isApproved ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                      )}>
+                        {d.status}
+                      </span>
+                    </div>
+                    {isRejected && (
+                      <p className="text-xs text-red-400/80 mt-2">
+                        {d.adminNote
+                          ? `Reason: ${d.adminNote}`
+                          : 'Your deposit was not verified. Please contact admin or resubmit with correct UTR.'}
+                      </p>
+                    )}
+                    {isPending && (
+                      <p className="text-xs text-yellow-400/70 mt-1">Admin will verify and credit your wallet shortly.</p>
+                    )}
+                    {isApproved && (
+                      <p className="text-xs text-green-400/70 mt-1">Amount has been credited to your wallet.</p>
+                    )}
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">Pending</span>
-                </div>
-              ))}
-              <p className="text-xs text-dark-muted mt-2">Admin will verify and credit within a few hours.</p>
+                );
+              })}
             </div>
           )}
 
