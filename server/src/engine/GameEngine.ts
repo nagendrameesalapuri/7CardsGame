@@ -40,7 +40,8 @@ export class GameEngine {
   // ── Game Setup ─────────────────────────────────────────────────────────────
 
   static initializeGame(config: GameConfig): GameState {
-    let deck = DeckManager.createDeck();
+    const copies = config.players.length >= 4 ? 2 : 1;
+    let deck = DeckManager.createDeck(copies);
     deck = DeckManager.shuffleDeck(deck);
 
     const { jokerRank, jokerCard, remainingDeck } = DeckManager.selectJoker(deck);
@@ -410,7 +411,8 @@ export class GameEngine {
     const active = updatedPlayers.filter(p => !p.isEliminated);
     if (active.length <= 1) return { ...state, status: 'match_end', players: updatedPlayers };
 
-    let deck = DeckManager.createDeck();
+    const copies = active.length >= 4 ? 2 : 1;
+    let deck = DeckManager.createDeck(copies);
     deck = DeckManager.shuffleDeck(deck);
     const { jokerRank, jokerCard, remainingDeck } = DeckManager.selectJoker(deck);
     const markedDeck = DeckManager.applyJoker(remainingDeck, jokerRank);
