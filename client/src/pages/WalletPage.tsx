@@ -42,7 +42,76 @@ const STATUS_PILL: Record<string, string> = {
   failed: "bg-red-500/20 text-red-400",
 };
 
-// ── Add Money Modal (QR + UTR) ───────────────────────────────────────────────
+// ── Shared pagination bar ─────────────────────────────────────────────────────
+
+function PageBar({
+  page,
+  total,
+  size,
+  onChange,
+}: {
+  page: number;
+  total: number;
+  size: number;
+  onChange: (p: number) => void;
+}) {
+  const pages = Math.ceil(total / size);
+  return (
+    <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-border">
+      <button
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page === 1}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        ← Prev
+      </button>
+      <div className="flex items-center gap-1">
+        {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+          <button
+            key={p}
+            onClick={() => onChange(p)}
+            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+              p === page
+                ? "bg-neon-green text-dark-bg"
+                : "text-dark-muted hover:text-dark-text hover:bg-white/5"
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={() => onChange(Math.min(pages, page + 1))}
+        disabled={page >= pages}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        Next →
+      </button>
+    </div>
+  );
+}
+
+// ── Request status badge ──────────────────────────────────────────────────────
+
+function ReqBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    pending: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+    approved: "bg-green-500/20 text-green-400 border-green-500/30",
+    rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+  };
+  return (
+    <span
+      className={clsx(
+        "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+        map[status] ?? "bg-dark-border text-dark-muted border-dark-border",
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+// ── Add Money Modal (QR + UTR) ────────────────────────────────────────────────
 
 function AddMoneyModal({
   onClose,
@@ -120,7 +189,6 @@ function AddMoneyModal({
           border: "1px solid rgba(0,255,136,0.2)",
         }}
       >
-        {/* Step tabs */}
         <div
           className="flex"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
@@ -148,7 +216,6 @@ function AddMoneyModal({
                 Choose amount, then scan QR with any UPI app
               </p>
 
-              {/* Amount presets */}
               <div className="grid grid-cols-4 gap-2">
                 {PRESET_AMOUNTS.map((p) => (
                   <button
@@ -180,7 +247,6 @@ function AddMoneyModal({
                 className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text text-sm focus:outline-none focus:border-neon-green"
               />
 
-              {/* QR Code - Only show if enabled */}
               {walletConfig.qrEnabled && (
                 <div className="flex flex-col items-center gap-3 py-1">
                   <div className="p-3 bg-white rounded-2xl shadow-lg">
@@ -200,7 +266,6 @@ function AddMoneyModal({
                 </div>
               )}
 
-              {/* UPI ID copy row - Only show if QR enabled */}
               {walletConfig.qrEnabled && (
                 <div
                   className="flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer active:scale-98 transition-transform"
@@ -291,9 +356,7 @@ function AddMoneyModal({
                   border: "1px solid rgba(255,255,255,0.06)",
                 }}
               >
-                <p className="font-semibold text-dark-text">
-                  Where to find UTR?
-                </p>
+                <p className="font-semibold text-dark-text">Where to find UTR?</p>
                 <p>• GPay → Payment details → Transaction ID</p>
                 <p>• PhonePe → History → tap payment → UTR No.</p>
                 <p>• Paytm → Passbook → tap payment → Reference No.</p>
@@ -502,6 +565,8 @@ function WithdrawModal({
 
 // ── Main WalletPage ───────────────────────────────────────────────────────────
 
+type HistoryTab = "transactions" | "deposits" | "withdrawals";
+
 export function WalletPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
@@ -516,7 +581,12 @@ export function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+
+  const [historyTab, setHistoryTab] = useState<HistoryTab>("transactions");
   const [txPage, setTxPage] = useState(1);
+  const [depPage, setDepPage] = useState(1);
+  const [wdPage, setWdPage] = useState(1);
+
   const [walletConfig, setWalletConfig] = useState<AdminWalletConfig>({
     depositEnabled: true,
     withdrawEnabled: true,
@@ -547,13 +617,10 @@ export function WalletPage() {
       return;
     }
 
-    // Load wallet config
     configApi
       .getPublic()
       .then((r) => {
-        if (r.data.walletConfig) {
-          setWalletConfig(r.data.walletConfig);
-        }
+        if (r.data.walletConfig) setWalletConfig(r.data.walletConfig);
       })
       .catch(() => {});
 
@@ -568,11 +635,8 @@ export function WalletPage() {
       },
     );
 
-    // Listen for config updates
     const unsubConfig = on("admin:config_updated", (cfg: any) => {
-      if (cfg.walletConfig) {
-        setWalletConfig(cfg.walletConfig);
-      }
+      if (cfg.walletConfig) setWalletConfig(cfg.walletConfig);
     });
 
     return () => {
@@ -596,9 +660,11 @@ export function WalletPage() {
     );
   }
 
-  const pendingWithdrawals = withdrawalRequests.filter(
-    (w) => w.status === "pending",
-  );
+  const TABS: { key: HistoryTab; label: string; count: number }[] = [
+    { key: "transactions", label: "📊 Transactions", count: transactions.length },
+    { key: "deposits",     label: "⬇️ Deposits",     count: depositRequests.length },
+    { key: "withdrawals",  label: "⬆️ Withdrawals",  count: withdrawalRequests.length },
+  ];
 
   return (
     <Layout>
@@ -676,252 +742,299 @@ export function WalletPage() {
             </div>
           )}
 
-          {/* Deposit request statuses */}
-          {depositRequests.length > 0 && (
-            <div className="space-y-2">
-              {depositRequests.map((d: any) => {
-                const isPending = d.status === "pending";
-                const isApproved = d.status === "approved";
-                const isRejected = d.status === "rejected";
-                return (
-                  <div
-                    key={d._id}
-                    className="rounded-2xl px-4 py-3"
-                    style={{
-                      background: isRejected
-                        ? "rgba(255,60,60,0.05)"
-                        : isApproved
-                          ? "rgba(0,255,136,0.05)"
-                          : "rgba(251,191,36,0.05)",
-                      border: `1px solid ${isRejected ? "rgba(255,60,60,0.2)" : isApproved ? "rgba(0,255,136,0.2)" : "rgba(251,191,36,0.2)"}`,
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-semibold text-white">
-                          {isPending ? "⏳" : isApproved ? "✅" : "❌"} Deposit
-                          ₹{d.amount}
-                        </p>
-                        <p className="text-xs text-dark-muted font-mono mt-0.5">
-                          UTR: {d.utrNumber}
-                        </p>
-                        <p className="text-[10px] text-dark-muted mt-0.5">
-                          {new Date(d.createdAt).toLocaleString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <span
-                        className={clsx(
-                          "text-[10px] px-2 py-0.5 rounded-full font-semibold mt-0.5",
-                          isRejected
-                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : isApproved
-                              ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                              : "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30",
-                        )}
-                      >
-                        {d.status}
-                      </span>
-                    </div>
-                    {isRejected && (
-                      <p className="text-xs text-red-400/80 mt-2">
-                        {d.adminNote
-                          ? `Reason: ${d.adminNote}`
-                          : "Your deposit was not verified. Please contact admin or resubmit with correct UTR."}
-                      </p>
-                    )}
-                    {isPending && (
-                      <p className="text-xs text-yellow-400/70 mt-1">
-                        Admin will verify and credit your wallet shortly.
-                      </p>
-                    )}
-                    {isApproved && (
-                      <p className="text-xs text-green-400/70 mt-1">
-                        Amount has been credited to your wallet.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Pending withdrawal banner */}
-          {pendingWithdrawals.length > 0 && (
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: "rgba(255,107,107,0.04)",
-                border: "1px solid rgba(255,107,107,0.15)",
-              }}
-            >
-              <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">
-                ⏳ Withdrawal Under Review
-              </p>
-              {pendingWithdrawals.map((w: any) => (
-                <div
-                  key={w._id}
-                  className="flex justify-between items-center py-1.5"
-                >
-                  <div>
-                    <p className="text-sm text-white font-medium">
-                      ₹{w.amount}
-                    </p>
-                    <p className="text-xs text-dark-muted">
-                      {w.upiId ?? w.bankDetails?.accountName}
-                    </p>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                    Pending
-                  </span>
-                </div>
-              ))}
-              <p className="text-xs text-dark-muted mt-2">
-                Admin will process within 24 hours.
-              </p>
-            </div>
-          )}
-
-          {/* Transaction history */}
+          {/* ── History Tabs ─────────────────────────────────────────────── */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-dark-muted uppercase tracking-wider">
-                Transaction History
-              </h2>
-              {transactions.length > TX_PAGE_SIZE && (
-                <span className="text-xs text-dark-muted">
-                  {Math.min(txPage * TX_PAGE_SIZE, transactions.length)} of{" "}
-                  {transactions.length}
-                </span>
-              )}
+            {/* Tab bar */}
+            <div className="flex border-b border-dark-border mb-4">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setHistoryTab(tab.key)}
+                  className={clsx(
+                    "flex-1 py-2.5 text-xs font-semibold transition-colors flex items-center justify-center gap-1",
+                    historyTab === tab.key
+                      ? "text-neon-green border-b-2 border-neon-green"
+                      : "text-dark-muted hover:text-dark-text",
+                  )}
+                >
+                  {tab.label}
+                  {tab.count > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-dark-border text-dark-muted font-bold">
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-            {transactions.length === 0 ? (
-              <div className="text-center py-10 text-dark-muted text-sm">
-                No transactions yet
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  {transactions
-                    .slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE)
-                    .map((tx) => (
-                      <div
-                        key={tx._id}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                        style={{
-                          background: isDebit(tx.type)
-                            ? "rgba(255,60,60,0.04)"
-                            : tx.type === "winning"
-                              ? "rgba(255,215,0,0.04)"
-                              : "rgba(255,255,255,0.03)",
-                          border: isDebit(tx.type)
-                            ? "1px solid rgba(255,60,60,0.1)"
-                            : tx.type === "winning"
-                              ? "1px solid rgba(255,215,0,0.12)"
-                              : "1px solid rgba(255,255,255,0.05)",
-                        }}
-                      >
-                        <span className="text-xl flex-shrink-0">
-                          {TX_ICONS[tx.type] ?? "💳"}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={clsx(
-                              "text-sm font-semibold",
-                              TX_COLORS[tx.type] ?? "text-dark-text",
-                            )}
-                          >
-                            {TX_LABELS[tx.type] ?? tx.type}
-                          </p>
-                          <p className="text-xs text-dark-muted truncate">
-                            {tx.description}
-                          </p>
-                          <p className="text-[10px] text-dark-muted opacity-70">
-                            {new Date(tx.createdAt).toLocaleString("en-IN", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p
-                            className={clsx(
-                              "text-sm font-bold",
-                              TX_COLORS[tx.type] ?? "text-dark-text",
-                            )}
-                          >
-                            {isDebit(tx.type) ? "-" : "+"}₹{tx.amount}
-                          </p>
-                          <span
-                            className={clsx(
-                              "text-[10px] px-1.5 py-0.5 rounded-full",
-                              STATUS_PILL[tx.status] ??
-                                "bg-dark-border text-dark-muted",
-                            )}
-                          >
-                            {tx.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                </div>
 
-                {/* Pagination controls */}
-                {transactions.length > TX_PAGE_SIZE && (
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-border">
-                    <button
-                      onClick={() => setTxPage((p) => Math.max(1, p - 1))}
-                      disabled={txPage === 1}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      ← Previous
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {Array.from(
-                        {
-                          length: Math.ceil(transactions.length / TX_PAGE_SIZE),
-                        },
-                        (_, i) => i + 1,
-                      ).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setTxPage(p)}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                            p === txPage
-                              ? "bg-neon-green text-dark-bg"
-                              : "text-dark-muted hover:text-dark-text hover:bg-white/5"
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() =>
-                        setTxPage((p) =>
-                          Math.min(
-                            Math.ceil(transactions.length / TX_PAGE_SIZE),
-                            p + 1,
-                          ),
-                        )
-                      }
-                      disabled={
-                        txPage >= Math.ceil(transactions.length / TX_PAGE_SIZE)
-                      }
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-dark-muted hover:text-dark-text border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Next →
-                    </button>
+            {/* ── Transactions tab ── */}
+            {historyTab === "transactions" && (
+              transactions.length === 0 ? (
+                <div className="text-center py-12 text-dark-muted text-sm">
+                  No transactions yet
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs text-dark-muted">
+                      {transactions.length} transaction{transactions.length !== 1 ? "s" : ""}
+                    </p>
+                    {transactions.length > TX_PAGE_SIZE && (
+                      <span className="text-xs text-dark-muted">
+                        {Math.min(txPage * TX_PAGE_SIZE, transactions.length)} of {transactions.length}
+                      </span>
+                    )}
                   </div>
-                )}
-              </>
+                  <div className="space-y-2">
+                    {transactions
+                      .slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE)
+                      .map((tx) => (
+                        <div
+                          key={tx._id}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                          style={{
+                            background: isDebit(tx.type)
+                              ? "rgba(255,60,60,0.04)"
+                              : tx.type === "winning"
+                                ? "rgba(255,215,0,0.04)"
+                                : "rgba(255,255,255,0.03)",
+                            border: isDebit(tx.type)
+                              ? "1px solid rgba(255,60,60,0.1)"
+                              : tx.type === "winning"
+                                ? "1px solid rgba(255,215,0,0.12)"
+                                : "1px solid rgba(255,255,255,0.05)",
+                          }}
+                        >
+                          <span className="text-xl flex-shrink-0">
+                            {TX_ICONS[tx.type] ?? "💳"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className={clsx("text-sm font-semibold", TX_COLORS[tx.type] ?? "text-dark-text")}>
+                              {TX_LABELS[tx.type] ?? tx.type}
+                            </p>
+                            <p className="text-xs text-dark-muted truncate">{tx.description}</p>
+                            <p className="text-[10px] text-dark-muted opacity-70">
+                              {new Date(tx.createdAt).toLocaleString("en-IN", {
+                                day: "2-digit", month: "short", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className={clsx("text-sm font-bold", TX_COLORS[tx.type] ?? "text-dark-text")}>
+                              {isDebit(tx.type) ? "-" : "+"}₹{tx.amount}
+                            </p>
+                            <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full", STATUS_PILL[tx.status] ?? "bg-dark-border text-dark-muted")}>
+                              {tx.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {transactions.length > TX_PAGE_SIZE && (
+                    <PageBar
+                      page={txPage}
+                      total={transactions.length}
+                      size={TX_PAGE_SIZE}
+                      onChange={setTxPage}
+                    />
+                  )}
+                </>
+              )
+            )}
+
+            {/* ── Deposits tab ── */}
+            {historyTab === "deposits" && (
+              depositRequests.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-3xl mb-2">💳</p>
+                  <p className="text-dark-muted text-sm mb-4">No deposit requests yet</p>
+                  {walletConfig.depositEnabled && !isGuest && (
+                    <button
+                      onClick={() => setShowAdd(true)}
+                      className="px-4 py-2 bg-neon-green text-dark-bg font-bold text-sm rounded-xl hover:bg-neon-green/90 transition-all"
+                    >
+                      Add Money
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-dark-muted mb-3">
+                    {depositRequests.length} request{depositRequests.length !== 1 ? "s" : ""}
+                  </p>
+                  <div className="space-y-2">
+                    {depositRequests
+                      .slice((depPage - 1) * TX_PAGE_SIZE, depPage * TX_PAGE_SIZE)
+                      .map((d: any) => {
+                        const isPending  = d.status === "pending";
+                        const isApproved = d.status === "approved";
+                        const isRejected = d.status === "rejected";
+                        return (
+                          <div
+                            key={d._id}
+                            className="rounded-2xl px-4 py-3"
+                            style={{
+                              background: isRejected
+                                ? "rgba(255,60,60,0.05)"
+                                : isApproved
+                                  ? "rgba(0,255,136,0.05)"
+                                  : "rgba(251,191,36,0.05)",
+                              border: `1px solid ${
+                                isRejected
+                                  ? "rgba(255,60,60,0.2)"
+                                  : isApproved
+                                    ? "rgba(0,255,136,0.2)"
+                                    : "rgba(251,191,36,0.2)"
+                              }`,
+                            }}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-semibold text-white">
+                                  {isPending ? "⏳" : isApproved ? "✅" : "❌"} Deposit ₹{d.amount}
+                                </p>
+                                <p className="text-xs text-dark-muted font-mono mt-0.5">
+                                  UTR: {d.utrNumber}
+                                </p>
+                                <p className="text-[10px] text-dark-muted mt-0.5">
+                                  {new Date(d.createdAt).toLocaleString("en-IN", {
+                                    day: "2-digit", month: "short",
+                                    hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </p>
+                              </div>
+                              <ReqBadge status={d.status} />
+                            </div>
+                            {isRejected && (
+                              <p className="text-xs text-red-400/80 mt-2">
+                                {d.adminNote
+                                  ? `Reason: ${d.adminNote}`
+                                  : "Deposit not verified. Contact admin or resubmit with correct UTR."}
+                              </p>
+                            )}
+                            {isPending && (
+                              <p className="text-xs text-yellow-400/70 mt-1">
+                                Admin will verify and credit your wallet shortly.
+                              </p>
+                            )}
+                            {isApproved && (
+                              <p className="text-xs text-green-400/70 mt-1">
+                                Amount has been credited to your wallet.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                  {depositRequests.length > TX_PAGE_SIZE && (
+                    <PageBar
+                      page={depPage}
+                      total={depositRequests.length}
+                      size={TX_PAGE_SIZE}
+                      onChange={setDepPage}
+                    />
+                  )}
+                </>
+              )
+            )}
+
+            {/* ── Withdrawals tab ── */}
+            {historyTab === "withdrawals" && (
+              withdrawalRequests.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-3xl mb-2">⬆️</p>
+                  <p className="text-dark-muted text-sm mb-4">No withdrawal requests yet</p>
+                  {walletConfig.withdrawEnabled && !isGuest && balance > 0 && (
+                    <button
+                      onClick={() => setShowWithdraw(true)}
+                      className="px-4 py-2 bg-neon-green text-dark-bg font-bold text-sm rounded-xl hover:bg-neon-green/90 transition-all"
+                    >
+                      Withdraw Money
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-dark-muted mb-3">
+                    {withdrawalRequests.length} request{withdrawalRequests.length !== 1 ? "s" : ""}
+                  </p>
+                  <div className="space-y-2">
+                    {withdrawalRequests
+                      .slice((wdPage - 1) * TX_PAGE_SIZE, wdPage * TX_PAGE_SIZE)
+                      .map((w: any) => {
+                        const isPending  = w.status === "pending";
+                        const isApproved = w.status === "approved";
+                        const isRejected = w.status === "rejected";
+                        return (
+                          <div
+                            key={w._id}
+                            className="rounded-2xl px-4 py-3"
+                            style={{
+                              background: isRejected
+                                ? "rgba(255,60,60,0.05)"
+                                : isApproved
+                                  ? "rgba(0,255,136,0.05)"
+                                  : "rgba(251,191,36,0.05)",
+                              border: `1px solid ${
+                                isRejected
+                                  ? "rgba(255,60,60,0.2)"
+                                  : isApproved
+                                    ? "rgba(0,255,136,0.2)"
+                                    : "rgba(251,191,36,0.2)"
+                              }`,
+                            }}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-semibold text-white">
+                                  {isPending ? "⏳" : isApproved ? "✅" : "❌"} Withdraw ₹{w.amount}
+                                </p>
+                                <p className="text-xs text-dark-muted mt-0.5">
+                                  {w.upiId
+                                    ? `UPI: ${w.upiId}`
+                                    : w.bankDetails?.accountName
+                                      ? `Bank: ${w.bankDetails.accountName}`
+                                      : "—"}
+                                </p>
+                                <p className="text-[10px] text-dark-muted mt-0.5">
+                                  {new Date(w.createdAt).toLocaleString("en-IN", {
+                                    day: "2-digit", month: "short",
+                                    hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </p>
+                              </div>
+                              <ReqBadge status={w.status} />
+                            </div>
+                            {isRejected && w.adminNote && (
+                              <p className="text-xs text-red-400/80 mt-2">
+                                Reason: {w.adminNote}
+                              </p>
+                            )}
+                            {isPending && (
+                              <p className="text-xs text-yellow-400/70 mt-1">
+                                Admin will process within 24 hours.
+                              </p>
+                            )}
+                            {isApproved && (
+                              <p className="text-xs text-green-400/70 mt-1">
+                                Payment has been sent to your account.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                  {withdrawalRequests.length > TX_PAGE_SIZE && (
+                    <PageBar
+                      page={wdPage}
+                      total={withdrawalRequests.length}
+                      size={TX_PAGE_SIZE}
+                      onChange={setWdPage}
+                    />
+                  )}
+                </>
+              )
             )}
           </div>
         </motion.div>

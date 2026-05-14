@@ -574,6 +574,7 @@ export default function createAdminRouter(io: Server) {
           userId: t.userId,
           username: userMap[t.userId]?.username ?? "Unknown",
           avatar: (userMap[t.userId] as any)?.avatar ?? "",
+          type: t.type,
           amount: t.amount,
           description: t.description,
           createdAt: t.createdAt,

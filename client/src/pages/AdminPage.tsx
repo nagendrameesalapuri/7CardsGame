@@ -1332,6 +1332,119 @@ function WithdrawalsSection() {
   );
 }
 
+// ── Admin Tx History panel ────────────────────────────────────────────────────
+
+function AdminTxHistory({ credits }: { credits: any[] }) {
+  const [filter, setFilter] = useState<"all" | "credit" | "debit">("all");
+
+  const shown = credits.filter((c) => {
+    if (filter === "credit") return c.type === "deposit";
+    if (filter === "debit")  return c.type === "withdrawal";
+    return true;
+  });
+
+  const creditCount = credits.filter((c) => c.type === "deposit").length;
+  const debitCount  = credits.filter((c) => c.type === "withdrawal").length;
+
+  return (
+    <div className="rounded-2xl p-5 space-y-3" style={cardStyle}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-white">📋 Admin Transaction History</p>
+        <span className="text-xs text-dark-muted">{credits.length} total</span>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1 p-1 rounded-lg bg-dark-bg">
+        {(
+          [
+            { key: "all",    label: "All",     count: credits.length },
+            { key: "credit", label: "Credits", count: creditCount },
+            { key: "debit",  label: "Debits",  count: debitCount },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setFilter(t.key)}
+            className={clsx(
+              "flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors",
+              filter === t.key
+                ? t.key === "debit"
+                  ? "bg-red-500/20 text-red-400"
+                  : t.key === "credit"
+                    ? "bg-neon-green/20 text-neon-green"
+                    : "bg-dark-border text-white"
+                : "text-dark-muted hover:text-white",
+            )}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span className="ml-1 opacity-70">({t.count})</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="text-dark-muted text-sm py-6 text-center">
+          No {filter === "all" ? "admin transactions" : filter === "credit" ? "credits" : "debits"} yet
+        </p>
+      ) : (
+        <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
+          {shown.map((c) => {
+            const isDebit = c.type === "withdrawal";
+            return (
+              <div
+                key={String(c.id)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                style={{
+                  background: isDebit ? "rgba(255,60,60,0.04)" : "rgba(0,255,136,0.03)",
+                  border: isDebit ? "1px solid rgba(255,60,60,0.12)" : "1px solid rgba(0,255,136,0.08)",
+                }}
+              >
+                <Avatar avatar={c.avatar} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-white truncate">
+                      {c.username}
+                    </p>
+                    <span
+                      className={clsx(
+                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0",
+                        isDebit
+                          ? "bg-red-500/20 text-red-400"
+                          : "bg-green-500/20 text-green-400",
+                      )}
+                    >
+                      {isDebit ? "DEBIT" : "CREDIT"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-dark-muted truncate">
+                    {c.description.replace(/^\[Admin\]\s*/, "")}
+                  </p>
+                  <p className="text-[10px] text-dark-muted opacity-60">
+                    {new Date(c.createdAt).toLocaleString("en-IN", {
+                      day: "2-digit", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+                <p
+                  className={clsx(
+                    "font-bold text-sm flex-shrink-0",
+                    isDebit ? "text-red-400" : "text-neon-green",
+                  )}
+                >
+                  {isDebit ? "-" : "+"}₹{c.amount}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Wallets Section ────────────────────────────────────────────────────────────
 
 function WalletsSection() {
@@ -1917,52 +2030,8 @@ function WalletsSection() {
           )}
         </div>
 
-        {/* ── Right: Admin credit history ── */}
-        <div className="rounded-2xl p-5 space-y-3" style={cardStyle}>
-          <p className="text-sm font-semibold text-white">
-            📋 Admin Credit History
-          </p>
-          {credits.length === 0 ? (
-            <p className="text-dark-muted text-sm py-6 text-center">
-              No admin credits yet
-            </p>
-          ) : (
-            <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-              {credits.map((c) => (
-                <div
-                  key={String(c.id)}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                  style={{
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Avatar avatar={c.avatar} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">
-                      {c.username}
-                    </p>
-                    <p className="text-[11px] text-dark-muted truncate">
-                      {c.description.replace(/^\[Admin\]\s*/, "")}
-                    </p>
-                    <p className="text-[10px] text-dark-muted opacity-60">
-                      {new Date(c.createdAt).toLocaleString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                  <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                    +₹{c.amount}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ── Right: Admin transaction history ── */}
+        <AdminTxHistory credits={credits} />
       </div>
     </div>
   );
