@@ -20,7 +20,7 @@ async function createTournamentRoom(
 
   await Room.create({
     code,
-    name: `Tournament — ${username}`,
+    name: `Tournament — ${username}`.slice(0, 30),
     hostId: userId,
     players: [{ userId, username, avatar, isReady: true, isHost: true, isBot: false, socketId }],
     config: { maxPlayers: 2, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0 },
@@ -92,22 +92,46 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
 
       const existing = await Tournament.findOne({ userId, status: 'active' });
       if (existing) {
-        // Resume existing tournament
-        if (existing.currentRoomCode) {
-          await socket.join(existing.currentRoomCode);
-          socket.data.roomCode = existing.currentRoomCode;
-          // Send game state if a game is already running
-          emitGameStateToSocket(socket, existing.currentRoomCode, userId);
+        // Check if the room still exists and has a live game — if not, it's stale
+        const roomExists = existing.currentRoomCode
+          ? await Room.exists({ code: existing.currentRoomCode })
+          : false;
+        const gameActive = existing.currentRoomCode
+          ? !!getActiveGame(existing.currentRoomCode)
+          : false;
+
+        if (!roomExists && !gameActive) {
+          // Stale tournament — refund entry fee and clear it so user can start fresh
+          console.log(`[Tournament] Stale active tournament ${existing.id} for ${username}, resetting.`);
+          existing.status = 'lost';
+          await existing.save();
+          await User.findByIdAndUpdate(userId, { $inc: { walletBalance: existing.entryFee } });
+          await Transaction.create({
+            userId,
+            type: 'refund',
+            amount: existing.entryFee,
+            status: 'completed',
+            description: 'Stale tournament auto-refund',
+            metadata: { tournamentId: existing.id },
+          });
+          // Fall through to start a new tournament
+        } else {
+          // Resume valid existing tournament
+          if (existing.currentRoomCode) {
+            await socket.join(existing.currentRoomCode);
+            socket.data.roomCode = existing.currentRoomCode;
+            emitGameStateToSocket(socket, existing.currentRoomCode, userId);
+          }
+          return socket.emit('tournament:resumed', {
+            tournamentId: existing.id,
+            gameNumber:   existing.gamesPlayed + 1,
+            playerWins:   existing.playerWins,
+            botWins:      existing.botWins,
+            entryFee:     existing.entryFee,
+            prizeAmount:  PRIZE_MAP[existing.entryFee] ?? 0,
+            roomCode:     existing.currentRoomCode,
+          });
         }
-        return socket.emit('tournament:resumed', {
-          tournamentId: existing.id,
-          gameNumber:   existing.gamesPlayed + 1,
-          playerWins:   existing.playerWins,
-          botWins:      existing.botWins,
-          entryFee:     existing.entryFee,
-          prizeAmount:  PRIZE_MAP[existing.entryFee] ?? 0,
-          roomCode:     existing.currentRoomCode,
-        });
       }
 
       const user = await User.findById(userId).select('walletBalance');
@@ -116,44 +140,56 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         return socket.emit('tournament:error', `Insufficient balance. Need ₹${entryFee} to enter.`);
       }
 
+      // Deduct entry fee — refund below if anything fails
       await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
 
-      const roomCode   = await createTournamentRoom(userId, username, avatar, socket.id);
-      console.log(`[Tournament] Created room ${roomCode} for ${username} (socket ${socket.id})`);
+      let roomCode: string | undefined;
+      let tournament: any;
+      try {
+        roomCode = await createTournamentRoom(userId, username, avatar, socket.id);
+        console.log(`[Tournament] Created room ${roomCode} for ${username} (socket ${socket.id})`);
 
-      const tournament = await Tournament.create({
-        userId,
-        entryFee,
-        currentRoomCode: roomCode,
-        prizeAmount: PRIZE_MAP[entryFee] ?? 0,
-      });
+        tournament = await Tournament.create({
+          userId,
+          entryFee,
+          currentRoomCode: roomCode,
+          prizeAmount: PRIZE_MAP[entryFee] ?? 0,
+        });
 
-      await Transaction.create({
-        userId,
-        type: 'entry_fee',
-        amount: entryFee,
-        status: 'completed',
-        description: `Tournament entry fee`,
-        metadata: { tournamentId: tournament.id },
-      });
+        await Transaction.create({
+          userId,
+          type: 'entry_fee',
+          amount: entryFee,
+          status: 'completed',
+          description: `Tournament entry fee`,
+          metadata: { tournamentId: tournament.id },
+        });
 
-      await socket.join(roomCode);
-      socket.data.roomCode = roomCode;
-      console.log(`[Tournament] Socket ${socket.id} joined room ${roomCode}, starting game…`);
+        await socket.join(roomCode);
+        socket.data.roomCode = roomCode;
+        console.log(`[Tournament] Socket ${socket.id} joined room ${roomCode}, starting game…`);
 
-      await startRoomGame(io, roomCode);
-      console.log(`[Tournament] startRoomGame complete for ${roomCode}`);
+        await startRoomGame(io, roomCode);
+        console.log(`[Tournament] startRoomGame complete for ${roomCode}`);
 
-      // Directly emit game state to ensure client receives it regardless of broadcastGameState timing
-      emitGameStateToSocket(socket, roomCode, userId);
+        emitGameStateToSocket(socket, roomCode, userId);
 
-      socket.emit('tournament:started', {
-        tournamentId: tournament.id,
-        gameNumber:   1,
-        entryFee,
-        prizeAmount:  tournament.prizeAmount,
-        roomCode,
-      });
+        socket.emit('tournament:started', {
+          tournamentId: tournament.id,
+          gameNumber:   1,
+          entryFee,
+          prizeAmount:  tournament.prizeAmount,
+          roomCode,
+        });
+      } catch (innerErr) {
+        console.error('[Tournament] Setup error (refunding entry fee):', innerErr);
+        // Refund the entry fee since setup failed
+        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } });
+        // Clean up orphaned room/tournament if they were created
+        if (roomCode) await Room.deleteOne({ code: roomCode }).catch(() => {});
+        if (tournament?.id) await Tournament.deleteOne({ _id: tournament.id }).catch(() => {});
+        socket.emit('tournament:error', 'Failed to start tournament. Please try again.');
+      }
     } catch (err) {
       console.error('[Tournament] Start error:', err);
       socket.emit('tournament:error', 'Failed to start tournament. Please try again.');
