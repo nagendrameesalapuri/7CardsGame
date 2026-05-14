@@ -23,10 +23,11 @@ const TIERS = [
 ];
 
 const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
-  won:    { label: 'Won',    color: '#00ff88', icon: '🏆' },
-  lost:   { label: 'Lost',   color: '#ff6b6b', icon: '😔' },
-  draw:   { label: 'Draw',   color: '#fbbf24', icon: '🤝' },
-  active: { label: 'Active', color: '#60a5fa', icon: '⚔️' },
+  won:       { label: 'Won',       color: '#00ff88', icon: '🏆' },
+  lost:      { label: 'Lost',      color: '#ff6b6b', icon: '😔' },
+  draw:      { label: 'Draw',      color: '#fbbf24', icon: '🤝' },
+  active:    { label: 'Active',    color: '#60a5fa', icon: '⚔️' },
+  cancelled: { label: 'Cancelled', color: '#9ca3af', icon: '↩️' },
 };
 
 function formatDate(iso: string) {
@@ -66,13 +67,23 @@ function HistoryTab() {
     <div className="space-y-3">
       {history.map((t: any) => {
         const meta = STATUS_META[t.status] ?? STATUS_META.active;
-        const prizeLine = t.status === 'won'
-          ? `+₹${t.prizeAmount} prize`
-          : t.status === 'draw'
-          ? `₹${t.entryFee} refunded`
-          : t.status === 'lost'
-          ? `−₹${t.entryFee}`
-          : 'In progress';
+        const isCancelled = t.status === 'cancelled';
+        const prizeColor =
+          t.status === 'won'       ? '#00ff88' :
+          t.status === 'draw'      ? '#fbbf24' :
+          t.status === 'cancelled' ? '#00ff88' :
+          t.status === 'lost'      ? '#ff6b6b' : '#60a5fa';
+
+        const prizeLine =
+          t.status === 'won'       ? `+₹${t.prizeAmount} prize` :
+          t.status === 'draw'      ? `₹${t.entryFee} refunded` :
+          t.status === 'cancelled' ? `₹${t.entryFee} refunded` :
+          t.status === 'lost'      ? `−₹${t.entryFee} lost` :
+          'In progress';
+
+        const cardBorder = isCancelled
+          ? '1px solid rgba(156,163,175,0.15)'
+          : '1px solid rgba(255,255,255,0.07)';
 
         return (
           <motion.div
@@ -80,8 +91,9 @@ function HistoryTab() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl p-4"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: cardBorder }}
           >
+            {/* Header row */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{meta.icon}</span>
@@ -91,49 +103,64 @@ function HistoryTab() {
               <span className="text-xs text-dark-muted">{formatDate(t.createdAt)}</span>
             </div>
 
-            {/* Series score */}
-            <div className="flex items-center gap-3 mb-2">
-              <div className="flex items-center gap-1.5">
-                {Array.from({ length: 3 }, (_, i) => {
-                  const gr = t.gameResults?.[i];
-                  const bg = !gr
-                    ? 'rgba(255,255,255,0.06)'
-                    : gr.isDraw
-                    ? 'rgba(251,191,36,0.2)'
-                    : gr.playerWon
-                    ? 'rgba(0,255,136,0.2)'
-                    : 'rgba(255,107,107,0.2)';
-                  const border = !gr
-                    ? 'rgba(255,255,255,0.1)'
-                    : gr.isDraw
-                    ? 'rgba(251,191,36,0.5)'
-                    : gr.playerWon
-                    ? 'rgba(0,255,136,0.5)'
-                    : 'rgba(255,107,107,0.5)';
-                  const label = !gr ? String(i + 1) : gr.isDraw ? '=' : gr.playerWon ? '✓' : '✗';
-                  return (
-                    <div
-                      key={i}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-                      style={{ background: bg, border: `1px solid ${border}` }}
-                    >
-                      {label}
-                    </div>
-                  );
-                })}
+            {/* Cancelled with no games played — show simple refund notice */}
+            {isCancelled && t.gamesPlayed === 0 ? (
+              <div className="rounded-lg px-3 py-2 mb-2 flex items-center gap-2"
+                style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.15)' }}>
+                <span className="text-xs">💰</span>
+                <span className="text-xs text-neon-green font-semibold">No games played — entry fee fully refunded</span>
               </div>
-              <span className="text-xs text-dark-muted">
-                {t.playerWins}W – {t.botWins}L
-                {(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ''}
-              </span>
-            </div>
+            ) : isCancelled && t.gamesPlayed > 0 ? (
+              /* Cancelled after some games — show series + no refund */
+              <>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    {Array.from({ length: 3 }, (_, i) => {
+                      const gr = t.gameResults?.[i];
+                      const bg = !gr ? 'rgba(255,255,255,0.06)' : gr.isDraw ? 'rgba(251,191,36,0.2)' : gr.playerWon ? 'rgba(0,255,136,0.2)' : 'rgba(255,107,107,0.2)';
+                      const border = !gr ? 'rgba(255,255,255,0.1)' : gr.isDraw ? 'rgba(251,191,36,0.5)' : gr.playerWon ? 'rgba(0,255,136,0.5)' : 'rgba(255,107,107,0.5)';
+                      const lbl = !gr ? String(i + 1) : gr.isDraw ? '=' : gr.playerWon ? '✓' : '✗';
+                      return (
+                        <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ background: bg, border: `1px solid ${border}` }}>{lbl}</div>
+                      );
+                    })}
+                  </div>
+                  <span className="text-xs text-dark-muted">{t.playerWins}W – {t.botWins}L{(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ''}</span>
+                </div>
+                <div className="rounded-lg px-3 py-2 mb-2 flex items-center gap-2"
+                  style={{ background: 'rgba(255,107,107,0.06)', border: '1px solid rgba(255,107,107,0.15)' }}>
+                  <span className="text-xs">⚠️</span>
+                  <span className="text-xs text-red-400 font-semibold">Cancelled after {t.gamesPlayed} game{t.gamesPlayed > 1 ? 's' : ''} — no refund</span>
+                </div>
+              </>
+            ) : (
+              /* Normal completed tournament — show series bubbles */
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: 3 }, (_, i) => {
+                    const gr = t.gameResults?.[i];
+                    const bg = !gr ? 'rgba(255,255,255,0.06)' : gr.isDraw ? 'rgba(251,191,36,0.2)' : gr.playerWon ? 'rgba(0,255,136,0.2)' : 'rgba(255,107,107,0.2)';
+                    const border = !gr ? 'rgba(255,255,255,0.1)' : gr.isDraw ? 'rgba(251,191,36,0.5)' : gr.playerWon ? 'rgba(0,255,136,0.5)' : 'rgba(255,107,107,0.5)';
+                    const lbl = !gr ? String(i + 1) : gr.isDraw ? '=' : gr.playerWon ? '✓' : '✗';
+                    return (
+                      <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                        style={{ background: bg, border: `1px solid ${border}` }}>{lbl}</div>
+                    );
+                  })}
+                </div>
+                <span className="text-xs text-dark-muted">
+                  {t.playerWins}W – {t.botWins}L{(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ''}
+                </span>
+              </div>
+            )}
 
+            {/* Footer row */}
             <div className="flex justify-between items-center">
-              <span className="text-xs text-dark-muted">{t.gamesPlayed} game{t.gamesPlayed !== 1 ? 's' : ''} played</span>
-              <span
-                className="text-xs font-bold"
-                style={{ color: t.status === 'won' ? '#00ff88' : t.status === 'draw' ? '#fbbf24' : t.status === 'lost' ? '#ff6b6b' : '#60a5fa' }}
-              >
+              <span className="text-xs text-dark-muted">
+                {t.gamesPlayed === 0 ? 'No games played' : `${t.gamesPlayed} game${t.gamesPlayed !== 1 ? 's' : ''} played`}
+              </span>
+              <span className="text-xs font-bold" style={{ color: prizeColor }}>
                 {prizeLine}
               </span>
             </div>

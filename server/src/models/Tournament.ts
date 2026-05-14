@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ITournament extends Document {
   userId: string;
   entryFee: number;
-  status: 'active' | 'won' | 'lost' | 'draw';
+  status: 'active' | 'won' | 'lost' | 'draw' | 'cancelled';
   gamesPlayed: number;
   playerWins: number;
   botWins: number;
@@ -25,7 +25,7 @@ const TournamentSchema = new Schema<ITournament>(
   {
     userId:          { type: String, required: true, index: true },
     entryFee:        { type: Number, required: true },
-    status:          { type: String, enum: ['active', 'won', 'lost', 'draw'], default: 'active' },
+    status:          { type: String, enum: ['active', 'won', 'lost', 'draw', 'cancelled'], default: 'active' },
     gamesPlayed:     { type: Number, default: 0 },
     playerWins:      { type: Number, default: 0 },
     botWins:         { type: Number, default: 0 },

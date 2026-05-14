@@ -103,7 +103,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
         if (!roomExists && !gameActive) {
           // Stale tournament — refund entry fee and clear it so user can start fresh
           console.log(`[Tournament] Stale active tournament ${existing.id} for ${username}, resetting.`);
-          existing.status = 'lost';
+          existing.status = 'cancelled';
           await existing.save();
           await User.findByIdAndUpdate(userId, { $inc: { walletBalance: existing.entryFee } });
           await Transaction.create({
@@ -204,7 +204,7 @@ export function registerTournamentHandlers(io: Server, socket: Socket) {
 
       const refund = t.gamesPlayed === 0;
 
-      t.status = 'lost';
+      t.status = 'cancelled';
       t.completedAt = new Date();
       await t.save();
 
