@@ -4,6 +4,7 @@ import { User } from '../models/User';
 import { Transaction } from '../models/Transaction';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
 import { DepositRequest } from '../models/DepositRequest';
+import { sendDepositRequestEmail } from '../services/mailer';
 
 const router = Router();
 
@@ -88,6 +89,15 @@ router.post('/deposit/request', async (req: Request, res: Response) => {
       utrNumber: utr,
       status:    'pending',
     });
+
+    // Notify admin by email (fire-and-forget — don't block the response)
+    sendDepositRequestEmail({
+      username:    req.user!.username,
+      userId:      req.user!.id,
+      amount,
+      utrNumber:   utr,
+      requestedAt: new Date(),
+    }).catch(err => console.error('[Mailer] Failed to send deposit notification:', err));
 
     res.json({ message: 'Deposit request submitted. Admin will verify and credit your wallet shortly.' });
   } catch {
