@@ -22,7 +22,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'withdrawals' | 'wallets' | 'tournaments';
+type Section = 'overview' | 'rooms' | 'users' | 'leaderboard' | 'features' | 'gameconfig' | 'deposits' | 'withdrawals' | 'wallets' | 'tournaments';
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -561,6 +561,111 @@ function GameConfigSection({ config, onSave }: { config: any; onSave: (data: any
   );
 }
 
+// ── Deposits Section ─────────────────────────────────────────────────────────
+
+const DEP_STATUS_STYLE: Record<string, string> = {
+  pending:  'bg-yellow-500/20 text-yellow-300',
+  approved: 'bg-green-500/20 text-green-400',
+  rejected: 'bg-red-500/20 text-red-400',
+};
+
+function DepositsSection() {
+  const [deposits, setDeposits] = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [noteMap, setNoteMap]   = useState<Record<string, string>>({});
+  const [filter, setFilter]     = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await admin.getDeposits();
+      setDeposits(data.deposits);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const process = async (id: string, status: 'approved' | 'rejected') => {
+    try {
+      await admin.processDeposit(id, status, noteMap[id]);
+      setDeposits(prev => prev.map(d => d._id === id ? { ...d, status } : d));
+    } catch { /* ignore */ }
+  };
+
+  const filtered = filter === 'all' ? deposits : deposits.filter(d => d.status === filter);
+  const pendingCount = deposits.filter(d => d.status === 'pending').length;
+
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-xl font-bold text-white">
+          Deposit Requests
+          {pendingCount > 0 && (
+            <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">{pendingCount} pending</span>
+          )}
+        </h2>
+        <div className="flex gap-1.5">
+          {(['pending', 'approved', 'rejected', 'all'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={clsx('px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize',
+                filter === f ? 'bg-neon-green text-dark-bg' : 'bg-dark-surface text-dark-muted border border-dark-border')}>
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-dark-muted text-sm py-8 text-center">No {filter === 'all' ? '' : filter} deposit requests</p>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(d => (
+            <div key={d._id} className="rounded-2xl p-4 space-y-3" style={cardStyle}>
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="font-semibold text-white">{d.username}</p>
+                  <p className="text-xs text-dark-muted">
+                    UTR: <span className="font-mono text-white">{d.utrNumber}</span>
+                  </p>
+                  <p className="text-xs text-dark-muted">{new Date(d.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-neon-green">₹{d.amount}</p>
+                  <span className={clsx('text-xs px-2 py-0.5 rounded-full', DEP_STATUS_STYLE[d.status] ?? '')}>
+                    {d.status}
+                  </span>
+                </div>
+              </div>
+
+              {d.status === 'pending' && (
+                <div className="flex gap-2 flex-wrap items-center">
+                  <input
+                    placeholder="Admin note (optional)"
+                    value={noteMap[d._id] ?? ''}
+                    onChange={e => setNoteMap(p => ({ ...p, [d._id]: e.target.value }))}
+                    className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
+                  />
+                  <button onClick={() => process(d._id, 'approved')}
+                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors">
+                    ✓ Approve & Credit
+                  </button>
+                  <button onClick={() => process(d._id, 'rejected')}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors">
+                    ✗ Reject
+                  </button>
+                </div>
+              )}
+              {d.adminNote && <p className="text-xs text-dark-muted italic">Note: {d.adminNote}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Withdrawals Section ────────────────────────────────────────────────────────
 
 const WD_STATUS_STYLE: Record<string, string> = {
@@ -1065,6 +1170,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: 'rooms',        icon: '🎮', label: 'Live Rooms' },
   { key: 'users',        icon: '👤', label: 'Users' },
   { key: 'leaderboard',  icon: '🏆', label: 'Leaderboard' },
+  { key: 'deposits',     icon: '📥', label: 'Deposits' },
   { key: 'withdrawals',  icon: '💸', label: 'Withdrawals' },
   { key: 'wallets',      icon: '💰', label: 'Wallets' },
   { key: 'tournaments',  icon: '⚔️', label: 'Tournaments' },
@@ -1227,6 +1333,7 @@ export function AdminPage() {
             {section === 'rooms'        && <RoomsSection />}
             {section === 'users'        && <UsersSection />}
             {section === 'leaderboard'  && <LeaderboardSection />}
+            {section === 'deposits'      && <DepositsSection />}
             {section === 'withdrawals'  && <WithdrawalsSection />}
             {section === 'wallets'      && <WalletsSection />}
             {section === 'tournaments'  && <TournamentsSection />}

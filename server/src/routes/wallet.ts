@@ -1,26 +1,16 @@
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { User } from '../models/User';
 import { Transaction } from '../models/Transaction';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Razorpay = require('razorpay');
+import { DepositRequest } from '../models/DepositRequest';
 
 const router = Router();
-
-function getRazorpay() {
-  const key_id     = process.env.RAZORPAY_KEY_ID;
-  const key_secret = process.env.RAZORPAY_KEY_SECRET;
-  if (!key_id || !key_secret) throw new Error('Razorpay keys not configured');
-  return new Razorpay({ key_id, key_secret });
-}
 
 // All wallet routes require auth
 router.use(requireAuth);
 
-// ── DEV ONLY: add test balance without payment gateway ──────────────────────
+// ── DEV ONLY: add test balance ───────────────────────────────────────────────
 router.post('/dev/add', async (req: Request, res: Response) => {
   if (process.env.NODE_ENV === 'production') {
     return res.status(404).json({ error: 'Not found' });
@@ -46,21 +36,16 @@ router.post('/dev/add', async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /api/wallet ─────────────────────────────────────────────────────────────
+// ── GET /api/wallet ──────────────────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.user!.id).select('walletBalance isGuest');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const [transactions, withdrawalRequests] = await Promise.all([
-      Transaction.find({ userId: req.user!.id })
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .lean(),
-      WithdrawalRequest.find({ userId: req.user!.id })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean(),
+    const [transactions, withdrawalRequests, depositRequests] = await Promise.all([
+      Transaction.find({ userId: req.user!.id }).sort({ createdAt: -1 }).limit(50).lean(),
+      WithdrawalRequest.find({ userId: req.user!.id }).sort({ createdAt: -1 }).limit(20).lean(),
+      DepositRequest.find({ userId: req.user!.id }).sort({ createdAt: -1 }).limit(20).lean(),
     ]);
 
     res.json({
@@ -68,89 +53,49 @@ router.get('/', async (req: Request, res: Response) => {
       isGuest: user.isGuest,
       transactions,
       withdrawalRequests,
+      depositRequests,
     });
   } catch {
     res.status(500).json({ error: 'Failed to load wallet' });
   }
 });
 
-// ── POST /api/wallet/deposit/order ───────────────────────────────────────────────
-router.post('/deposit/order', async (req: Request, res: Response) => {
+// ── POST /api/wallet/deposit/request — submit UTR after UPI payment ──────────
+router.post('/deposit/request', async (req: Request, res: Response) => {
   try {
     if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot add money' });
 
-    const { amount } = req.body as { amount: number };
-    if (!amount || amount < 1 || amount > 100000) {
-      return res.status(400).json({ error: 'Invalid amount (₹1–₹1,00,000)' });
+    const { amount, utrNumber } = req.body as { amount: number; utrNumber: string };
+
+    if (!amount || amount < 10 || amount > 100000) {
+      return res.status(400).json({ error: 'Amount must be between ₹10 and ₹1,00,000' });
+    }
+    const utr = (utrNumber ?? '').trim();
+    if (!utr || utr.length < 6) {
+      return res.status(400).json({ error: 'Enter a valid UTR / transaction reference number' });
     }
 
-    const rzp = getRazorpay();
-    const order = await rzp.orders.create({
-      amount: Math.round(amount * 100), // paise
-      currency: 'INR',
-      receipt: `wallet_${req.user!.id}_${Date.now()}`,
-    });
+    // Prevent duplicate UTR submissions
+    const existing = await DepositRequest.findOne({ utrNumber: utr });
+    if (existing) {
+      return res.status(400).json({ error: 'This UTR number has already been submitted' });
+    }
 
-    res.json({
-      orderId: order.id,
+    await DepositRequest.create({
+      userId:    req.user!.id,
+      username:  req.user!.username,
       amount,
-      currency: 'INR',
-      keyId: process.env.RAZORPAY_KEY_ID,
-    });
-  } catch (err: any) {
-    if (err.message?.includes('not configured')) {
-      return res.status(503).json({ error: 'Payment gateway not configured' });
-    }
-    res.status(500).json({ error: 'Failed to create payment order' });
-  }
-});
-
-// ── POST /api/wallet/deposit/verify ─────────────────────────────────────────────
-router.post('/deposit/verify', async (req: Request, res: Response) => {
-  try {
-    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot add money' });
-
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body as {
-      razorpay_order_id: string;
-      razorpay_payment_id: string;
-      razorpay_signature: string;
-      amount: number;
-    };
-
-    // Verify HMAC signature
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret) return res.status(503).json({ error: 'Payment gateway not configured' });
-
-    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
-    if (expected !== razorpay_signature) {
-      return res.status(400).json({ error: 'Payment verification failed' });
-    }
-
-    // Credit wallet atomically
-    const user = await User.findByIdAndUpdate(
-      req.user!.id,
-      { $inc: { walletBalance: amount } },
-      { new: true }
-    );
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    await Transaction.create({
-      userId: req.user!.id,
-      type: 'deposit',
-      amount,
-      status: 'completed',
-      description: `Added ₹${amount} via Razorpay`,
-      metadata: { razorpayOrderId: razorpay_order_id, razorpayPaymentId: razorpay_payment_id },
+      utrNumber: utr,
+      status:    'pending',
     });
 
-    res.json({ balance: user.walletBalance, message: `₹${amount} added successfully` });
+    res.json({ message: 'Deposit request submitted. Admin will verify and credit your wallet shortly.' });
   } catch {
-    res.status(500).json({ error: 'Failed to verify payment' });
+    res.status(500).json({ error: 'Failed to submit deposit request' });
   }
 });
 
-// ── POST /api/wallet/withdraw ────────────────────────────────────────────────────
+// ── POST /api/wallet/withdraw ────────────────────────────────────────────────
 router.post('/withdraw', async (req: Request, res: Response) => {
   try {
     if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot withdraw money' });
@@ -172,7 +117,6 @@ router.post('/withdraw', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    // Deduct balance immediately (hold it)
     user.walletBalance -= amount;
     await user.save();
 
@@ -194,7 +138,7 @@ router.post('/withdraw', async (req: Request, res: Response) => {
       metadata: { withdrawalRequestId: wr.id },
     });
 
-    res.json({ balance: user.walletBalance, message: 'Withdrawal request submitted' });
+    res.json({ balance: user.walletBalance, message: 'Withdrawal request submitted. Admin will process within 24 hours.' });
   } catch {
     res.status(500).json({ error: 'Failed to process withdrawal' });
   }
