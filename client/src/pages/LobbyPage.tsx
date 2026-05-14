@@ -31,11 +31,13 @@ export function LobbyPage() {
   const [aiRounds, setAiRounds] = useState(5);
   const [aiRoundsText, setAiRoundsText] = useState('5');
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
-  const [adminConfig, setAdminConfig] = useState<PublicAdminConfig | null>(null);
+  const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
+    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false },
+    gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
+    walletConfig: { depositEnabled: true, withdrawEnabled: true, upiId: '', upiName: '', qrEnabled: true, qrCodeUrl: '' },
+  });
 
-  const clampedAiRounds = adminConfig
-    ? Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, aiRounds))
-    : aiRounds;
+  const clampedAiRounds = Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, aiRounds));
 
   const startAiGame = (botCount: number) => {
     setAiLoading(true);
@@ -91,8 +93,8 @@ export function LobbyPage() {
   if (room) { if (aiLoading) setAiLoading(false); return <RoomLobby />; }
   if (game) { navigate('/game'); return null; }
 
-  const maxBots = adminConfig?.gameConfig.maxBots ?? 4;
-  const maxPlayersLimit = adminConfig?.gameConfig.maxPlayers ?? 6;
+  const maxBots = adminConfig.gameConfig.maxBots ?? 4;
+  const maxPlayersLimit = adminConfig.gameConfig.maxPlayers ?? 6;
   // Double deck: 113 usable cards, 7 per player → max 10 players → 9 bots max
   const effectiveMaxBots = Math.min(maxBots, maxPlayersLimit - 1, 9);
   const botOptions = Array.from({ length: effectiveMaxBots }, (_, i) => ({
@@ -169,7 +171,7 @@ export function LobbyPage() {
         {activeTab === 'play' && (
           <>
             {/* ── Tournament Banner (admin-controlled) ────────────────── */}
-            {(adminConfig?.featureFlags as any)?.tournamentBannerEnabled !== false && <motion.div
+            {adminConfig.featureFlags.tournamentBannerEnabled && <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-4 relative overflow-hidden rounded-2xl cursor-pointer group"
@@ -236,8 +238,8 @@ export function LobbyPage() {
                     value={aiRoundsText}
                     onChange={e => setAiRoundsText(e.target.value.replace(/[^0-9]/g, ''))}
                     onBlur={() => {
-                      const min = adminConfig?.gameConfig.minRounds ?? 1;
-                      const max = adminConfig?.gameConfig.maxRounds ?? 20;
+                      const min = adminConfig.gameConfig.minRounds ?? 1;
+                      const max = adminConfig.gameConfig.maxRounds ?? 20;
                       const clamped = Math.max(min, Math.min(max, parseInt(aiRoundsText) || min));
                       setAiRounds(clamped);
                       setAiRoundsText(String(clamped));
@@ -256,8 +258,8 @@ export function LobbyPage() {
                   value={aiRoundsText}
                   onChange={e => setAiRoundsText(e.target.value.replace(/[^0-9]/g, ''))}
                   onBlur={() => {
-                    const min = adminConfig?.gameConfig.minRounds ?? 1;
-                    const max = adminConfig?.gameConfig.maxRounds ?? 20;
+                    const min = adminConfig.gameConfig.minRounds ?? 1;
+                    const max = adminConfig.gameConfig.maxRounds ?? 20;
                     const clamped = Math.max(min, Math.min(max, parseInt(aiRoundsText) || min));
                     setAiRounds(clamped);
                     setAiRoundsText(String(clamped));
@@ -265,7 +267,7 @@ export function LobbyPage() {
                   className="w-20 bg-dark-surface border border-dark-border rounded-lg px-3 py-1 text-sm font-bold text-dark-text text-center focus:outline-none focus:border-neon-green"
                 />
                 <span className="text-xs text-dark-muted">
-                  ({adminConfig?.gameConfig.minRounds ?? 1} – {adminConfig?.gameConfig.maxRounds ?? 20})
+                  ({adminConfig.gameConfig.minRounds ?? 1} – {adminConfig.gameConfig.maxRounds ?? 20})
                 </span>
               </div>
 
