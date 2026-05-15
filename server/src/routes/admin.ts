@@ -75,7 +75,8 @@ export default function createAdminRouter(io: Server) {
   // ── Update config ───────────────────────────────────────────────────────────
   router.patch("/config", async (req: Request, res: Response) => {
     try {
-      const { featureFlags, gameConfig, walletConfig, survivalConfig } = req.body;
+      const { featureFlags, gameConfig, walletConfig, survivalConfig } =
+        req.body;
       const cfg = await getAdminConfig();
 
       if (featureFlags) {
@@ -91,17 +92,30 @@ export default function createAdminRouter(io: Server) {
             featureFlags.tournamentBannerEnabled;
         }
         if (typeof featureFlags.survivalEnabled === "boolean") {
-          (cfg.featureFlags as any).survivalEnabled = featureFlags.survivalEnabled;
+          (cfg.featureFlags as any).survivalEnabled =
+            featureFlags.survivalEnabled;
         }
-        if (featureFlags.survivalTiers && typeof featureFlags.survivalTiers === "object") {
+        if (
+          featureFlags.survivalTiers &&
+          typeof featureFlags.survivalTiers === "object"
+        ) {
           const st = featureFlags.survivalTiers;
           if (!cfg.featureFlags.survivalTiers) {
-            (cfg.featureFlags as any).survivalTiers = { beginner: true, pro: true, elite: true, boss_arena: true };
+            (cfg.featureFlags as any).survivalTiers = {
+              beginner: true,
+              pro: true,
+              elite: true,
+              boss_arena: true,
+            };
           }
-          if (typeof st.beginner   === "boolean") cfg.featureFlags.survivalTiers.beginner   = st.beginner;
-          if (typeof st.pro        === "boolean") cfg.featureFlags.survivalTiers.pro        = st.pro;
-          if (typeof st.elite      === "boolean") cfg.featureFlags.survivalTiers.elite      = st.elite;
-          if (typeof st.boss_arena === "boolean") cfg.featureFlags.survivalTiers.boss_arena = st.boss_arena;
+          if (typeof st.beginner === "boolean")
+            cfg.featureFlags.survivalTiers.beginner = st.beginner;
+          if (typeof st.pro === "boolean")
+            cfg.featureFlags.survivalTiers.pro = st.pro;
+          if (typeof st.elite === "boolean")
+            cfg.featureFlags.survivalTiers.elite = st.elite;
+          if (typeof st.boss_arena === "boolean")
+            cfg.featureFlags.survivalTiers.boss_arena = st.boss_arena;
         }
       }
 
@@ -145,11 +159,23 @@ export default function createAdminRouter(io: Server) {
 
       if (survivalConfig && typeof survivalConfig === "object") {
         const TIERS = ["beginner", "pro", "elite", "boss_arena"] as const;
-        const DEFAULTS: Record<string, { entryPoints: number; stageRewards: number[] }> = {
-          beginner:   { entryPoints: 1000,  stageRewards: [200,  400,  700,  1200,  2500]  },
-          pro:        { entryPoints: 2000,  stageRewards: [400,  800,  1400, 2400,  5000]  },
-          elite:      { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000,  12500] },
-          boss_arena: { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+        const DEFAULTS: Record<
+          string,
+          { entryPoints: number; stageRewards: number[] }
+        > = {
+          beginner: {
+            entryPoints: 1000,
+            stageRewards: [100, 200, 300, 450, 700],
+          },
+          pro: { entryPoints: 2000, stageRewards: [200, 350, 600, 900, 1500] },
+          elite: {
+            entryPoints: 5000,
+            stageRewards: [600, 900, 1400, 2200, 3800],
+          },
+          boss_arena: {
+            entryPoints: 10000,
+            stageRewards: [1200, 1800, 2600, 4200, 7600],
+          },
         };
         for (const tier of TIERS) {
           const tc = survivalConfig[tier];
@@ -160,9 +186,15 @@ export default function createAdminRouter(io: Server) {
             sc.entryPoints = DEFAULTS[tier].entryPoints;
             sc.stageRewards = [...DEFAULTS[tier].stageRewards];
           } else {
-            if (typeof tc.entryPoints === "number" && tc.entryPoints > 0) sc.entryPoints = Math.max(1, Math.round(tc.entryPoints));
-            if (Array.isArray(tc.stageRewards) && tc.stageRewards.length === 5) {
-              sc.stageRewards = tc.stageRewards.map((r: any) => Math.max(0, Math.round(Number(r) || 0)));
+            if (typeof tc.entryPoints === "number" && tc.entryPoints > 0)
+              sc.entryPoints = Math.max(1, Math.round(tc.entryPoints));
+            if (
+              Array.isArray(tc.stageRewards) &&
+              tc.stageRewards.length === 5
+            ) {
+              sc.stageRewards = tc.stageRewards.map((r: any) =>
+                Math.max(0, Math.round(Number(r) || 0)),
+              );
             }
           }
           (cfg.survivalConfig as any)[tier] = sc;
@@ -887,13 +919,19 @@ export default function createAdminRouter(io: Server) {
   // ── Push notifications (broadcast to all connected users) ──────────────────
   router.post("/notify", requireAdmin, async (req: Request, res: Response) => {
     try {
-      const { title, message, type = "info" } = req.body as {
+      const {
+        title,
+        message,
+        type = "info",
+      } = req.body as {
         title: string;
         message: string;
         type?: "info" | "warning" | "success";
       };
       if (!title?.trim() || !message?.trim()) {
-        return res.status(400).json({ error: "Title and message are required" });
+        return res
+          .status(400)
+          .json({ error: "Title and message are required" });
       }
       const payload = {
         id: Date.now().toString(),
