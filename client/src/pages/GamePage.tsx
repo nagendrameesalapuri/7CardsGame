@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { useTournamentStore } from '../store/tournamentStore';
+import { useSurvivalStore } from '../store/survivalStore';
 import { GameBoard } from '../components/game/GameBoard';
 import { TournamentResultOverlay } from '../components/game/TournamentResultOverlay';
-import { socketGame } from '../services/socket';
+import { socketGame, on } from '../services/socket';
 
 export function GamePage() {
-  const { game, room, forceEndedMsg, subscribeToEvents, reset } = useGameStore();
+  const { game, room, forceEndedMsg, subscribeToEvents, leaveRoom, reset } = useGameStore();
   const { isAuthenticated } = useAuthStore();
   const { subscribe: subscribeTournament, gameResult, active: tournamentActive } = useTournamentStore();
+  const { active: isSurvival } = useSurvivalStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,9 +37,19 @@ export function GamePage() {
     }
   }, [forceEndedMsg, navigate, reset]);
 
+  // When a survival stage ends, leave the room and go to /survival
+  // so the StageResultOverlay shows and the user can start the next stage.
+  useEffect(() => {
+    const unsub = on('survival:stage_result', () => {
+      leaveRoom();
+      navigate('/survival', { replace: true });
+    });
+    return unsub;
+  }, [leaveRoom, navigate]);
+
   if (!isAuthenticated) return null;
 
-  if (!game && !room && !tournamentActive) {
+  if (!game && !room && !tournamentActive && !isSurvival) {
     return (
       <div className="min-h-screen bg-dark-bg flex flex-col items-center justify-center gap-4">
         <p className="text-dark-muted text-lg">No active game found.</p>

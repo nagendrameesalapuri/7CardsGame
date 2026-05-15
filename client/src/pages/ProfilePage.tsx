@@ -1,23 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
-import { usersApi } from '../services/api';
+import { usersApi, survivalApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
 import { Avatar, AVATARS } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { notify } from '../services/notify';
+import { useProgressionStore } from '../store/progressionStore';
+import { AchievementBadge } from '../components/AchievementBadge';
+
+const STAGE_NAMES = ['', 'Safe Bot', 'Aggressive Bot', 'Bluff Bot', 'Smart AI', 'Boss AI'];
 
 export function ProfilePage() {
   const { user, loadMe } = useAuthStore();
+  const { highestBadge, load: loadProgression } = useProgressionStore();
   const [editMode, setEditMode] = useState(false);
   const [username, setUsername] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('avatar_1');
   const [isSaving, setIsSaving] = useState(false);
+  const [survivalStats, setSurvivalStats] = useState<any>(null);
 
   // Load user data on mount only if not already loaded
   useEffect(() => {
     if (!user) loadMe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      survivalApi.stats().then(r => setSurvivalStats(r.data)).catch(() => {});
+      loadProgression();
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync local state whenever user data arrives or changes
   useEffect(() => {
@@ -99,7 +112,10 @@ export function ProfilePage() {
                   className="w-full bg-dark-bg border-2 border-neon-green rounded-xl px-4 py-2 text-dark-text text-xl font-bold focus:outline-none mb-3"
                 />
               ) : (
-                <h2 className="text-2xl font-bold text-dark-text mb-1">{user.username}</h2>
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <h2 className="text-2xl font-bold text-dark-text">{user.username}</h2>
+                  {highestBadge && <AchievementBadge badge={highestBadge} size="md" />}
+                </div>
               )}
 
               <p className="text-dark-muted text-sm mb-1">
@@ -133,8 +149,8 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {/* Regular game stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           {stats.map((s, i) => (
             <motion.div
               key={s.label}
@@ -148,6 +164,107 @@ export function ProfilePage() {
             </motion.div>
           ))}
         </div>
+
+        {/* AI Survival Championship stats */}
+        {!user.isGuest && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">🏆</span>
+              <h2 className="text-sm font-bold text-dark-text uppercase tracking-wider">AI Survival Championship</h2>
+            </div>
+
+            {!survivalStats || survivalStats.runsPlayed === 0 ? (
+              <div className="bg-dark-surface border border-dark-border rounded-2xl p-6 text-center">
+                <p className="text-3xl mb-2">⚔️</p>
+                <p className="text-dark-muted text-sm">No survival runs yet.</p>
+                <p className="text-dark-muted text-xs mt-1">Enter the AI Survival Championship to build your record.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Top summary row */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Runs Played', value: survivalStats.runsPlayed, color: '#60a5fa', emoji: '🎮' },
+                    { label: 'Champion', value: survivalStats.runsWon, color: '#fbbf24', emoji: '🏆' },
+                    { label: 'Run Win %', value: `${survivalStats.runWinRate}%`, color: '#22c55e', emoji: '📈' },
+                  ].map((s, i) => (
+                    <motion.div key={s.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.45 + i * 0.07 }}
+                      className="rounded-2xl p-4 text-center"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-xl mb-1">{s.emoji}</p>
+                      <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">{s.label}</p>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Second row: run outcomes */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Eliminated', value: survivalStats.runsLost, color: '#ff6b6b', emoji: '💀' },
+                    { label: 'Abandoned', value: survivalStats.runsAbandoned, color: '#9ca3af', emoji: '↩️' },
+                    { label: 'Best Stage', value: survivalStats.bestStage > 0 ? `${STAGE_NAMES[survivalStats.bestStage]}` : '—', color: '#a78bfa', emoji: '⭐', small: true },
+                  ].map((s, i) => (
+                    <motion.div key={s.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.55 + i * 0.07 }}
+                      className="rounded-2xl p-4 text-center"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-xl mb-1">{s.emoji}</p>
+                      <p className={`font-black ${s.small ? 'text-sm' : 'text-xl'}`} style={{ color: s.color }}>{s.value}</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">{s.label}</p>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Stage stats row */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Stages Played', value: survivalStats.stagesPlayed, color: '#60a5fa', emoji: '🎯' },
+                    { label: 'Stages Won', value: survivalStats.stagesWon, color: '#22c55e', emoji: '✅' },
+                    { label: 'Stage Win %', value: `${survivalStats.stageWinRate}%`, color: '#fbbf24', emoji: '📊' },
+                  ].map((s, i) => (
+                    <motion.div key={s.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.65 + i * 0.07 }}
+                      className="rounded-2xl p-4 text-center"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-xl mb-1">{s.emoji}</p>
+                      <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">{s.label}</p>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Earnings summary */}
+                <div className="rounded-2xl p-4"
+                  style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.06), rgba(234,88,12,0.06))', border: '1px solid rgba(251,191,36,0.15)' }}>
+                  <p className="text-[10px] text-dark-muted uppercase tracking-widest mb-3 text-center">Survival Earnings</p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-sm font-bold text-red-400">−{survivalStats.totalSpent.toLocaleString()} pts</p>
+                      <p className="text-[10px] text-dark-muted">≡ ₹{(survivalStats.totalSpent / 100).toFixed(0)}</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">Total Spent</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-green-400">+{survivalStats.totalEarned.toLocaleString()} pts</p>
+                      <p className="text-[10px] text-dark-muted">≡ ₹{(survivalStats.totalEarned / 100).toFixed(0)}</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">Total Earned</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: survivalStats.netPoints >= 0 ? '#22c55e' : '#ff6b6b' }}>
+                        {survivalStats.netPoints >= 0 ? '+' : ''}{survivalStats.netPoints.toLocaleString()} pts
+                      </p>
+                      <p className="text-[10px] text-dark-muted">
+                        {survivalStats.netPoints >= 0 ? '+' : '−'}₹{(Math.abs(survivalStats.netPoints) / 100).toFixed(0)}
+                      </p>
+                      <p className="text-[10px] text-dark-muted mt-0.5">Net Profit</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
       </motion.div>
     </Layout>
   );

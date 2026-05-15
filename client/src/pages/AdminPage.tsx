@@ -38,7 +38,8 @@ type Section =
   | "wallets"
   | "tournaments"
   | "support"
-  | "notify";
+  | "notify"
+  | "survivalconfig";
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -783,6 +784,41 @@ function FeaturesSection({
             setFlags((f: any) => ({ ...f, tournamentBannerEnabled: v }))
           }
         />
+        <Toggle
+          label="AI Survival Championship"
+          desc="Show the AI Survival Championship banner on the lobby page"
+          value={flags.survivalEnabled ?? true}
+          onChange={(v) =>
+            setFlags((f: any) => ({ ...f, survivalEnabled: v }))
+          }
+        />
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">AI Survival Championship Tiers</p>
+        <div className="space-y-3">
+          {(
+            [
+              { key: "beginner",  label: "Beginner Tier",   desc: "1,000 pts entry · max +5,000 pts reward" },
+              { key: "pro",       label: "Pro Tier",        desc: "2,000 pts entry · max +10,000 pts reward" },
+              { key: "elite",     label: "Elite Tier",      desc: "5,000 pts entry · max +25,000 pts reward" },
+              { key: "boss_arena",label: "Boss Arena Tier", desc: "10,000 pts entry · max +50,000 pts reward" },
+            ] as const
+          ).map(({ key, label, desc }) => (
+            <Toggle
+              key={key}
+              label={label}
+              desc={desc}
+              value={flags.survivalTiers?.[key] ?? true}
+              onChange={(v) =>
+                setFlags((f: any) => ({
+                  ...f,
+                  survivalTiers: { ...(f.survivalTiers ?? { beginner: true, pro: true, elite: true, boss_arena: true }), [key]: v },
+                }))
+              }
+            />
+          ))}
+        </div>
       </div>
 
       <button
@@ -2660,6 +2696,152 @@ function NotifySection() {
   );
 }
 
+// ── Survival Config Section ───────────────────────────────────────────────────
+
+const SURVIVAL_TIER_DEFAULTS = {
+  beginner:   { entryPoints: 1000,  stageRewards: [200,  400,  700,   1200,  2500]  },
+  pro:        { entryPoints: 2000,  stageRewards: [400,  800,  1400,  2400,  5000]  },
+  elite:      { entryPoints: 5000,  stageRewards: [1000, 2000, 3500,  6000,  12500] },
+  boss_arena: { entryPoints: 10000, stageRewards: [2000, 4000, 7000,  12000, 25000] },
+} as const;
+
+const SURVIVAL_TIER_LABELS: Record<string, string> = {
+  beginner: "Beginner",
+  pro: "Pro",
+  elite: "Elite",
+  boss_arena: "Boss Arena",
+};
+
+const SURVIVAL_TIER_COLORS: Record<string, string> = {
+  beginner: "#4ade80",
+  pro: "#60a5fa",
+  elite: "#a78bfa",
+  boss_arena: "#f97316",
+};
+
+function SurvivalConfigSection({
+  config,
+  onSave,
+}: {
+  config: any;
+  onSave: (data: any) => Promise<void>;
+}) {
+  const buildState = (cfg: any) => {
+    const sc = cfg.survivalConfig ?? {};
+    const keys = ["beginner", "pro", "elite", "boss_arena"] as const;
+    const out: any = {};
+    for (const k of keys) {
+      const def = SURVIVAL_TIER_DEFAULTS[k];
+      const src = sc[k] ?? {};
+      out[k] = {
+        entryPoints: typeof src.entryPoints === "number" ? src.entryPoints : def.entryPoints,
+        stageRewards: Array.isArray(src.stageRewards) && src.stageRewards.length === 5
+          ? [...src.stageRewards]
+          : [...def.stageRewards],
+      };
+    }
+    return out;
+  };
+
+  const [tiers, setTiers] = useState<any>(() => buildState(config));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setTiers(buildState(config)); }, [config]);
+
+  const setEntry = (tier: string, v: number) =>
+    setTiers((t: any) => ({ ...t, [tier]: { ...t[tier], entryPoints: Math.max(1, v) } }));
+
+  const setReward = (tier: string, idx: number, v: number) =>
+    setTiers((t: any) => {
+      const rewards = [...t[tier].stageRewards];
+      rewards[idx] = Math.max(1, v);
+      return { ...t, [tier]: { ...t[tier], stageRewards: rewards } };
+    });
+
+  const resetTier = async (tier: string) => {
+    await onSave({ survivalConfig: { [tier]: { reset: true } } });
+  };
+
+  const saveAll = async () => {
+    setSaving(true);
+    await onSave({ survivalConfig: tiers });
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-white">AI Survival Championship Config</h2>
+      <p className="text-xs text-dark-muted">
+        Set entry fees and stage rewards for each tier. 100 pts = ₹1.
+      </p>
+
+      {(["beginner", "pro", "elite", "boss_arena"] as const).map((tier) => (
+        <div key={tier} className="rounded-2xl p-4 space-y-3" style={cardStyle}>
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-sm" style={{ color: SURVIVAL_TIER_COLORS[tier] }}>
+              {SURVIVAL_TIER_LABELS[tier]}
+            </span>
+            <button
+              onClick={() => resetTier(tier)}
+              className="text-xs px-3 py-1 rounded-lg border border-dark-border text-dark-muted hover:text-white hover:border-white/20 transition-all"
+            >
+              Reset to Default
+            </button>
+          </div>
+
+          <div>
+            <label className="text-xs text-dark-muted block mb-1">Entry Fee (pts)</label>
+            <input
+              type="number"
+              min={1}
+              value={tiers[tier].entryPoints}
+              onChange={(e) => setEntry(tier, parseInt(e.target.value) || 1)}
+              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
+            />
+            <p className="text-[10px] text-dark-muted mt-0.5">
+              ≡ ₹{(tiers[tier].entryPoints / 100).toFixed(0)}
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs text-dark-muted block mb-2">
+              Stage Rewards (pts) — Stage 1 → 5
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {[0, 1, 2, 3, 4].map((idx) => (
+                <div key={idx}>
+                  <label className="text-[10px] text-dark-muted block text-center mb-1">
+                    S{idx + 1}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={tiers[tier].stageRewards[idx] ?? 0}
+                    onChange={(e) => setReward(tier, idx, parseInt(e.target.value) || 1)}
+                    className="w-full bg-dark-bg border border-dark-border rounded-lg px-1 py-1.5 text-dark-text text-xs text-center focus:outline-none focus:border-neon-green"
+                  />
+                  <p className="text-[9px] text-dark-muted text-center mt-0.5">
+                    ₹{((tiers[tier].stageRewards[idx] ?? 0) / 100).toFixed(0)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <button
+        onClick={saveAll}
+        disabled={saving}
+        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+        style={{ background: "rgba(147,51,234,0.8)", color: "white" }}
+      >
+        {saving ? "Saving…" : "Save All Tiers"}
+      </button>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
@@ -2675,6 +2857,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: "features", icon: "⚙️", label: "Features" },
   { key: "gameconfig", icon: "🎯", label: "Game Config" },
   { key: "walletconfig", icon: "💳", label: "Wallet Config" },
+  { key: "survivalconfig", icon: "🏆", label: "Survival Config" },
   { key: "notify", icon: "📢", label: "Notify Users" },
 ];
 
@@ -2880,6 +3063,9 @@ export function AdminPage() {
               <WalletConfigSection config={config} onSave={saveConfig} />
             )}
             {section === "notify" && <NotifySection />}
+            {section === "survivalconfig" && (
+              <SurvivalConfigSection config={config} onSave={saveConfig} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

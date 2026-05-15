@@ -52,6 +52,7 @@ export default function createAdminRouter(io: Server) {
         featureFlags: cfg.featureFlags,
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
+        survivalConfig: cfg.survivalConfig,
       });
     } catch {
       res.status(500).json({ error: "Failed to load config" });
@@ -74,7 +75,7 @@ export default function createAdminRouter(io: Server) {
   // ── Update config ───────────────────────────────────────────────────────────
   router.patch("/config", async (req: Request, res: Response) => {
     try {
-      const { featureFlags, gameConfig, walletConfig } = req.body;
+      const { featureFlags, gameConfig, walletConfig, survivalConfig } = req.body;
       const cfg = await getAdminConfig();
 
       if (featureFlags) {
@@ -88,6 +89,19 @@ export default function createAdminRouter(io: Server) {
         if (typeof featureFlags.tournamentBannerEnabled === "boolean") {
           cfg.featureFlags.tournamentBannerEnabled =
             featureFlags.tournamentBannerEnabled;
+        }
+        if (typeof featureFlags.survivalEnabled === "boolean") {
+          (cfg.featureFlags as any).survivalEnabled = featureFlags.survivalEnabled;
+        }
+        if (featureFlags.survivalTiers && typeof featureFlags.survivalTiers === "object") {
+          const st = featureFlags.survivalTiers;
+          if (!cfg.featureFlags.survivalTiers) {
+            (cfg.featureFlags as any).survivalTiers = { beginner: true, pro: true, elite: true, boss_arena: true };
+          }
+          if (typeof st.beginner   === "boolean") cfg.featureFlags.survivalTiers.beginner   = st.beginner;
+          if (typeof st.pro        === "boolean") cfg.featureFlags.survivalTiers.pro        = st.pro;
+          if (typeof st.elite      === "boolean") cfg.featureFlags.survivalTiers.elite      = st.elite;
+          if (typeof st.boss_arena === "boolean") cfg.featureFlags.survivalTiers.boss_arena = st.boss_arena;
         }
       }
 
@@ -129,6 +143,33 @@ export default function createAdminRouter(io: Server) {
           wc.qrCodeUrl = walletConfig.qrCodeUrl.trim();
       }
 
+      if (survivalConfig && typeof survivalConfig === "object") {
+        const TIERS = ["beginner", "pro", "elite", "boss_arena"] as const;
+        const DEFAULTS: Record<string, { entryPoints: number; stageRewards: number[] }> = {
+          beginner:   { entryPoints: 1000,  stageRewards: [200,  400,  700,  1200,  2500]  },
+          pro:        { entryPoints: 2000,  stageRewards: [400,  800,  1400, 2400,  5000]  },
+          elite:      { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000,  12500] },
+          boss_arena: { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+        };
+        for (const tier of TIERS) {
+          const tc = survivalConfig[tier];
+          if (!tc) continue;
+          const sc = (cfg.survivalConfig as any)[tier] ?? DEFAULTS[tier];
+          if (tc.reset) {
+            // Reset to defaults
+            sc.entryPoints = DEFAULTS[tier].entryPoints;
+            sc.stageRewards = [...DEFAULTS[tier].stageRewards];
+          } else {
+            if (typeof tc.entryPoints === "number" && tc.entryPoints > 0) sc.entryPoints = Math.max(1, Math.round(tc.entryPoints));
+            if (Array.isArray(tc.stageRewards) && tc.stageRewards.length === 5) {
+              sc.stageRewards = tc.stageRewards.map((r: any) => Math.max(0, Math.round(Number(r) || 0)));
+            }
+          }
+          (cfg.survivalConfig as any)[tier] = sc;
+        }
+        cfg.markModified("survivalConfig");
+      }
+
       await cfg.save();
 
       // Notify all connected clients of the updated config
@@ -136,6 +177,7 @@ export default function createAdminRouter(io: Server) {
         featureFlags: cfg.featureFlags,
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
+        survivalConfig: cfg.survivalConfig,
       });
 
       res.json(cfg);

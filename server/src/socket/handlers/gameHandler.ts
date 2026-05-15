@@ -12,11 +12,15 @@ import { User } from '../../models/User';
 import { Transaction } from '../../models/Transaction';
 import { Tournament } from '../../models/Tournament';
 import { GameEngine, GameConfig } from '../../engine/GameEngine';
-import { BotPlayer } from '../../engine/BotPlayer';
+import { BotPlayer, BotPersonality } from '../../engine/BotPlayer';
 import { ScoreEngine } from '../../engine/ScoreEngine';
 import { GameState, ClientGameState, DrawSource, MatchResult } from '../../../../shared/src/types';
 import { v4 as uuidv4 } from 'uuid';
 import { broadcastToSpectators } from './spectatorHandler';
+import { handleSurvivalMatchEnd, handleSurvivalForceEnd } from './survivalHandler';
+import { awardXp } from '../../utils/progressionService';
+import { XP_REWARDS } from '../../utils/progression';
+import { getBadge } from '../../utils/badgeCache';
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -26,6 +30,8 @@ const roomToGame = new Map<string, string>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 // Ready-for-next-round tracking: gameId → Set of userIds who have clicked "Play Next Round"
 const roundReadyPlayers = new Map<string, Set<string>>();
+// Survival bot personality per game (gameId → personality)
+const gameBotPersonality = new Map<string, BotPersonality>();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -68,6 +74,10 @@ export function getAllActiveRoomInfos() {
   return result;
 }
 
+export function setBotPersonality(gameId: string, personality: BotPersonality) {
+  gameBotPersonality.set(gameId, personality);
+}
+
 export function forceEndGame(io: Server, roomCode: string): boolean {
   const gameId = roomToGame.get(roomCode);
   if (!gameId) return false;
@@ -82,6 +92,7 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
   cancelTurnTimer(gameId);
 
   Room.findOneAndUpdate({ code: roomCode }, { status: 'finished' }).catch(console.error);
+  handleSurvivalForceEnd(io, roomCode).catch(console.error);
   return true;
 }
 
@@ -490,6 +501,7 @@ async function handleMatchEnd(io: Server, state: GameState) {
   // Update user stats for all human players
   const humanPlayers = state.players.filter(p => !p.isBot);
   const roundsInMatch = state.roundNumber;
+  const hasBots = state.players.some(p => p.isBot);
   for (const p of humanPlayers) {
     const isWinner = p.id === matchResult.winnerId;
     User.findByIdAndUpdate(p.userId, {
@@ -499,6 +511,12 @@ async function handleMatchEnd(io: Server, state: GameState) {
         'stats.roundsPlayed': roundsInMatch,
       },
     }).catch(console.error);
+
+    // Award XP (non-blocking)
+    const baseXp = isWinner
+      ? (hasBots ? XP_REWARDS.WIN_VS_BOT : XP_REWARDS.WIN_GAME)
+      : XP_REWARDS.LOSE_GAME;
+    awardXp(io, { userId: p.userId, baseXp, isBot: hasBots, won: isWinner }).catch(console.error);
   }
 
   activeGames.delete(state.id);
@@ -515,8 +533,11 @@ async function handleMatchEnd(io: Server, state: GameState) {
     winner: matchResult.winnerUsername,
   });
 
-  // Tournament hook — runs async, non-blocking
+  gameBotPersonality.delete(state.id);
+
+  // Tournament hooks — run async, non-blocking
   handleTournamentMatchEnd(io, state, matchResult).catch(console.error);
+  handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
 }
 
 // ── Tournament match-end logic ────────────────────────────────────────────────
@@ -765,7 +786,8 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
   const current = state.players[state.currentPlayerIndex];
   if (!current?.isBot) return;
 
-  const delay = BotPlayer.getThinkDelay();
+  const personality = gameBotPersonality.get(state.id) ?? 'smart';
+  const delay = BotPlayer.getThinkDelay(personality);
 
   setTimeout(() => {
     const freshState = activeGames.get(state.id);
@@ -776,13 +798,58 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
   }, delay);
 }
 
+function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
+  // Safe fallback when any primary bot action fails: draw from deck, then discard worst card
+  if (!state.hasDrawnThisTurn) {
+    const drawResult = GameEngine.processDrawCard(state, botPlayerId, 'deck');
+    if (drawResult.success) {
+      activeGames.set(drawResult.state.id, drawResult.state);
+      for (const a of drawResult.actions) io.to(state.roomId).emit('game:action', a);
+      broadcastGameState(io, drawResult.state);
+      setTimeout(() => {
+        const s2 = activeGames.get(state.id);
+        if (!s2) return;
+        const discardIds = BotPlayer.decideDiscard(s2, botPlayerId);
+        const discardResult = GameEngine.processDiscard(s2, botPlayerId, discardIds);
+        if (discardResult.success) applyBotResult(io, discardResult);
+        else {
+          // Last resort: discard the first card in hand
+          const bot2 = s2.players.find(p => p.id === botPlayerId);
+          if (bot2?.hand[0]) {
+            const lastResort = GameEngine.processDiscard(s2, botPlayerId, [bot2.hand[0].id]);
+            if (lastResort.success) applyBotResult(io, lastResort);
+          }
+        }
+      }, 600);
+    }
+  } else {
+    // Already drew — just discard worst card
+    const discardIds = BotPlayer.decideDiscard(state, botPlayerId);
+    const discardResult = GameEngine.processDiscard(state, botPlayerId, discardIds);
+    if (discardResult.success) {
+      applyBotResult(io, discardResult);
+    } else {
+      const bot = state.players.find(p => p.id === botPlayerId);
+      if (bot?.hand[0]) {
+        const lastResort = GameEngine.processDiscard(state, botPlayerId, [bot.hand[0].id]);
+        if (lastResort.success) applyBotResult(io, lastResort);
+      }
+    }
+  }
+}
+
 function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
-  const decision = BotPlayer.decide(state, botPlayerId);
+  const personality = gameBotPersonality.get(state.id) ?? 'smart';
+  const decision = BotPlayer.decide(state, botPlayerId, personality);
   let result: ReturnType<typeof GameEngine.processDrawCard> | null = null;
 
   switch (decision.action) {
     case 'draw':
       result = GameEngine.processDrawCard(state, botPlayerId, decision.source ?? 'deck');
+      // Fallback to deck if discard-pile draw fails
+      if (!result.success && decision.source === 'discard') {
+        result = GameEngine.processDrawCard(state, botPlayerId, 'deck');
+      }
       break;
     case 'discard':
       if (!state.hasDrawnThisTurn) {
@@ -806,9 +873,13 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
             const discardIds = BotPlayer.decideDiscard(s2, botPlayerId);
             const discardResult = GameEngine.processDiscard(s2, botPlayerId, discardIds);
             if (discardResult.success) applyBotResult(io, discardResult);
+            else botFallbackAction(io, s2, botPlayerId);
           }, 800);
           return;
         }
+        // Draw also failed — use fallback
+        botFallbackAction(io, state, botPlayerId);
+        return;
       } else {
         const discardIds = decision.cardIds ?? BotPlayer.decideDiscard(state, botPlayerId);
         result = GameEngine.processDiscard(state, botPlayerId, discardIds);
@@ -816,20 +887,37 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       break;
     case 'show':
       result = GameEngine.processShow(state, botPlayerId);
+      if (!result.success) {
+        // Show rejected (e.g. threshold mismatch) — fall back to normal draw/discard
+        botFallbackAction(io, state, botPlayerId);
+        return;
+      }
       break;
     case 'attack_throw':
       result = GameEngine.processAttackResponse(state, botPlayerId, 'throw', decision.cardIds);
+      if (!result.success) {
+        // Countering failed — take the cards instead
+        result = GameEngine.processAttackResponse(state, botPlayerId, 'take');
+      }
       break;
     case 'attack_take':
       result = GameEngine.processAttackResponse(state, botPlayerId, 'take');
       break;
   }
 
-  if (result) applyBotResult(io, result);
+  if (result?.success) {
+    applyBotResult(io, result);
+  } else if (result && !result.success) {
+    // Primary action failed — use safe fallback
+    botFallbackAction(io, state, botPlayerId);
+  }
 }
 
 function applyBotResult(io: Server, result: ReturnType<typeof GameEngine.processDrawCard>) {
-  if (!result.success) return;
+  if (!result.success) {
+    console.warn('[Bot] applyBotResult: action failed —', (result as any).error ?? 'unknown');
+    return;
+  }
 
   activeGames.set(result.state.id, result.state);
   for (const a of result.actions) io.to(result.state.roomId).emit('game:action', a);
@@ -868,6 +956,7 @@ function buildClientState(state: GameState, userId: string): ClientGameState {
       isEliminated: p.isEliminated,
       seatIndex: p.seatIndex,
       isBot: p.isBot,
+      badge: p.isBot ? undefined : getBadge(p.userId),
     })),
     discardPile: state.discardPile,
     deckCount: state.deck.length,

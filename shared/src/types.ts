@@ -204,6 +204,12 @@ export interface ClientGameState {
   myPlayerId: string;
 }
 
+export interface PlayerBadge {
+  emoji: string;
+  name: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+}
+
 export interface ClientPlayerState {
   id: string;
   userId: string;
@@ -216,6 +222,7 @@ export interface ClientPlayerState {
   isEliminated: boolean;
   seatIndex: number;
   isBot: boolean;
+  badge?: PlayerBadge;
 }
 
 // ---- Socket event payloads ----
@@ -262,6 +269,13 @@ export interface AdminFeatureFlags {
   spectatorModeEnabled: boolean;
   publicRoomsEnabled: boolean;
   tournamentBannerEnabled: boolean;
+  survivalEnabled: boolean;
+  survivalTiers: {
+    beginner: boolean;
+    pro: boolean;
+    elite: boolean;
+    boss_arena: boolean;
+  };
 }
 
 export interface AdminGameConfig {
@@ -282,10 +296,23 @@ export interface AdminWalletConfig {
   qrCodeUrl: string;
 }
 
+export interface AdminSurvivalTierConfig {
+  entryPoints: number;
+  stageRewards: number[];
+}
+
+export interface AdminSurvivalConfig {
+  beginner:   AdminSurvivalTierConfig;
+  pro:        AdminSurvivalTierConfig;
+  elite:      AdminSurvivalTierConfig;
+  boss_arena: AdminSurvivalTierConfig;
+}
+
 export interface PublicAdminConfig {
   featureFlags: AdminFeatureFlags;
   gameConfig: AdminGameConfig;
   walletConfig: AdminWalletConfig;
+  survivalConfig: AdminSurvivalConfig;
 }
 
 // ---- User / Auth ----

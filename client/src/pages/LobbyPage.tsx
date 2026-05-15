@@ -14,6 +14,8 @@ import { Button } from '../components/ui/Button';
 import { HistoryTab } from '../components/lobby/HistoryTab';
 import { SupportModal } from '../components/lobby/SupportModal';
 import { PublicAdminConfig } from '../types';
+import { DailyLoginModal } from '../components/DailyLoginModal';
+import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
 
 type Tab = 'play' | 'history';
 
@@ -25,6 +27,8 @@ export function LobbyPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+  const [showDailyLogin, setShowDailyLogin] = useState(false);
+  const { progress, load: loadProgression, subscribe: subscribeProgression } = useProgressionStore();
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
@@ -32,9 +36,15 @@ export function LobbyPage() {
   const [aiRoundsText, setAiRoundsText] = useState('5');
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
-    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false },
+    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true } },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
     walletConfig: { depositEnabled: true, withdrawEnabled: true, upiId: '', upiName: '', qrEnabled: true, qrCodeUrl: '' },
+    survivalConfig: {
+      beginner:   { entryPoints: 1000,  stageRewards: [200,  400,  700,  1200,  2500]  },
+      pro:        { entryPoints: 2000,  stageRewards: [400,  800,  1400, 2400,  5000]  },
+      elite:      { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000,  12500] },
+      boss_arena: { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+    },
   });
 
   const clampedAiRounds = Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, aiRounds));
@@ -86,8 +96,17 @@ export function LobbyPage() {
       if (!cfg.featureFlags.publicRoomsEnabled) setPublicRooms([]);
     });
 
-    return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); };
-  }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]);
+    // Progression: load, subscribe to XP events, show daily login if available
+    if (!user?.isGuest) {
+      loadProgression().then(() => {
+        const prog = useProgressionStore.getState().progress;
+        if (prog?.canClaimDaily) setShowDailyLogin(true);
+      });
+    }
+    const unsubProg = subscribeProgression();
+
+    return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
+  }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Show room lobby if in a room
   if (room) { if (aiLoading) setAiLoading(false); return <RoomLobby />; }
@@ -108,11 +127,35 @@ export function LobbyPage() {
 
   return (
     <Layout>
+      {/* Daily Login Modal */}
+      <AnimatePresence>
+        {showDailyLogin && <DailyLoginModal onClose={() => setShowDailyLogin(false)} />}
+      </AnimatePresence>
+
       <div className="max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-4xl font-bold font-game text-dark-text mb-1">Game Lobby</h1>
           <p className="text-dark-muted text-xs sm:text-sm">Create a room or jump into a game</p>
         </motion.div>
+
+        {/* Progression rank pill */}
+        {progress && !user?.isGuest && (() => {
+          const rc = RANK_CONFIG[progress.rank] ?? RANK_CONFIG.bronze;
+          return (
+            <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              onClick={() => navigate('/progression')}
+              className="flex items-center gap-2 mx-auto mb-4 px-4 py-2 rounded-2xl transition-all hover:scale-105"
+              style={{ background: `${rc.color}12`, border: `1px solid ${rc.color}35` }}>
+              <span className="text-base">{rc.icon}</span>
+              <span className="text-xs font-bold" style={{ color: rc.color }}>{rc.label}</span>
+              <span className="text-xs text-dark-muted">Lv.{progress.level}</span>
+              <div className="w-16 h-1 rounded-full overflow-hidden ml-1" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.round((progress.xpProgress / Math.max(1, progress.xpNeeded)) * 100)}%`, background: rc.color }} />
+              </div>
+              {progress.canClaimDaily && <span className="text-[10px] font-bold text-yellow-400 animate-pulse">🎁 Daily!</span>}
+            </motion.button>
+          );
+        })()}
 
         {/* ── Tabs ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-3 mb-4 sm:mb-8">
@@ -205,6 +248,46 @@ export function LobbyPage() {
                     Play Now →
                   </span>
                   <span className="text-[10px] text-dark-muted">Win up to ₹45</span>
+                </div>
+              </div>
+            </motion.div>}
+
+            {/* ── AI Survival Championship Banner ─────────────────────── */}
+            {adminConfig.featureFlags.survivalEnabled !== false && <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="mb-4 relative overflow-hidden rounded-2xl cursor-pointer group"
+              style={{
+                background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(6,182,212,0.12) 50%, rgba(99,102,241,0.12) 100%)',
+                border: '1px solid rgba(16,185,129,0.35)',
+              }}
+              onClick={() => navigate('/survival')}
+            >
+              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(99,102,241,0.06) 100%)' }} />
+              <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full blur-3xl pointer-events-none"
+                style={{ background: 'rgba(16,185,129,0.18)' }} />
+              <div className="flex items-center gap-4 px-5 py-4">
+                <div className="text-4xl flex-shrink-0">🏆</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-base font-black text-white">AI Survival Championship</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                      5 STAGES
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-muted mt-0.5">
+                    Beat 5 AI personalities · Earn points · 4 tiers available
+                  </p>
+                </div>
+                <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-xl transition-all group-hover:scale-105"
+                    style={{ background: 'linear-gradient(135deg, #10b981, #6366f1)', color: '#fff' }}>
+                    Enter →
+                  </span>
+                  <span className="text-[10px] text-dark-muted">Use wallet points</span>
                 </div>
               </div>
             </motion.div>}

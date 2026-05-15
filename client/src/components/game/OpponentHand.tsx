@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { ClientPlayerState } from '../../types';
 import { Card } from './Card';
 import { Avatar } from '../ui/Avatar';
+import { AchievementBadge } from '../AchievementBadge';
 
 interface OpponentHandProps {
   player: ClientPlayerState;
@@ -61,6 +62,7 @@ export function OpponentHand({ player, isCurrentTurn, isAttackTarget, position }
           isConnected={player.isConnected}
         />
         <span className="text-xs text-dark-text font-medium max-w-[80px] truncate">{player.username}</span>
+        {player.badge && <AchievementBadge badge={player.badge} size="xs" />}
         <div className="flex items-center gap-2 text-xs">
           <span className="text-dark-muted">{player.handCount} cards</span>
           <span className={clsx(

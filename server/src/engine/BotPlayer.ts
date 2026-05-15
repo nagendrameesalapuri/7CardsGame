@@ -30,6 +30,59 @@ export interface BotDecision {
   cardIds?: string[];
 }
 
+export type BotPersonality = 'safe' | 'aggressive' | 'bluff' | 'smart' | 'boss';
+
+// ── Per-personality config ────────────────────────────────────────────────────
+
+interface PersonalityConfig {
+  thinkBaseMs:       number;
+  thinkJitterMs:     number;
+  showThreshold:     number; // show when hand total ≤ this
+  attackAllAt:       number; // throw all 7s when opponent has ≤ X cards
+  attackOneAt:       number; // throw one 7 when opponent has ≤ X cards
+  skipAt:            number; // skip with J when opponent has ≤ X cards
+  randomPlayChance:  number; // 0-1: probability of making a random (suboptimal) move
+  alwaysAttack:      boolean;
+}
+
+const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
+  safe: {
+    thinkBaseMs: 1200, thinkJitterMs: 600,
+    showThreshold: 12,
+    attackAllAt: 0, attackOneAt: 0, skipAt: 0, // never attacks
+    randomPlayChance: 0.30,
+    alwaysAttack: false,
+  },
+  aggressive: {
+    thinkBaseMs: 280, thinkJitterMs: 200,
+    showThreshold: 7,
+    attackAllAt: 4, attackOneAt: 7, skipAt: 5,
+    randomPlayChance: 0.05,
+    alwaysAttack: true,
+  },
+  bluff: {
+    thinkBaseMs: 600, thinkJitterMs: 500,
+    showThreshold: 8,
+    attackAllAt: 2, attackOneAt: 4, skipAt: 3,
+    randomPlayChance: 0.40, // high randomness — unpredictable
+    alwaysAttack: false,
+  },
+  smart: {
+    thinkBaseMs: 480, thinkJitterMs: 340,
+    showThreshold: 5,
+    attackAllAt: 2, attackOneAt: 5, skipAt: 4,
+    randomPlayChance: 0,
+    alwaysAttack: false,
+  },
+  boss: {
+    thinkBaseMs: 180, thinkJitterMs: 120,
+    showThreshold: 4,
+    attackAllAt: 3, attackOneAt: 6, skipAt: 5,
+    randomPlayChance: 0,
+    alwaysAttack: true,
+  },
+};
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const THINK_BASE_MS          = 480;   // faster than before — feels skilled
@@ -47,8 +100,9 @@ const DISCARD_SAVE_THRESHOLD = 1;     // save ≥1 pt → take from discard pile
 
 export class BotPlayer {
 
-  static getThinkDelay(): number {
-    return THINK_BASE_MS + Math.random() * THINK_JITTER_MS;
+  static getThinkDelay(personality: BotPersonality = 'smart'): number {
+    const cfg = PERSONALITY[personality];
+    return cfg.thinkBaseMs + Math.random() * cfg.thinkJitterMs;
   }
 
   // ── Threat Analysis ──────────────────────────────────────────────────────────
@@ -218,9 +272,18 @@ export class BotPlayer {
    *  P6  Best normal discard (lowest remaining hand total).
    *  P7  Only power cards left — sacrifice least valuable.
    */
-  static decideDiscard(state: GameState, botPlayerId: string): string[] {
+  static decideDiscard(state: GameState, botPlayerId: string, personality: BotPersonality = 'smart'): string[] {
     const bot  = state.players.find(p => p.id === botPlayerId)!;
     const hand = bot.hand;
+    const cfg  = PERSONALITY[personality];
+
+    // Random play: safe/bluff bots sometimes make suboptimal choices
+    if (cfg.randomPlayChance > 0 && Math.random() < cfg.randomPlayChance) {
+      const nonPower = hand.filter(c => !c.isJoker && c.rank !== '7' && c.rank !== 'J');
+      if (nonPower.length > 0) {
+        return [nonPower[Math.floor(Math.random() * nonPower.length)].id];
+      }
+    }
 
     const { minOpponentCards, nextPlayerCards } =
       BotPlayer.assessThreat(state, botPlayerId);
@@ -231,44 +294,38 @@ export class BotPlayer {
     const sevens = hand.filter(isRealSeven);
     const jacks  = hand.filter(isRealJack);
 
-    // ── P1: Can a normal discard bring us to show-ready? ─────────────────────
     const { cards: normalBest, score: normalBestScore } =
       BotPlayer.bestReductionDiscard(hand);
 
-    if (normalBestScore <= 5 && normalBest.length > 0) {
+    // ── P1: Normal discard reaches show-ready ─────────────────────────────────
+    if (normalBestScore <= cfg.showThreshold && normalBest.length > 0) {
       return normalBest.map(c => c.id);
     }
 
-    // ── P2: Maximum aggression — opponent almost done ─────────────────────────
-    if (minOpponentCards <= ATTACK_ALL_THRESHOLD && sevens.length > 0) {
-      return sevens.map(c => c.id);
-    }
-
-    // ── P3: Discarding a 7 would reach ≤5 (attack AND show-setup) ────────────
-    if (sevens.length > 0) {
-      const scoreWith7 = BotPlayer.scoreAfterDiscard(hand, [sevens[0]]);
-      if (scoreWith7 <= 5) return [sevens[0].id];
-    }
-
-    // ── P4: Apply pressure — opponent within striking range ───────────────────
-    if (minOpponentCards <= ATTACK_ONE_THRESHOLD && sevens.length > 0) {
-      // Throw a 7 only if it's not strictly worse for us than the normal best discard
-      // (i.e. 7 removes 7 pts, which might be less than our best normal discard)
-      // But 7 also attacks — so accept it even if slightly worse for our hand
-      const scoreWith7 = BotPlayer.scoreAfterDiscard(hand, [sevens[0]]);
-      // Accept attack if it doesn't make our hand much worse than the best normal play
-      if (scoreWith7 <= normalBestScore + 3) {
-        return [sevens[0].id];
+    if (cfg.attackAllAt === 0) {
+      // SAFE bot — never attacks, just reduces hand
+    } else {
+      // ── P2: Maximum aggression ─────────────────────────────────────────────
+      if (minOpponentCards <= cfg.attackAllAt && sevens.length > 0) {
+        return sevens.map(c => c.id);
       }
-      // Otherwise do the better hand-reduction first, attack next turn
-    }
 
-    // ── P5: Skip opponent with J ──────────────────────────────────────────────
-    if (nextPlayerCards <= SKIP_THRESHOLD && jacks.length > 0 && sevens.length === 0) {
-      // Use J to skip only if it's not our best hand-reduction option
-      const scoreWithJ = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
-      if (scoreWithJ <= normalBestScore + 2) {
-        return [jacks[0].id];
+      // ── P3: Attack AND show-setup ──────────────────────────────────────────
+      if (sevens.length > 0) {
+        const scoreWith7 = BotPlayer.scoreAfterDiscard(hand, [sevens[0]]);
+        if (scoreWith7 <= cfg.showThreshold) return [sevens[0].id];
+      }
+
+      // ── P4: Pressure attack ────────────────────────────────────────────────
+      if (minOpponentCards <= cfg.attackOneAt && sevens.length > 0) {
+        const scoreWith7 = BotPlayer.scoreAfterDiscard(hand, [sevens[0]]);
+        if (scoreWith7 <= normalBestScore + 3) return [sevens[0].id];
+      }
+
+      // ── P5: Skip with J ───────────────────────────────────────────────────
+      if (nextPlayerCards <= cfg.skipAt && jacks.length > 0 && sevens.length === 0) {
+        const scoreWithJ = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
+        if (scoreWithJ <= normalBestScore + 2) return [jacks[0].id];
       }
     }
 
@@ -276,12 +333,10 @@ export class BotPlayer {
     if (normalBest.length > 0) return normalBest.map(c => c.id);
 
     // ── P7: Only power cards remain ───────────────────────────────────────────
-    // Sacrifice 7s for attack (keeps them active as attack cards, not dead weight)
-    if (sevens.length > 1) return [sevens[0].id];     // keep one as last-resort counter
+    if (sevens.length > 1) return [sevens[0].id];
     if (jacks.length > 0)  return [jacks[0].id];
     if (sevens.length === 1) return [sevens[0].id];
 
-    // Absolute fallback: discard highest-value card
     const highest = hand.reduce(
       (h, c) => DeckManager.getCardValue(c) > DeckManager.getCardValue(h) ? c : h,
       hand[0]
@@ -291,14 +346,15 @@ export class BotPlayer {
 
   // ── Show Decision ────────────────────────────────────────────────────────────
 
-  /**
-   * Expert play: show the instant we qualify (≤5 pts).
-   * No hesitation, no luck — every delay is a chance for the opponent to show first.
-   */
-  static shouldCallShow(state: GameState, botPlayerId: string): boolean {
+  static shouldCallShow(state: GameState, botPlayerId: string, personality: BotPersonality = 'smart'): boolean {
     const bot   = state.players.find(p => p.id === botPlayerId)!;
     const total = DeckManager.calculateHandTotal(bot.hand);
-    return total <= 5;
+    const threshold = PERSONALITY[personality].showThreshold;
+    // Bluff bot: sometimes refuses to show even when eligible (bluffing)
+    if (personality === 'bluff' && total <= threshold) {
+      return Math.random() > 0.25; // 25% chance to hold even when eligible
+    }
+    return total <= threshold;
   }
 
   // ── Attack Response ──────────────────────────────────────────────────────────
@@ -325,7 +381,7 @@ export class BotPlayer {
 
   // ── Main Decision Tree ───────────────────────────────────────────────────────
 
-  static decide(state: GameState, botPlayerId: string): BotDecision {
+  static decide(state: GameState, botPlayerId: string, personality: BotPersonality = 'smart'): BotDecision {
     const bot = state.players.find(p => p.id === botPlayerId);
     if (!bot) return { action: 'draw', source: 'deck' };
 
@@ -338,16 +394,13 @@ export class BotPlayer {
         : { action: 'attack_take' };
     }
 
-    // 2. SHOW — MUST be evaluated before drawing (engine enforces this).
-    //    An expert player shows the moment they qualify — no hesitation.
-    if (!state.hasDrawnThisTurn && BotPlayer.shouldCallShow(state, botPlayerId)) {
+    // 2. SHOW — personality-specific threshold
+    if (!state.hasDrawnThisTurn && BotPlayer.shouldCallShow(state, botPlayerId, personality)) {
       return { action: 'show' };
     }
 
     if (!state.hasDrawnThisTurn) {
-      // 3. Cut: if the top discard matches cards in our hand, discard them
-      //    immediately without wasting a draw. This is always optimal —
-      //    a guaranteed hand reduction with no random downside.
+      // 3. Cut: if top discard matches cards in hand
       const topDiscard   = state.discardPile[state.discardPile.length - 1];
       const isRealSeven  = (c: Card) => c.rank === '7' && !c.isJoker;
       if (topDiscard && !isRealSeven(topDiscard) && !topDiscard.isJoker) {
@@ -355,22 +408,18 @@ export class BotPlayer {
           c => !c.isJoker && c.rank === topDiscard.rank && !isRealSeven(c)
         );
         if (matching.length > 0) {
-          // Verify cut is worthwhile: only skip if the matched card is higher value
-          // than our expected draw (rough heuristic: discard value ≥ 2).
-          const cutValue = matching.reduce(
-            (s, c) => s + DeckManager.getCardValue(c), 0
-          );
+          const cutValue = matching.reduce((s, c) => s + DeckManager.getCardValue(c), 0);
           if (cutValue >= 2) {
             return { action: 'discard', cardIds: matching.map(c => c.id) };
           }
         }
       }
 
-      // 4. Draw — choose source via sniper logic
+      // 4. Draw
       return { action: 'draw', source: BotPlayer.decideDrawSource(state, botPlayerId) };
     }
 
-    // 5. Post-draw: use the full scoring-engine discard
-    return { action: 'discard', cardIds: BotPlayer.decideDiscard(state, botPlayerId) };
+    // 5. Post-draw: personality-aware discard
+    return { action: 'discard', cardIds: BotPlayer.decideDiscard(state, botPlayerId, personality) };
   }
 }

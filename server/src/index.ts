@@ -22,6 +22,8 @@ import walletRoutes from './routes/wallet';
 import tournamentRoutes from './routes/tournaments';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
+import survivalRoutes from './routes/survival';
+import progressionRoutes from './routes/progression';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -100,7 +102,9 @@ async function bootstrap() {
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/tournaments', tournamentRoutes);
+  app.use('/api/survival', survivalRoutes);
   app.use('/api/support', supportRoutes);
+  app.use('/api/progression', progressionRoutes);
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
 

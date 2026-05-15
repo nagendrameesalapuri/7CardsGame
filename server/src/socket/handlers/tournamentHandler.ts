@@ -5,6 +5,7 @@ import { Room } from '../../models/Room';
 import { Transaction } from '../../models/Transaction';
 import { startRoomGame, getActiveGame } from './gameHandler';
 import { ClientGameState } from '../../../../shared/src/types';
+import { getBadge } from '../../utils/badgeCache';
 
 const PRIZE_MAP: Record<number, number> = { 10: 15, 20: 25 };
 
@@ -54,6 +55,7 @@ function emitGameStateToSocket(socket: Socket, roomCode: string, userId: string)
       isEliminated: p.isEliminated,
       seatIndex: p.seatIndex,
       isBot: p.isBot,
+      badge: p.isBot ? undefined : getBadge(p.userId),
     })),
     discardPile: gameState.discardPile,
     deckCount: gameState.deck.length,

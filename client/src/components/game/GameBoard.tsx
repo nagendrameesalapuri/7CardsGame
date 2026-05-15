@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
+import { AchievementBadge } from '../AchievementBadge';
 import { PlayerHand } from './PlayerHand';
 import { DeckArea } from './DeckArea';
 import { TurnTimer } from './TurnTimer';
@@ -15,6 +16,59 @@ import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { VoiceChat } from './VoiceChat';
 import { useTournamentStore } from '../../store/tournamentStore';
+import { useSurvivalStore } from '../../store/survivalStore';
+
+// ── Premium game-mode badge ───────────────────────────────────────────────────
+function GameModeBadge({ isTournament, tournamentFee, playerWins, botWins, gameNumber,
+                         isSurvival, survivalStage, survivalTier, entryFee }: {
+  isTournament: boolean; tournamentFee: number; playerWins: number; botWins: number; gameNumber: number;
+  isSurvival: boolean; survivalStage: number; survivalTier: string | null; entryFee: number;
+}) {
+  if (isTournament) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
+        style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(239,68,68,0.12))', border: '1px solid rgba(251,191,36,0.35)' }}>
+        <span className="text-sm">⚔️</span>
+        <div className="flex flex-col leading-none">
+          <span className="text-[9px] text-yellow-400/70 font-semibold uppercase tracking-widest">Tournament · ₹{tournamentFee}</span>
+          <span className="text-[11px] font-black text-white">
+            G{gameNumber} &nbsp;
+            <span className="text-neon-green">{playerWins}W</span>
+            <span className="text-dark-muted mx-0.5">–</span>
+            <span className="text-red-400">{botWins}W</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (isSurvival) {
+    const STAGE_COLORS = ['#22c55e','#f59e0b','#a855f7','#3b82f6','#ef4444'];
+    const color = STAGE_COLORS[(survivalStage - 1) % 5];
+    const tierLabel = survivalTier ? survivalTier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '';
+    return (
+      <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
+        style={{ background: `linear-gradient(135deg, ${color}22, rgba(99,102,241,0.12))`, border: `1px solid ${color}55` }}>
+        <span className="text-sm">🏆</span>
+        <div className="flex flex-col leading-none">
+          <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: `${color}cc` }}>Survival · {tierLabel}</span>
+          <span className="text-[11px] font-black text-white">Stage <span style={{ color }}>{survivalStage}</span>/5</span>
+        </div>
+      </div>
+    );
+  }
+  if (entryFee > 0) {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
+        💰 Bet ₹{entryFee}
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex-shrink-0">
+      🎮 Free
+    </span>
+  );
+}
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -24,7 +78,8 @@ export function GameBoard() {
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const entryFee: number = (room?.config as any)?.entryFee ?? 0;
-  const { active: isTournament, entryFee: tournamentFee } = useTournamentStore();
+  const { active: isTournament, entryFee: tournamentFee, playerWins, botWins, gameNumber } = useTournamentStore();
+  const { active: isSurvival, currentStage: survivalStage, tier: survivalTier } = useSurvivalStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
 
   useEffect(() => {
@@ -65,19 +120,17 @@ export function GameBoard() {
             <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
             <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
           </div>
-          {isTournament ? (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
-              ⚔️ Tournament ₹{tournamentFee}
-            </span>
-          ) : entryFee > 0 ? (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
-              💰 Bet ₹{entryFee}
-            </span>
-          ) : (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex-shrink-0">
-              🎮 Free
-            </span>
-          )}
+          <GameModeBadge
+            isTournament={isTournament}
+            tournamentFee={tournamentFee}
+            playerWins={playerWins}
+            botWins={botWins}
+            gameNumber={gameNumber}
+            isSurvival={isSurvival}
+            survivalStage={survivalStage}
+            survivalTier={survivalTier}
+            entryFee={entryFee}
+          />
         </div>
 
         <TurnTimer
@@ -257,7 +310,7 @@ function OpponentChip({
   isCurrentTurn,
   isAttackTarget,
 }: {
-  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean; isBot?: boolean };
+  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean; isBot?: boolean; badge?: import('../../types').PlayerBadge };
   isCurrentTurn: boolean;
   isAttackTarget: boolean;
 }) {
@@ -310,6 +363,7 @@ function OpponentChip({
       <span className="text-dark-text text-[10px] sm:text-xs font-semibold truncate w-full text-center leading-tight">
         {player.username.length > 8 ? player.username.slice(0, 7) + '…' : player.username}
       </span>
+      {player.badge && <AchievementBadge badge={player.badge} size="xs" />}
 
       <div className="flex items-center gap-0.5">
         <span className="text-dark-muted text-[10px] sm:text-xs">🃏 {player.handCount}</span>
