@@ -9,7 +9,7 @@ export function TournamentResultOverlay() {
 
   if (!gameResult) return null;
 
-  const { isDraw, playerWon, playerScore, botScore, tournamentOver, won, overallDraw, totalReturn, nextGameNumber } = gameResult;
+  const { isDraw, playerWon, playerScore, botScore, botScores, tournamentOver, won, overallDraw, totalReturn, nextGameNumber } = gameResult;
 
   const handleContinue = () => {
     if (tournamentOver) {
@@ -35,7 +35,7 @@ export function TournamentResultOverlay() {
       ? `Series tied ${playerWins}–${botWins} — entry fee refunded`
       : won
       ? `You won ${playerWins}–${botWins}!`
-      : `Bot won ${botWins}–${playerWins}`
+      : `Bots won ${botWins}–${playerWins}`
     : gameIsDraw
     ? `Equal scores — no winner for this game`
     : `Game ${nextGameNumber} coming up…`;
@@ -102,26 +102,41 @@ export function TournamentResultOverlay() {
             </div>
             <div className="text-dark-muted text-xl font-light">—</div>
             <div className="text-center">
-              <p className="text-xs text-dark-muted">Bot</p>
+              <p className="text-xs text-dark-muted">Bots</p>
               <p className="text-3xl font-black" style={{ color: '#ff6b6b' }}>{botWins}</p>
             </div>
           </div>
         </div>
 
         {/* Game score */}
-        <div className="mx-5 mb-4 rounded-2xl py-3 px-5 flex justify-between items-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-center">
-            <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">Your Score</p>
-            <p className={`text-lg font-bold ${gameIsDraw ? 'text-yellow-400' : playerWon ? 'text-neon-green' : 'text-red-400'}`}>
-              {playerScore} pts
-            </p>
-          </div>
-          <div className="text-dark-muted text-sm">{gameIsDraw ? '=' : 'vs'}</div>
-          <div className="text-center">
-            <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">Bot Score</p>
-            <p className={`text-lg font-bold ${gameIsDraw ? 'text-yellow-400' : !playerWon ? 'text-neon-green' : 'text-red-400'}`}>
-              {botScore} pts
-            </p>
+        <div className="mx-5 mb-4 rounded-2xl py-3 px-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex justify-between items-center">
+            <div className="text-center">
+              <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">Your Score</p>
+              <p className={`text-lg font-bold ${gameIsDraw ? 'text-yellow-400' : playerWon ? 'text-neon-green' : 'text-red-400'}`}>
+                {playerScore} pts
+              </p>
+            </div>
+            <div className="text-dark-muted text-sm">{gameIsDraw ? '=' : 'vs'}</div>
+            {botScores && botScores.length > 0 ? (
+              <div className="flex gap-3">
+                {botScores.map((b, i) => (
+                  <div key={i} className="text-center">
+                    <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">{b.username}</p>
+                    <p className={`text-lg font-bold ${gameIsDraw ? 'text-yellow-400' : b.score === botScore && !playerWon ? 'text-neon-green' : 'text-red-400'}`}>
+                      {b.score} pts
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">Bot Score</p>
+                <p className={`text-lg font-bold ${gameIsDraw ? 'text-yellow-400' : !playerWon ? 'text-neon-green' : 'text-red-400'}`}>
+                  {botScore} pts
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

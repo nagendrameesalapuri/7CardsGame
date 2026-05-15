@@ -266,6 +266,11 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
   // Player clicks "Play Next Round"
   socket.on('game:round_ready', () => {
+    // Fallback: recover roomCode if socket.data lost it (e.g. reconnection race)
+    if (!socket.data.roomCode) {
+      const found = getActiveGameByUserId(userId);
+      if (found) socket.data.roomCode = found.roomCode;
+    }
     const gameState = getActiveGame(socket.data.roomCode);
     if (!gameState || gameState.status !== 'show_called' || !gameState.roundResult) return;
 
@@ -533,20 +538,20 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
     }
     return state.players.find(p => p.userId === userId)?.totalScore ?? 0;
   };
-  const getBotScore = () => {
+  const getBotScores = (): { username: string; score: number }[] => {
     const bots = state.players.filter(p => p.isBot);
-    if (state.roundResult) {
-      const botTotals = bots.map(b => {
+    return bots.map(b => {
+      if (state.roundResult) {
         const pr = state.roundResult!.playerResults.find(r => r.playerId === b.id);
-        return pr?.totalScore ?? b.totalScore;
-      });
-      return Math.min(...botTotals);
-    }
-    return Math.min(...bots.map(p => p.totalScore));
+        return { username: b.username, score: pr?.totalScore ?? b.totalScore };
+      }
+      return { username: b.username, score: b.totalScore };
+    });
   };
 
   const humanScore    = getScore(tournament.userId);
-  const bestBotScore  = getBotScore();
+  const botScores     = getBotScores();
+  const bestBotScore  = botScores.length > 0 ? Math.min(...botScores.map(b => b.score)) : 0;
   const isDraw        = humanScore === bestBotScore;
   const playerWon     = humanScore < bestBotScore;   // strict: lower score wins, equal = draw
 
@@ -579,6 +584,7 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
     playerWon,
     playerScore: humanScore,
     botScore:    bestBotScore,
+    botScores,
     tournamentOver,
   };
 
@@ -649,7 +655,7 @@ async function handleTournamentMatchEnd(io: Server, state: GameState, matchResul
       name: `Tournament — ${user.username}`.slice(0, 30),
       hostId: tournament.userId,
       players: [{ userId: tournament.userId, username: user.username, avatar: user.avatar, isReady: true, isHost: true, isBot: false }],
-      config: { maxPlayers: 2, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0 },
+      config: { maxPlayers: 3, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 2, entryFee: 0 },
       paidPlayerIds: [],
       status: 'waiting',
     });

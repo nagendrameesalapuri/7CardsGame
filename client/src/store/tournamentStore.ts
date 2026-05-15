@@ -11,6 +11,7 @@ export interface TournamentGameResult {
   playerWon: boolean;
   playerScore: number;
   botScore: number;
+  botScores?: { username: string; score: number }[];
   tournamentOver: boolean;
   won?: boolean;
   overallDraw?: boolean;

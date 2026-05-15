@@ -37,7 +37,8 @@ type Section =
   | "withdrawals"
   | "wallets"
   | "tournaments"
-  | "support";
+  | "support"
+  | "notify";
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -2553,6 +2554,112 @@ function SupportSection() {
   );
 }
 
+// ── Notify Section ─────────────────────────────────────────────────────────────
+
+function NotifySection() {
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [type, setType] = useState<"info" | "warning" | "success">("info");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; msg: string } | null>(null);
+
+  const send = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await admin.sendNotification(title.trim(), message.trim(), type);
+      setResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
+      setTitle("");
+      setMessage("");
+    } catch (err: any) {
+      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const typeOptions: { value: "info" | "warning" | "success"; label: string; color: string }[] = [
+    { value: "info",    label: "ℹ️ Info",    color: "#60a5fa" },
+    { value: "warning", label: "⚠️ Warning", color: "#fbbf24" },
+    { value: "success", label: "✅ Success", color: "#00ff88" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-dark-text">Push Notification</h2>
+      <p className="text-xs text-dark-muted">Send a real-time notification to all currently connected users.</p>
+
+      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+        {/* Type selector */}
+        <div>
+          <p className="text-xs text-dark-muted mb-2">Type</p>
+          <div className="flex gap-2">
+            {typeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setType(opt.value)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{
+                  background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                  color: type === opt.value ? opt.color : "#6b7280",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Title */}
+        <div>
+          <p className="text-xs text-dark-muted mb-1.5">Title</p>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={80}
+            placeholder="e.g. Maintenance in 30 minutes"
+            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
+          />
+        </div>
+
+        {/* Message */}
+        <div>
+          <p className="text-xs text-dark-muted mb-1.5">Message</p>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={300}
+            rows={3}
+            placeholder="Detailed message visible in the notification bell…"
+            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
+          />
+          <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
+        </div>
+
+        {/* Send button */}
+        <button
+          onClick={send}
+          disabled={sending || !title.trim() || !message.trim()}
+          className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}
+        >
+          {sending ? "Sending…" : "📢 Send to All Users"}
+        </button>
+
+        {result && (
+          <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
+            {result.success ? "✓ " : "✗ "}{result.msg}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
@@ -2568,6 +2675,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: "features", icon: "⚙️", label: "Features" },
   { key: "gameconfig", icon: "🎯", label: "Game Config" },
   { key: "walletconfig", icon: "💳", label: "Wallet Config" },
+  { key: "notify", icon: "📢", label: "Notify Users" },
 ];
 
 export function AdminPage() {
@@ -2771,6 +2879,7 @@ export function AdminPage() {
             {section === "walletconfig" && (
               <WalletConfigSection config={config} onSave={saveConfig} />
             )}
+            {section === "notify" && <NotifySection />}
           </motion.div>
         </AnimatePresence>
       </main>

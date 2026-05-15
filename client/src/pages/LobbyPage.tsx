@@ -189,14 +189,14 @@ export function LobbyPage() {
                 <div className="text-4xl flex-shrink-0">⚔️</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-base font-black text-white">Bot Tournament</p>
+                    <p className="text-base font-black text-white">Bots vs Human Tournament</p>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                       style={{ background: 'rgba(255,180,0,0.2)', color: '#fbbf24', border: '1px solid rgba(255,180,0,0.3)' }}>
                       NEW
                     </span>
                   </div>
                   <p className="text-xs text-dark-muted mt-0.5">
-                    Play 3 games vs bots · Win ₹15–₹25 · Entry ₹10 or ₹20
+                    Play vs 2 Bots · Win ₹15–₹25 · Entry ₹10 or ₹20
                   </p>
                 </div>
                 <div className="flex-shrink-0 flex flex-col items-end gap-1">

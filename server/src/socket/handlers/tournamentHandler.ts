@@ -23,7 +23,7 @@ async function createTournamentRoom(
     name: `Tournament — ${username}`.slice(0, 30),
     hostId: userId,
     players: [{ userId, username, avatar, isReady: true, isHost: true, isBot: false, socketId }],
-    config: { maxPlayers: 2, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0 },
+    config: { maxPlayers: 3, roundCount: 2, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 2, entryFee: 0 },
     paidPlayerIds: [],
     status: 'waiting',
   });

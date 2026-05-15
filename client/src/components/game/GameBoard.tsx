@@ -14,6 +14,7 @@ import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { VoiceChat } from './VoiceChat';
+import { useTournamentStore } from '../../store/tournamentStore';
 
 export function GameBoard() {
   const { user } = useAuthStore();
@@ -23,6 +24,7 @@ export function GameBoard() {
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const entryFee: number = (room?.config as any)?.entryFee ?? 0;
+  const { active: isTournament, entryFee: tournamentFee } = useTournamentStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
 
   useEffect(() => {
@@ -63,7 +65,11 @@ export function GameBoard() {
             <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
             <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
           </div>
-          {entryFee > 0 ? (
+          {isTournament ? (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+              ⚔️ Tournament ₹{tournamentFee}
+            </span>
+          ) : entryFee > 0 ? (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
               💰 Bet ₹{entryFee}
             </span>

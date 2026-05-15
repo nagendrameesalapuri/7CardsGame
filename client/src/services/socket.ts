@@ -154,6 +154,7 @@ type EventMap = {
   'auth:banned': { message: string };
   'auth:kicked': { message: string };
   'admin:config_updated': PublicAdminConfig;
+  'admin:notification': { id: string; title: string; message: string; type: 'info' | 'warning' | 'success'; sentAt: string };
   'wallet:prize_won': { amount: number; balance: number };
   // Tournament
   'tournament:started':       { tournamentId: string; gameNumber: number; entryFee: number; prizeAmount: number; roomCode: string };
