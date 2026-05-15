@@ -198,6 +198,9 @@ export const admin = {
     id: string,
     data: { status?: string; adminNote?: string; adminReply?: string },
   ) => adminApi.patch(`/support/${id}`, data),
+
+  sendNotification: (title: string, message: string, type: "info" | "warning" | "success") =>
+    adminApi.post<{ success: boolean; recipients: number }>("/notify", { title, message, type }),
 };
 
 export default api;

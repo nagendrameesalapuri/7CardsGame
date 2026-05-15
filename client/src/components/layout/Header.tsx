@@ -1,13 +1,85 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Avatar } from '../ui/Avatar';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { useNotificationStore } from '../../store/notificationStore';
+import { on } from '../../services/socket';
+
+function BellPanel({ onClose }: { onClose: () => void }) {
+  const { notifications, markAllRead, clearAll } = useNotificationStore();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  useEffect(() => { markAllRead(); }, [markAllRead]);
+
+  const typeColor: Record<string, string> = {
+    success: '#00ff88',
+    warning: '#fbbf24',
+    info: '#60a5fa',
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute right-0 top-10 w-80 rounded-2xl shadow-2xl z-50 overflow-hidden"
+      style={{ background: 'rgba(12,14,18,0.98)', border: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+        <span className="text-sm font-bold text-dark-text">Notifications</span>
+        {notifications.length > 0 && (
+          <button onClick={clearAll} className="text-[10px] text-dark-muted hover:text-neon-red transition-colors">
+            Clear all
+          </button>
+        )}
+      </div>
+      {notifications.length === 0 ? (
+        <div className="px-4 py-8 text-center text-xs text-dark-muted">No notifications yet</div>
+      ) : (
+        <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
+          {notifications.map((n) => (
+            <div key={n.id} className="px-4 py-3">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: typeColor[n.type] ?? '#60a5fa', marginTop: 6 }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-dark-text">{n.title}</p>
+                  <p className="text-[11px] text-dark-muted mt-0.5 leading-relaxed">{n.message}</p>
+                  <p className="text-[10px] text-dark-muted/60 mt-1">
+                    {new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
   const { user, logout, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const { unreadCount, addNotification } = useNotificationStore();
+  const [bellOpen, setBellOpen] = useState(false);
+
+  // Listen for admin push notifications on the socket
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      return on('admin:notification', (n) => addNotification(n));
+    } catch {
+      return () => {};
+    }
+  }, [isAuthenticated, addNotification]);
 
   const navItems = [
     { to: '/lobby',       label: 'Play',    icon: '🎮' },
@@ -35,8 +107,30 @@ export function Header() {
             <Link to="/profile" className="hover:text-dark-text transition-colors">Profile</Link>
           </nav>
 
-          {/* Right: theme + user */}
+          {/* Right: bell + theme + user */}
           <div className="flex items-center gap-3">
+            {/* Notification bell — only for authenticated users */}
+            {isAuthenticated && (
+              <div className="relative">
+                <button
+                  onClick={() => setBellOpen((v) => !v)}
+                  className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-dark-border/50 transition-colors"
+                  aria-label="Notifications"
+                >
+                  <span className="text-lg">🔔</span>
+                  {unreadCount > 0 && (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full text-[9px] font-bold flex items-center justify-center px-0.5"
+                      style={{ background: '#ef4444', color: '#fff' }}
+                    >
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {bellOpen && <BellPanel onClose={() => setBellOpen(false)} />}
+              </div>
+            )}
+
             <ThemeToggle />
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2">

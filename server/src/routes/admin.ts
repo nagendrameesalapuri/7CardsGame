@@ -842,5 +842,30 @@ export default function createAdminRouter(io: Server) {
     },
   );
 
+  // ── Push notifications (broadcast to all connected users) ──────────────────
+  router.post("/notify", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { title, message, type = "info" } = req.body as {
+        title: string;
+        message: string;
+        type?: "info" | "warning" | "success";
+      };
+      if (!title?.trim() || !message?.trim()) {
+        return res.status(400).json({ error: "Title and message are required" });
+      }
+      const payload = {
+        id: Date.now().toString(),
+        title: title.trim(),
+        message: message.trim(),
+        type,
+        sentAt: new Date().toISOString(),
+      };
+      io.emit("admin:notification", payload);
+      res.json({ success: true, recipients: io.sockets.sockets.size });
+    } catch {
+      res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
   return router;
 }
