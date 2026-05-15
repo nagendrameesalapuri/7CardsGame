@@ -18,6 +18,7 @@ const TX_ICONS: Record<string, string> = {
   winning: "🏆",
   entry_fee: "🎮",
   refund: "↩️",
+  bonus: "🎁",
 };
 
 const TX_LABELS: Record<string, string> = {
@@ -26,6 +27,7 @@ const TX_LABELS: Record<string, string> = {
   winning: "Prize Won",
   entry_fee: "Entry Fee",
   refund: "Refund",
+  bonus: "Bonus Reward",
 };
 
 const TX_COLORS: Record<string, string> = {
@@ -34,6 +36,7 @@ const TX_COLORS: Record<string, string> = {
   refund: "text-blue-400",
   withdrawal: "text-red-400",
   entry_fee: "text-red-400",
+  bonus: "text-purple-400",
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -813,6 +816,11 @@ export function WalletPage() {
                               {TX_LABELS[tx.type] ?? tx.type}
                             </p>
                             <p className="text-xs text-dark-muted truncate">{tx.description}</p>
+                            {(tx.balanceBefore != null || tx.balanceAfter != null) && (
+                              <p className="text-[10px] text-dark-muted opacity-60">
+                                ₹{tx.balanceBefore ?? 0} → ₹{tx.balanceAfter ?? 0}
+                              </p>
+                            )}
                             <p className="text-[10px] text-dark-muted opacity-70">
                               {new Date(tx.createdAt).toLocaleString("en-IN", {
                                 day: "2-digit", month: "short", year: "numeric",

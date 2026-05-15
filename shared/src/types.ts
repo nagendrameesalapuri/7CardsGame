@@ -139,7 +139,8 @@ export type TransactionType =
   | "withdrawal"
   | "winning"
   | "entry_fee"
-  | "refund";
+  | "refund"
+  | "bonus";
 
 export interface WalletTransaction {
   _id: string;
@@ -147,6 +148,8 @@ export interface WalletTransaction {
   amount: number;
   status: "pending" | "completed" | "failed";
   description: string;
+  balanceBefore: number;
+  balanceAfter: number;
   createdAt: string;
 }
 

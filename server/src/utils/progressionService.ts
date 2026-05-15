@@ -6,6 +6,7 @@
 import { Server } from 'socket.io';
 import { getOrCreateProgress } from '../models/PlayerProgress';
 import { User } from '../models/User';
+import { Transaction } from '../models/Transaction';
 import {
   levelFromXp, rankFromLevel, xpForLevel, xpToNextLevel,
   ACHIEVEMENTS, getAchievement, botXpMultiplier, isSameDayIST,
@@ -95,17 +96,26 @@ export async function awardXp(io: Server, event: XpEvent): Promise<void> {
     if (p.rank === 'diamond'  && oldRank !== 'diamond')  unlock('rank_diamond');
     if (p.rank === 'master'   && oldRank !== 'master')   unlock('rank_master');
 
-    // Award wallet points for achievement rewards
+    // Award wallet points for achievement rewards and record transactions
     if (newAchievements.length > 0) {
-      let bonusPoints = 0;
+      const achUser = await User.findById(event.userId).select('walletBalance').lean();
+      let runningBal = achUser?.walletBalance ?? 0;
       for (const id of newAchievements) {
         const def = getAchievement(id);
-        if (def && def.pointsReward > 0) bonusPoints += def.pointsReward;
-      }
-      if (bonusPoints > 0) {
-        await User.findByIdAndUpdate(event.userId, {
-          $inc: { walletBalance: bonusPoints / 100 },
-        });
+        if (def && def.pointsReward > 0) {
+          const credit = def.pointsReward / 100;
+          await User.findByIdAndUpdate(event.userId, { $inc: { walletBalance: credit } });
+          await Transaction.create({
+            userId:        event.userId,
+            type:          'bonus',
+            amount:        credit,
+            status:        'completed',
+            description:   `Achievement Unlocked: ${def.name}`,
+            balanceBefore: runningBal,
+            balanceAfter:  runningBal + credit,
+          });
+          runningBal += credit;
+        }
       }
     }
 

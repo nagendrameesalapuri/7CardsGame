@@ -212,7 +212,7 @@ function describeArc(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`;
 }
 
-function SpinWheel({ rotation, spinning }: { rotation: number; spinning: boolean }) {
+function SpinWheel({ rotation, spinning, decelerating }: { rotation: number; spinning: boolean; decelerating: boolean }) {
   const cx = 150, cy = 150, r = 138, rText = 108;
   return (
     <div className="relative" style={{ width: 300, height: 300 }}>
@@ -226,7 +226,7 @@ function SpinWheel({ rotation, spinning }: { rotation: number; spinning: boolean
       {/* Wheel SVG */}
       <svg width={300} height={300} style={{
         transform: `rotate(${rotation}deg)`,
-        transition: spinning ? 'none' : `transform 4s cubic-bezier(0.17,0.67,0.12,1.0)`,
+        transition: decelerating ? `transform 4s cubic-bezier(0.17,0.67,0.12,1.0)` : 'none',
         display: 'block',
       }}>
         <defs>
@@ -295,9 +295,9 @@ function SpinWheel({ rotation, spinning }: { rotation: number; spinning: boolean
 function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result: any) => void }) {
   const { luckySpin } = useProgressionStore();
   const [animating, setAnimating] = useState(false);
+  const [decelerating, setDecelerating] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [rotation, setRotation] = useState(0);
-  const [currentRot, setCurrentRot] = useState(0);
   const canSpin = progress.canSpin;
 
   function segIndexForOutcome(pts: number): number {
@@ -313,42 +313,38 @@ function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result
   const handleSpin = async () => {
     if (animating || !canSpin) return;
     setAnimating(true);
+    setDecelerating(false);
     setResult(null);
-
-    // Start fast spin immediately (no transition = instant)
-    const fastBase = currentRot + 360 * 8;
-    setRotation(fastBase);
 
     try {
       const data = await luckySpin();
       const outcome = data.outcome;
 
       const segIdx = segIndexForOutcome(outcome.points ?? 0);
-      // Target: pointer at top (−90°) → segment centre should be at 270° from 0
-      // Segment i starts at i*30 − 90 (relative to SVG), centre at i*30 − 75 (from 0°)
-      const segCentre = segIdx * SEG_DEG; // degrees from 0
-      // We want the wheel rotated so segCentre is at top (−90°)
-      // currentRot + totalSpin ≡ -segCentre + 270 (mod 360)
-      const targetMod = (270 - segCentre + 360) % 360;
-      const spins = 5 * 360;
-      const base = Math.ceil(currentRot / 360) * 360;
-      const finalRot = base + spins + targetMod;
+      const segCentre = segIdx * SEG_DEG;
+      // Segment i's centre in the unrotated SVG is at (i*30 - 75)°, not (i*30)°,
+      // because segments start at -90° and each is 30° wide (centre offset = -90 + 15 = -75).
+      // To land segment i under the top pointer (270°): R = (270 - (i*30-75)) = (345 - i*30).
+      const targetMod = (345 - segCentre + 360) % 360;
+      const spins = 6 * 360;
+      // Ensure we always go forward from current rotation
+      const currentMod = rotation % 360;
+      const extra = targetMod >= currentMod ? 0 : 360;
+      const finalRot = rotation - currentMod + extra + spins + targetMod;
 
-      // Transition to final with deceleration
+      // Enable CSS transition then set final angle — browser renders the transition
+      setDecelerating(true);
+      setRotation(finalRot);
+
       setTimeout(() => {
-        setRotation(finalRot);
-        setCurrentRot(finalRot);
-
-        setTimeout(() => {
-          setResult(outcome);
-          setAnimating(false);
-          onSpun(data);
-        }, 4200);
-      }, 300);
+        setResult(outcome);
+        setAnimating(false);
+        setDecelerating(false);
+        onSpun(data);
+      }, 4300);
 
     } catch (err: any) {
       notify.error(err.response?.data?.error ?? 'Spin failed');
-      setRotation(currentRot);
       setAnimating(false);
     }
   };
@@ -362,7 +358,7 @@ function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result
 
       {/* Wheel */}
       <div className="flex justify-center">
-        <SpinWheel rotation={rotation} spinning={animating} />
+        <SpinWheel rotation={rotation} spinning={animating} decelerating={decelerating} />
       </div>
 
       {/* Result banner */}

@@ -39,7 +39,24 @@ type Section =
   | "tournaments"
   | "support"
   | "notify"
-  | "survivalconfig";
+  | "survivalconfig"
+  | "analytics";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatLastSeen(lastSeenAt: string | null, isOnline: boolean): string {
+  if (isOnline) return "Online now";
+  if (!lastSeenAt) return "Never";
+  const diff = Date.now() - new Date(lastSeenAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(lastSeenAt).toLocaleDateString();
+}
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -541,6 +558,9 @@ function UsersSection() {
                     ? Math.round((u.stats.gamesWon / u.stats.gamesPlayed) * 100)
                     : 0}
                   % win
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: u.isOnline ? "#00ff88" : "#6b7280" }}>
+                  {formatLastSeen(u.lastSeenAt, u.isOnline)}
                 </p>
               </div>
 
@@ -2842,6 +2862,194 @@ function SurvivalConfigSection({
   );
 }
 
+// ── Analytics Section ─────────────────────────────────────────────────────────
+
+function AnalyticsSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+
+  const fetchAnalytics = useCallback(() => {
+    admin
+      .getAnalytics()
+      .then((r) => { setData(r.data); setLoading(false); })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    fetchAnalytics();
+    const t = setInterval(fetchAnalytics, 15000);
+    return () => clearInterval(t);
+  }, [fetchAnalytics]);
+
+  const handleReset = async () => {
+    if (!confirm("Reset all analytics data? This cannot be undone.")) return;
+    setResetting(true);
+    await admin.resetAnalytics().catch(console.error);
+    await fetchAnalytics();
+    setResetting(false);
+  };
+
+  if (loading || !data)
+    return <div className="text-dark-muted text-sm animate-pulse">Loading analytics…</div>;
+
+  const s = data.summary;
+  const personalities = ["safe", "aggressive", "bluff", "smart", "boss"];
+  const personalityColors: Record<string, string> = {
+    safe: "#00ff88", aggressive: "#ff6b6b", bluff: "#fbbf24",
+    smart: "#00d4ff", boss: "#a855f7",
+  };
+
+  const bar = (pct: number | null, color: string) => (
+    <div className="h-2 rounded-full bg-dark-border overflow-hidden">
+      <div
+        className="h-2 rounded-full transition-all duration-500"
+        style={{ width: `${pct ?? 0}%`, background: color }}
+      />
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Game Analytics</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchAnalytics}
+            className="text-xs text-dark-muted hover:text-neon-green px-2 py-1 rounded"
+          >
+            ↺ Refresh
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-400/30 hover:border-red-300/50 disabled:opacity-50"
+          >
+            {resetting ? "Resetting…" : "Reset Data"}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard icon="🎮" label="Total Games" value={s.totalGames} color="#00ff88" />
+        <StatCard icon="🔄" label="Total Rounds" value={s.totalRounds} color="#00d4ff" />
+        <StatCard icon="🤖" label="Bot Win Rate" value={s.botWinRate != null ? `${s.botWinRate}%` : "—"} color="#ff6b6b" />
+        <StatCard icon="👤" label="Human Win Rate" value={s.humanWinRate != null ? `${s.humanWinRate}%` : "—"} color="#00ff88" />
+        <StatCard icon="📣" label="Show Success" value={s.showSuccessRate != null ? `${s.showSuccessRate}%` : "—"} color="#fbbf24" />
+        <StatCard icon="⚔️" label="Attack Effective" value={s.attackEffectiveness != null ? `${s.attackEffectiveness}%` : "—"} color="#a855f7" />
+        <StatCard icon="🃏" label="Jack Effective" value={s.jackEffectiveness != null ? `${s.jackEffectiveness}%` : "—"} color="#00d4ff" />
+        <StatCard icon="⏱️" label="Avg Round" value={`${s.avgRoundDurationSec}s`} color="#fbbf24" />
+        <StatCard icon="🚜" label="Farming Signals" value={s.farmingSignals} color="#ff6b6b" />
+      </div>
+
+      {/* Bot win rate by personality */}
+      <div className="rounded-xl p-4 space-y-3" style={cardStyle}>
+        <p className="text-sm font-bold text-white">Win Rate by Bot Personality</p>
+        {personalities.map((p) => {
+          const rate: number | null = data.winRateByPersonality?.[p] != null
+            ? +(data.winRateByPersonality[p] * 100).toFixed(1)
+            : null;
+          return (
+            <div key={p} className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="capitalize font-semibold" style={{ color: personalityColors[p] }}>{p}</span>
+                <span className="text-dark-muted">{rate != null ? `${rate}%` : "—"}</span>
+              </div>
+              {bar(rate, personalityColors[p])}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Stage clear rates */}
+      {Object.keys(data.stageClearRates ?? {}).length > 0 && (
+        <div className="rounded-xl p-4 space-y-3" style={cardStyle}>
+          <p className="text-sm font-bold text-white">Survival Stage Clear Rates</p>
+          {Object.entries(data.stageClearRates as Record<string, number | null>)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([stage, rate]) => {
+              const pct = rate != null ? +(rate * 100).toFixed(1) : null;
+              return (
+                <div key={stage} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-dark-text">Stage {stage}</span>
+                    <span className="text-dark-muted">{pct != null ? `${pct}%` : "—"}</span>
+                  </div>
+                  {bar(pct, "#00d4ff")}
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {/* Show success by hand total */}
+      {Object.keys(data.showSuccessByTotal ?? {}).length > 0 && (
+        <div className="rounded-xl p-4" style={cardStyle}>
+          <p className="text-sm font-bold text-white mb-3">SHOW Success by Hand Total</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-dark-muted">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left pb-2">Total</th>
+                  <th className="text-right pb-2">Attempts</th>
+                  <th className="text-right pb-2">Successes</th>
+                  <th className="text-right pb-2">Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(data.showSuccessByTotal as Record<string, { attempts: number; successes: number }>)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([total, d]) => {
+                    const rate = d.attempts > 0 ? ((d.successes / d.attempts) * 100).toFixed(0) : "—";
+                    return (
+                      <tr key={total} className="border-b border-white/5">
+                        <td className="py-1.5 font-bold text-dark-text">≤{total}</td>
+                        <td className="py-1.5 text-right">{d.attempts}</td>
+                        <td className="py-1.5 text-right text-neon-green">{d.successes}</td>
+                        <td className="py-1.5 text-right font-bold" style={{ color: Number(rate) > 50 ? "#00ff88" : "#ff6b6b" }}>{rate}{typeof rate === "string" ? "" : "%"}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent events log */}
+      <div className="rounded-xl p-4" style={cardStyle}>
+        <p className="text-sm font-bold text-white mb-3">Recent Events (last 50)</p>
+        <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+          {(data.recentEvents as any[]).slice().reverse().map((ev: any, i: number) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] py-1 border-b border-white/5">
+              <span className="text-dark-muted font-mono w-28 shrink-0">{ev.type}</span>
+              <span className="text-dark-text truncate">
+                {ev.isBot ? "🤖" : "👤"}
+                {ev.personality ? ` [${ev.personality}]` : ""}
+                {ev.handTotal != null ? ` hand=${ev.handTotal}` : ""}
+                {ev.success != null ? (ev.success ? " ✅" : " ❌") : ""}
+                {ev.cardsThrown != null ? ` threw=${ev.cardsThrown}` : ""}
+                {ev.targetTook != null ? (ev.targetTook ? " took" : " blocked") : ""}
+                {ev.winnerIsBot != null ? (ev.winnerIsBot ? " bot won" : " human won") : ""}
+                {ev.durationMs != null ? ` ${(ev.durationMs / 1000).toFixed(1)}s` : ""}
+                {ev.stage != null ? ` stage=${ev.stage}` : ""}
+                {ev.passed != null ? (ev.passed ? " pass" : " fail") : ""}
+                {ev.botCount != null ? ` bots=${ev.botCount}` : ""}
+              </span>
+            </div>
+          ))}
+          {data.recentEvents.length === 0 && (
+            <p className="text-dark-muted text-xs text-center py-4">No events recorded yet. Play some games first.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="text-xs text-dark-muted text-center">Auto-refreshes every 15 seconds · In-memory rolling window (5000 events)</div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 const NAV: { key: Section; icon: string; label: string }[] = [
@@ -2858,6 +3066,7 @@ const NAV: { key: Section; icon: string; label: string }[] = [
   { key: "gameconfig", icon: "🎯", label: "Game Config" },
   { key: "walletconfig", icon: "💳", label: "Wallet Config" },
   { key: "survivalconfig", icon: "🏆", label: "Survival Config" },
+  { key: "analytics", icon: "📈", label: "Game Analytics" },
   { key: "notify", icon: "📢", label: "Notify Users" },
 ];
 
@@ -3066,6 +3275,7 @@ export function AdminPage() {
             {section === "survivalconfig" && (
               <SurvivalConfigSection config={config} onSave={saveConfig} />
             )}
+            {section === "analytics" && <AnalyticsSection />}
           </motion.div>
         </AnimatePresence>
       </main>

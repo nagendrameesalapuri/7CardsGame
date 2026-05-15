@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { getOrCreateProgress } from '../models/PlayerProgress';
 import { PlayerProgress } from '../models/PlayerProgress';
 import { User } from '../models/User';
+import { Transaction } from '../models/Transaction';
 import {
   levelFromXp, rankFromLevel, xpForLevel, xpToNextLevel,
   DAILY_REWARDS, spinLucky, ACHIEVEMENTS, getAchievement,
@@ -77,9 +78,23 @@ router.post('/daily', requireAuth, async (req: Request, res: Response) => {
     const reward = DAILY_REWARDS[newDay - 1];
 
     // Credit wallet (points → rupees)
+    const userBefore = await User.findById(req.user!.id).select('walletBalance').lean();
+    const balBeforeDaily = userBefore?.walletBalance ?? 0;
+    const dailyCredit = reward.points / 100;
     await User.findByIdAndUpdate(req.user!.id, {
-      $inc: { walletBalance: reward.points / 100 },
+      $inc: { walletBalance: dailyCredit },
     });
+    if (dailyCredit > 0) {
+      await Transaction.create({
+        userId:        req.user!.id,
+        type:          'bonus',
+        amount:        dailyCredit,
+        status:        'completed',
+        description:   `Daily Login Reward — Day ${newDay}`,
+        balanceBefore: balBeforeDaily,
+        balanceAfter:  balBeforeDaily + dailyCredit,
+      });
+    }
 
     // XP + streak achievements
     const newXp    = p.xp + reward.xp;
@@ -100,13 +115,25 @@ router.post('/daily', requireAuth, async (req: Request, res: Response) => {
     if (newRank === 'diamond'  && p.rank !== 'diamond'  && !has('rank_diamond'))  { newAchievements.push('rank_diamond');  p.achievements.push({ id: 'rank_diamond',  unlockedAt: now }); }
     if (newRank === 'master'   && p.rank !== 'master'   && !has('rank_master'))   { newAchievements.push('rank_master');   p.achievements.push({ id: 'rank_master',   unlockedAt: now }); }
 
-    // Award achievement wallet bonuses
-    let bonusPoints = 0;
+    // Award achievement wallet bonuses and record transactions
+    let runningBalance = balBeforeDaily + dailyCredit;
     for (const id of newAchievements) {
       const def = getAchievement(id);
-      if (def && def.pointsReward > 0) bonusPoints += def.pointsReward;
+      if (def && def.pointsReward > 0) {
+        const credit = def.pointsReward / 100;
+        await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: credit } });
+        await Transaction.create({
+          userId:        req.user!.id,
+          type:          'bonus',
+          amount:        credit,
+          status:        'completed',
+          description:   `Achievement Unlocked: ${def.name}`,
+          balanceBefore: runningBalance,
+          balanceAfter:  runningBalance + credit,
+        });
+        runningBalance += credit;
+      }
     }
-    if (bonusPoints > 0) await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: bonusPoints / 100 } });
 
     p.xp            = newXp;
     p.level         = newLevel;
@@ -142,7 +169,19 @@ router.post('/lucky-spin', requireAuth, async (req: Request, res: Response) => {
     const outcome = spinLucky();
 
     if (outcome.points > 0) {
-      await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: outcome.points / 100 } });
+      const spinUser = await User.findById(req.user!.id).select('walletBalance').lean();
+      const balBeforeSpin = spinUser?.walletBalance ?? 0;
+      const spinCredit = outcome.points / 100;
+      await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: spinCredit } });
+      await Transaction.create({
+        userId:        req.user!.id,
+        type:          'bonus',
+        amount:        spinCredit,
+        status:        'completed',
+        description:   `Lucky Spin Reward — ${outcome.label ?? `+${outcome.points} pts`}`,
+        balanceBefore: balBeforeSpin,
+        balanceAfter:  balBeforeSpin + spinCredit,
+      });
     }
 
     if (outcome.xp > 0) {

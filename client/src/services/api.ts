@@ -201,6 +201,9 @@ export const admin = {
 
   sendNotification: (title: string, message: string, type: "info" | "warning" | "success") =>
     adminApi.post<{ success: boolean; recipients: number }>("/notify", { title, message, type }),
+
+  getAnalytics: () => adminApi.get<any>("/analytics"),
+  resetAnalytics: () => adminApi.post("/analytics/reset"),
 };
 
 export const progressionApi = {

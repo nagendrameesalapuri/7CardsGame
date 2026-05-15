@@ -38,6 +38,7 @@ import {
   estimatePlayerStyle,
 } from "../../utils/progression";
 import { getBadge } from "../../utils/badgeCache";
+import { recordEvent } from "../../utils/gameAnalytics";
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -317,6 +318,15 @@ export async function startRoomGame(
     status: "playing",
   });
 
+  recordEvent({
+    type: "game_started",
+    gameId: gameState.id,
+    botCount: gameState.players.filter((p) => p.isBot).length,
+    humanCount: gameState.players.filter((p) => !p.isBot).length,
+    botPersonality: gameBotPersonality.get(gameState.id) ?? "smart",
+    difficultyBoost: gameDifficultyBoost.get(gameState.id) ?? 0,
+  });
+
   broadcastGameState(io, gameState);
   startTurnTimer(io, gameState.id);
   scheduleBotTurnIfNeeded(io, gameState);
@@ -423,6 +433,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         status: "playing",
       });
 
+      recordEvent({
+        type: "game_started",
+        gameId: gameState.id,
+        botCount: gameState.players.filter((p) => p.isBot).length,
+        humanCount: gameState.players.filter((p) => !p.isBot).length,
+        botPersonality: gameBotPersonality.get(gameState.id) ?? "smart",
+        difficultyBoost: gameDifficultyBoost.get(gameState.id) ?? 0,
+      });
+
       // Broadcast personalised game state to each socket in the room
       broadcastGameState(io, gameState);
 
@@ -516,6 +535,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
   // Player calls SHOW
   socket.on("game:show", () => {
+    const preShowState = getActiveGame(socket.data.roomCode);
+    const preShowPlayer = preShowState?.players.find((p) => p.userId === userId);
+    const handTotalBefore = preShowPlayer?.hand.reduce((s, c) => s + (c.isJoker ? 0 : (c.value)), 0) ?? 0;
+
     handlePlayerAction(
       io,
       socket,
@@ -538,6 +561,16 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           handCountHistory:
             resultState.players.find((p) => p.userId === userId)?.handCount ??
             0,
+        });
+        const showSuccess = resultState.roundResult?.showPlayerWon ?? false;
+        recordEvent({
+          type: "show_attempt",
+          gameId: resultState.id,
+          userId,
+          isBot: false,
+          handTotal: handTotalBefore,
+          success: showSuccess,
+          personality: gameBotPersonality.get(resultState.id),
         });
       },
     );
@@ -576,6 +609,16 @@ export function registerGameHandlers(io: Server, socket: Socket) {
               resultState.players.find((p) => p.userId === userId)?.handCount ??
               0,
           });
+          if (data.action === "throw" && data.cardIds?.length) {
+            recordEvent({
+              type: "attack_chain",
+              gameId: resultState.id,
+              attackerId: userId,
+              isBot: false,
+              cardsThrown: data.cardIds.length,
+              targetTook: false,
+            });
+          }
         },
       );
     },
@@ -690,6 +733,20 @@ function handlePlayerAction(
 function handleRoundEnd(io: Server, state: GameState) {
   if (!state.roundResult) return;
   broadcastGameState(io, state);
+
+  // Analytics: record round outcome
+  const winnerPlayer = state.players.find((p) => p.id === state.roundResult!.winnerId);
+  const loserResult = state.roundResult.playerResults.reduce((worst, pr) =>
+    pr.roundPoints > worst.roundPoints ? pr : worst, state.roundResult.playerResults[0]);
+  recordEvent({
+    type: "round_end",
+    gameId: state.id,
+    winnerIsBot: winnerPlayer?.isBot ?? false,
+    durationMs: Date.now() - new Date(state.turnStartTime ?? Date.now()).getTime(),
+    roundNumber: state.roundNumber,
+    botPersonality: gameBotPersonality.get(state.id),
+    loserTotal: loserResult?.roundPoints ?? 0,
+  });
 
   // Persist round results
   Game.findOneAndUpdate(
@@ -1341,14 +1398,19 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
         result = GameEngine.processDiscard(state, botPlayerId, discardIds);
       }
       break;
-    case "show":
+    case "show": {
+      const botShowPlayer = state.players.find((p) => p.id === botPlayerId);
+      const botHandTotal = botShowPlayer?.hand.reduce((s, c) => s + (c.isJoker ? 0 : (c.value)), 0) ?? 0;
       result = GameEngine.processShow(state, botPlayerId);
       if (!result.success) {
+        recordEvent({ type: "show_attempt", gameId: state.id, userId: botPlayerId, isBot: true, handTotal: botHandTotal, success: false, personality });
         // Show rejected (e.g. threshold mismatch) — fall back to normal draw/discard
         botFallbackAction(io, state, botPlayerId);
         return;
       }
+      recordEvent({ type: "show_attempt", gameId: state.id, userId: botPlayerId, isBot: true, handTotal: botHandTotal, success: true, personality });
       break;
+    }
     case "attack_throw":
       result = GameEngine.processAttackResponse(
         state,
@@ -1359,6 +1421,11 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       if (!result.success) {
         // Countering failed — take the cards instead
         result = GameEngine.processAttackResponse(state, botPlayerId, "take");
+        if (result.success) {
+          recordEvent({ type: "attack_chain", gameId: state.id, attackerId: botPlayerId, isBot: true, cardsThrown: 0, targetTook: true });
+        }
+      } else if (decision.cardIds?.length) {
+        recordEvent({ type: "attack_chain", gameId: state.id, attackerId: botPlayerId, isBot: true, cardsThrown: decision.cardIds.length, targetTook: false });
       }
       break;
     case "attack_take":

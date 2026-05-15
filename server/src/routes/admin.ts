@@ -20,6 +20,7 @@ import { WithdrawalRequest } from "../models/WithdrawalRequest";
 import { DepositRequest } from "../models/DepositRequest";
 import { Transaction } from "../models/Transaction";
 import { SupportTicket } from "../models/SupportTicket";
+import { getAnalyticsSnapshot, resetAnalytics } from "../utils/gameAnalytics";
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -368,7 +369,7 @@ export default function createAdminRouter(io: Server) {
       const [users, total] = await Promise.all([
         User.find(query)
           .select("-guestToken -googleId")
-          .sort({ createdAt: -1 })
+          .sort({ lastSeenAt: -1, createdAt: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
           .lean(),
@@ -388,6 +389,7 @@ export default function createAdminRouter(io: Server) {
           isOnline: onlineIds.has(u._id.toString()),
           stats: u.stats,
           createdAt: u.createdAt,
+          lastSeenAt: (u as any).lastSeenAt ?? null,
         })),
         total,
         page,
@@ -945,6 +947,16 @@ export default function createAdminRouter(io: Server) {
     } catch {
       res.status(500).json({ error: "Failed to send notification" });
     }
+  });
+
+  // ── Game analytics ──────────────────────────────────────────────────────────
+  router.get("/analytics", (_req: Request, res: Response) => {
+    res.json(getAnalyticsSnapshot());
+  });
+
+  router.post("/analytics/reset", (_req: Request, res: Response) => {
+    resetAnalytics();
+    res.json({ success: true, message: "Analytics reset" });
   });
 
   return router;

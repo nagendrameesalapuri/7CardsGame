@@ -80,6 +80,8 @@ export function initSocketIO(io: Server) {
       PlayerProgress.findOne({ userId: uid })
         .then(p => { if (p) computeAndCacheBadge(uid, p.achievements.map(a => a.id)); })
         .catch(() => {});
+      // Record last seen on connect
+      User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
     }
 
     registerRoomHandlers(io, socket);
@@ -128,6 +130,8 @@ export function initSocketIO(io: Server) {
 
       if (!isSpectator) {
         onlineUsers.delete(uid);
+        // Record last seen on disconnect so "last seen" is accurate
+        User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
       }
 
       const game = getActiveGame(socket.data.roomCode);

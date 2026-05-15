@@ -40,7 +40,14 @@ export function GamePage() {
   // When a survival stage ends, leave the room and go to /survival
   // so the StageResultOverlay shows and the user can start the next stage.
   useEffect(() => {
-    const unsub = on('survival:stage_result', () => {
+    const unsub = on('survival:stage_result', (result) => {
+      useSurvivalStore.setState((state) => ({
+        currentStage: result.nextStage ?? state.currentStage,
+        stageResults: result.stageResults,
+        totalPointsEarned: result.totalPointsEarned ?? state.totalPointsEarned,
+        stageResult: result,
+        active: !result.tournamentOver,
+      }));
       leaveRoom();
       navigate('/survival', { replace: true });
     });
