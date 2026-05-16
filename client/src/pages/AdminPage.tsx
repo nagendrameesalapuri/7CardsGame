@@ -40,7 +40,8 @@ type Section =
   | "support"
   | "notify"
   | "survivalconfig"
-  | "analytics";
+  | "analytics"
+  | "aiguide";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -3087,6 +3088,428 @@ function AnalyticsSection() {
   );
 }
 
+// ── AI Guide Section ──────────────────────────────────────────────────────────
+
+function AiGuideSection() {
+  const [tab, setTab] = useState<"bots" | "stages" | "tiers" | "logic">("bots");
+
+  const tabs: { key: typeof tab; label: string; icon: string }[] = [
+    { key: "bots",   label: "Bot Personalities", icon: "🤖" },
+    { key: "stages", label: "Survival Stages",   icon: "⚔️" },
+    { key: "tiers",  label: "Tier & Rewards",    icon: "🏆" },
+    { key: "logic",  label: "Decision Logic",    icon: "🧠" },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.18))", border: "1px solid rgba(99,102,241,0.3)" }}>
+          🧬
+        </div>
+        <div>
+          <h2 className="text-xl font-black text-white">AI & Bot Strategy Reference</h2>
+          <p className="text-xs" style={{ color: "rgba(148,163,184,0.6)" }}>Complete guide to bot personalities, survival stages, and decision logic</p>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+            style={{
+              background: tab === t.key ? "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${tab === t.key ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.06)"}`,
+              color: tab === t.key ? "#a5b4fc" : "rgba(148,163,184,0.7)",
+              boxShadow: tab === t.key ? "0 0 16px rgba(99,102,241,0.2)" : "none",
+            }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div key={tab}
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.16 }}>
+
+          {/* ── BOT PERSONALITIES ── */}
+          {tab === "bots" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(99,102,241,0.7)" }}>5 Bot Personalities</p>
+
+              {[
+                {
+                  name: "Safe", icon: "🛡️", color: "#34d399", glow: "rgba(52,211,153,0.15)",
+                  think: "1200ms base", style: "Defensive — waits for good hands", risk: "Low",
+                  key: ["High combo preservation (0.95)", "Random play 22%", "Shows at ≤5 pts", "Jack use bias 20%", "Killer instinct 15%", "Denial weight 28%"],
+                  tag: "Beginner-friendly",
+                },
+                {
+                  name: "Aggressive", icon: "⚡", color: "#f87171", glow: "rgba(248,113,113,0.15)",
+                  think: "280ms base", style: "Always attacks — non-stop pressure", risk: "High",
+                  key: ["Always attacks (alwaysAttack: true)", "Jack use bias 70%", "Killer instinct 85%", "Show interrupt bias 70%", "Denial weight 55%", "Random play only 6%"],
+                  tag: "Stage 2 & Final Boss",
+                },
+                {
+                  name: "Bluff", icon: "🎭", color: "#fbbf24", glow: "rgba(251,191,36,0.15)",
+                  think: "700ms ± 680ms jitter", style: "Deceptive — intentionally fakes weak hands", risk: "Medium",
+                  key: ["Wide timing jitter (psychological suspense)", "Breaks pairs on purpose to fake weakness", "Delays Show bluff — discards 2nd-best", "Deeper fake during bait phase", "Killer instinct 45%", "Denial weight 45%"],
+                  tag: "Stage 3 — Hardest to read",
+                },
+                {
+                  name: "Smart", icon: "🧠", color: "#60a5fa", glow: "rgba(96,165,250,0.15)",
+                  think: "480ms base", style: "Balanced — denial-aware, near-optimal", risk: "Medium",
+                  key: ["Denial weight 65% (avoids feeding you useful cards)", "Killer instinct 60%", "Show interrupt bias 65%", "Controlled imperfection (4% sub-optimal)", "2-turn lookahead on every discard", "Adapts to your archetype"],
+                  tag: "Stage 4 leader",
+                },
+                {
+                  name: "Boss", icon: "👑", color: "#a78bfa", glow: "rgba(167,139,250,0.15)",
+                  think: "200ms base", style: "Switches sub-mode every turn — human-like", risk: "Maximum",
+                  key: ["8 dynamic sub-modes per turn", "Emotional phases: building→pressure→cooldown→bait→surge", "15% chance to pick 2nd-best (controlled imperfection)", "Per-match variant seed (4 playstyles)", "Denial weight 82%, killer instinct 82%", "Show interrupt bias 90%"],
+                  tag: "Stage 5 — Final Boss",
+                },
+              ].map((bot, i) => (
+                <motion.div key={bot.name}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.07 }}
+                  className="rounded-2xl p-5"
+                  style={{ background: bot.glow, border: `1px solid ${bot.color}28`, boxShadow: `0 4px 24px ${bot.glow}` }}>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black"
+                        style={{ background: `${bot.color}20`, border: `1px solid ${bot.color}40` }}>
+                        {bot.icon}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-black" style={{ color: bot.color }}>{bot.name} Bot</p>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                            style={{ background: `${bot.color}18`, color: bot.color }}>
+                            {bot.tag}
+                          </span>
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: "rgba(148,163,184,0.7)" }}>{bot.style}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[10px] font-bold" style={{ color: "rgba(148,163,184,0.5)" }}>THINK TIME</p>
+                      <p className="text-sm font-black" style={{ color: bot.color }}>{bot.think}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {bot.key.map(k => (
+                      <div key={k} className="flex items-start gap-2 text-xs" style={{ color: "rgba(203,213,225,0.75)" }}>
+                        <span style={{ color: bot.color, flexShrink: 0 }}>›</span>{k}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Boss Sub-modes */}
+              <div className="rounded-2xl p-5 mt-2"
+                style={{ background: "rgba(167,139,250,0.07)", border: "1px solid rgba(167,139,250,0.2)" }}>
+                <p className="text-sm font-black text-white mb-1">👑 Boss — 8 Dynamic Sub-modes</p>
+                <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>Boss picks one mode every turn based on game state. Each match also gets a random "variant seed" that biases it toward a playstyle.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { mode: "killer",         when: "You're recovering/weak",           action: "Maximum aggression — closes you out fast", color: "#f87171" },
+                    { mode: "anti_show",      when: "You're close to calling Show",     action: "Burns all 7s/Js to interrupt your Show", color: "#fb923c" },
+                    { mode: "pressure_mode",  when: "You're panic-drawing",             action: "Relentless — zero breathing room given", color: "#f43f5e" },
+                    { mode: "tempo_control",  when: "You have a trap setup",            action: "Disrupts your rhythm with J skips", color: "#60a5fa" },
+                    { mode: "aggressive",     when: "You have very few cards",          action: "Rush attack with 7s immediately", color: "#f87171" },
+                    { mode: "combo_preserve", when: "Bait/cooldown phase",              action: "Builds own hand while denying yours", color: "#34d399" },
+                    { mode: "defensive",      when: "Cooldown phase (planned retreat)", action: "Slows down to bait you into rushing", color: "#94a3b8" },
+                    { mode: "trap",           when: "You're playing smart",             action: "Lures you into discarding useful cards", color: "#fbbf24" },
+                  ].map(m => (
+                    <div key={m.mode} className="rounded-xl p-3"
+                      style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${m.color}22` }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full"
+                          style={{ background: `${m.color}18`, color: m.color }}>
+                          {m.mode}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-semibold" style={{ color: "rgba(148,163,184,0.65)" }}>When: {m.when}</p>
+                      <p className="text-[11px] mt-0.5 font-bold text-white">{m.action}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-xl p-3" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(167,139,250,0.15)" }}>
+                  <p className="text-[11px] font-black text-white mb-2">Emotional Phase Cycle</p>
+                  <div className="flex items-center gap-1 flex-wrap text-[10px] font-bold">
+                    {["building", "pressure", "cooldown", "bait", "surge"].map((phase, i, arr) => (
+                      <React.Fragment key={phase}>
+                        <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(167,139,250,0.15)", color: "#a78bfa" }}>{phase}</span>
+                        {i < arr.length - 1 && <span style={{ color: "rgba(148,163,184,0.4)" }}>→</span>}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <p className="text-[10px] mt-2" style={{ color: "rgba(148,163,184,0.55)" }}>
+                    After 2 pressure turns → cooldown → bait (passive play to trick you) → surge (max spike). Creates human-like rhythm.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── SURVIVAL STAGES ── */}
+          {tab === "stages" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(245,158,11,0.7)" }}>5-Stage AI Championship</p>
+              <p className="text-sm mb-4" style={{ color: "rgba(148,163,184,0.65)" }}>
+                Win condition: your total hand score must be <strong className="text-white">strictly lower</strong> than every bot's score. 3 rounds per stage. Bots escalate each stage.
+              </p>
+              {[
+                { stage: 1, format: "1v1",  bots: ["Safe Bot"],                              personalities: ["safe"],                           difficulty: 1, color: "#34d399", desc: "Defensive AI — learns basic strategies, safe to practice with" },
+                { stage: 2, format: "1v1",  bots: ["Aggressive Bot"],                        personalities: ["aggressive"],                     difficulty: 2, color: "#fbbf24", desc: "Non-stop attack pressure — throws 7s constantly, very fast decisions" },
+                { stage: 3, format: "1v1",  bots: ["Bluff Bot"],                             personalities: ["bluff"],                          difficulty: 3, color: "#f97316", desc: "Deceptive — fakes weakness, unpredictable timing, psychological warfare" },
+                { stage: 4, format: "1v2",  bots: ["Smart AI", "Aggressive AI"],             personalities: ["smart", "aggressive"],            difficulty: 4, color: "#f87171", desc: "Smart controls tempo and denies your cards; Aggressive attacks simultaneously" },
+                { stage: 5, format: "1v3",  bots: ["Boss AI", "Smart AI", "Aggressive AI"], personalities: ["boss", "smart", "aggressive"],    difficulty: 5, color: "#a78bfa", desc: "Final Boss Arena — Boss switches modes every turn, two supports apply constant pressure" },
+              ].map((s, i) => (
+                <motion.div key={s.stage}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  className="rounded-2xl p-5"
+                  style={{ background: "rgba(0,0,0,0.35)", border: `1px solid ${s.color}28` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg"
+                        style={{ background: `${s.color}15`, border: `1px solid ${s.color}40`, color: s.color }}>
+                        S{s.stage}
+                      </div>
+                      <div>
+                        <p className="font-black text-white text-sm">{s.bots[0]}{s.bots.length > 1 ? ` + ${s.bots.length - 1} more` : ""}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                            style={{ background: `${s.color}18`, color: s.color }}>
+                            {s.format}
+                          </span>
+                          <span className="text-[10px]" style={{ color: "rgba(148,163,184,0.5)" }}>{"★".repeat(s.difficulty)}{"☆".repeat(5 - s.difficulty)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: "rgba(203,213,225,0.7)" }}>{s.desc}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {s.bots.map((b, bi) => (
+                      <div key={b} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <span className="text-[11px] font-black text-white">{b}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(0,0,0,0.3)", color: "rgba(148,163,184,0.6)" }}>
+                          {s.personalities[bi]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+              <div className="rounded-2xl p-4 mt-2"
+                style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                <p className="text-sm font-black text-white mb-2">💡 Player Tips</p>
+                <div className="space-y-1.5">
+                  {[
+                    "Against Safe — it rarely attacks, so focus on getting your hand to ≤5 and Show fast",
+                    "Against Aggressive — counter 7-attacks with your own 7s; if you have none, take the cards calmly",
+                    "Against Bluff — ignore its timing tells; just play your own optimal line",
+                    "Stage 4 — target Smart AI first (it controls discard denial); Aggressive runs itself into walls",
+                    "Stage 5 — Boss switches modes; don't adapt to its last move, adapt to your own hand state",
+                  ].map(tip => (
+                    <div key={tip} className="flex items-start gap-2 text-xs" style={{ color: "rgba(203,213,225,0.7)" }}>
+                      <span style={{ color: "#34d399", flexShrink: 0 }}>›</span>{tip}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TIER & REWARDS ── */}
+          {tab === "tiers" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(168,85,247,0.7)" }}>Tournament Tiers & Point Rewards</p>
+              <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>100 points = ₹1 wallet balance. Rewards credited per stage cleared — you keep what you earn even if eliminated later. Refund only if you quit before completing a single round.</p>
+
+              {[
+                { tier: "Beginner",    entry: 1000, rewards: [100, 200, 300, 450, 700],     total: 1750, color: "#34d399", icon: "🌱" },
+                { tier: "Pro",         entry: 2000, rewards: [200, 350, 600, 900, 1500],    total: 3550, color: "#60a5fa", icon: "⚡" },
+                { tier: "Elite",       entry: 5000, rewards: [600, 900, 1400, 2200, 3800],  total: 8900, color: "#f59e0b", icon: "💎" },
+                { tier: "Boss Arena",  entry: 10000, rewards: [1200, 1800, 2600, 4200, 7600], total: 17400, color: "#a78bfa", icon: "👑" },
+              ].map((t, i) => {
+                const net = t.total - t.entry;
+                const roi = Math.round((net / t.entry) * 100);
+                return (
+                  <motion.div key={t.tier}
+                    initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    className="rounded-2xl p-5"
+                    style={{ background: "rgba(0,0,0,0.35)", border: `1px solid ${t.color}30` }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{t.icon}</span>
+                        <div>
+                          <p className="font-black text-white">{t.tier}</p>
+                          <p className="text-xs" style={{ color: "rgba(148,163,184,0.6)" }}>Entry: <span style={{ color: t.color }}>{t.entry.toLocaleString()} pts</span> (₹{t.entry / 100})</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs" style={{ color: "rgba(148,163,184,0.5)" }}>Max earn</p>
+                        <p className="font-black" style={{ color: t.color }}>{t.total.toLocaleString()} pts</p>
+                        <p className="text-[10px]" style={{ color: net > 0 ? "#34d399" : "#f87171" }}>ROI: +{roi}%</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {t.rewards.map((r, si) => (
+                        <div key={si} className="rounded-xl p-2 text-center"
+                          style={{ background: `${t.color}10`, border: `1px solid ${t.color}25` }}>
+                          <p className="text-[9px] font-bold mb-1" style={{ color: "rgba(148,163,184,0.5)" }}>S{si + 1}</p>
+                          <p className="text-sm font-black" style={{ color: t.color }}>{r}</p>
+                          <p className="text-[9px]" style={{ color: "rgba(148,163,184,0.4)" }}>pts</p>
+                          <p className="text-[9px] mt-0.5 font-semibold" style={{ color: "rgba(52,211,153,0.7)" }}>₹{r / 100}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-4 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div className="text-xs" style={{ color: "rgba(148,163,184,0.55)" }}>
+                        Complete all 5 stages → net <span style={{ color: "#34d399" }}>+{net.toLocaleString()} pts (₹{net / 100})</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+
+              <div className="rounded-2xl p-4" style={{ background: "rgba(96,165,250,0.07)", border: "1px solid rgba(96,165,250,0.2)" }}>
+                <p className="text-sm font-black text-white mb-3">📋 Refund Policy</p>
+                <div className="space-y-2 text-xs" style={{ color: "rgba(203,213,225,0.7)" }}>
+                  <div className="flex items-start gap-2"><span style={{ color: "#34d399" }}>✓</span>Full refund if you quit before completing Round 1 of Stage 1</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#f87171" }}>✗</span>No refund after any round has been played</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#34d399" }}>✓</span>All stage rewards already credited remain in wallet</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#fbbf24" }}>⚠</span>Stale/crashed sessions auto-refunded on next login</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── DECISION LOGIC ── */}
+          {tab === "logic" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(96,165,250,0.7)" }}>Bot Decision Pipeline (per turn)</p>
+              <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>
+                Every bot executes these steps in strict priority order each turn. Higher-priority signals override lower ones.
+              </p>
+
+              {[
+                { step: 1,  title: "Show Interruption",           color: "#f43f5e", icon: "🚨",
+                  when: "Threat = CRITICAL, opponent within 3 cards of Show",
+                  action: "Preserves 7s for attack; dumps highest-value safe card. Sacrifices own optimization to prevent your Show." },
+                { step: 2,  title: "Attack: Throw All 7s",        color: "#f87171", icon: "⚔️",
+                  when: "Opponent hand ≤ attackAllAt threshold (varies by personality)",
+                  action: "Throws all 7s simultaneously to dump maximum cards on you. Cannot be countered unless you hold 7s." },
+                { step: 3,  title: "Bluff Tactical Line",         color: "#fbbf24", icon: "🎭",
+                  when: "Bluff personality only, threat is not high/critical, 20% of turns",
+                  action: "Intentionally breaks a pair (medium-value) to fake a scattered hand, baiting you into thinking it's weak." },
+                { step: 4,  title: "Anti-Determinism",            color: "#a78bfa", icon: "🎲",
+                  when: "Boss/smart: 4-15% chance, not triggered recently",
+                  action: "Picks 2nd-best option instead of optimal — prevents you from pattern-reading and exploiting predictability." },
+                { step: 5,  title: "Immediate Show Check",        color: "#34d399", icon: "✅",
+                  when: "Best discard would drop hand score to ≤5",
+                  action: "Executes the discard immediately and calls Show next turn. Won't delay a guaranteed win." },
+                { step: 6,  title: "Strategic 7 Deployment",      color: "#f97316", icon: "7️⃣",
+                  when: "Has 7s; opponent hand ≤ sevenSaveThreshold OR killer instinct active",
+                  action: "Deploys one or all 7s strategically. Saves them until opponent is close enough to make the attack painful." },
+                { step: 7,  title: "Jack Skip for Tempo Denial",  color: "#60a5fa", icon: "🃏",
+                  when: "Has J; next player hand ≤ skipAt threshold; no 7s available",
+                  action: "Burns J to skip your turn and deny you a draw. Most effective when you're 1-2 cards away from winning." },
+                { step: 8,  title: "Opponent-Benefit Penalty",    color: "#818cf8", icon: "🧮",
+                  when: "Every discard decision (always active)",
+                  action: "Scores every discard option by how much it helps you. Avoids giving away Aces, 2s, 3s, jokers. Multiplied by 2× in CRITICAL threat." },
+                { step: 9,  title: "2-Turn Lookahead",            color: "#a78bfa", icon: "🔭",
+                  when: "Every discard option evaluated",
+                  action: "Simulates one more discard after the current one. Options that lead to ≤5 score in 2 turns get a priority bonus." },
+                { step: 10, title: "Show Decision",               color: "#34d399", icon: "🏁",
+                  when: "Total ≤ showHardMax (safe:5, boss:5, smart:6, bluff:9, aggressive:7)",
+                  action: "Calls Show if confidence ≥ threshold. Calls sooner when you're close to Showing first (race condition logic)." },
+              ].map((s, i) => (
+                <motion.div key={s.step}
+                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="rounded-2xl p-4 flex gap-4"
+                  style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${s.color}22` }}>
+                  <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm"
+                    style={{ background: `${s.color}15`, border: `1px solid ${s.color}35`, color: s.color }}>
+                    {s.step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{s.icon}</span>
+                      <p className="font-black text-white text-sm">{s.title}</p>
+                    </div>
+                    <p className="text-[11px] mb-1" style={{ color: "rgba(148,163,184,0.55)" }}>
+                      <span className="font-bold" style={{ color: s.color }}>When: </span>{s.when}
+                    </p>
+                    <p className="text-[11px]" style={{ color: "rgba(203,213,225,0.7)" }}>{s.action}</p>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Threat Level Engine */}
+              <div className="rounded-2xl p-5" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                <p className="text-sm font-black text-white mb-3">🌡️ Threat Level Engine</p>
+                <p className="text-xs mb-3" style={{ color: "rgba(148,163,184,0.6)" }}>
+                  Computed every turn. Drives aggression multipliers across all 10 steps.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { level: "LOW",      color: "#34d399", condition: "Opponent 7+ cards, low show pressure" },
+                    { level: "MEDIUM",   color: "#fbbf24", condition: "Opponent 5-6 cards OR show pressure ≥30%" },
+                    { level: "HIGH",     color: "#f97316", condition: "Opponent 3-4 cards OR show pressure ≥50%" },
+                    { level: "CRITICAL", color: "#f43f5e", condition: "Opponent ≤2 cards OR show pressure ≥75%" },
+                  ].map(t => (
+                    <div key={t.level} className="rounded-xl p-3"
+                      style={{ background: `${t.color}10`, border: `1px solid ${t.color}30` }}>
+                      <p className="text-xs font-black mb-1" style={{ color: t.color }}>{t.level}</p>
+                      <p className="text-[10px]" style={{ color: "rgba(148,163,184,0.65)" }}>{t.condition}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Player Archetypes */}
+              <div className="rounded-2xl p-5" style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <p className="text-sm font-black text-white mb-3">🎯 Player Archetype Detection</p>
+                <p className="text-xs mb-3" style={{ color: "rgba(148,163,184,0.6)" }}>Bots observe your play pattern and classify you. Changes how they respond to you specifically.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { arch: "fast_show",     sig: "Many Shows + high cut rate → bot rushes to Show first" },
+                    { arch: "combo_hoarder", sig: "Holds pairs/triples → bot avoids giving matching ranks" },
+                    { arch: "aggressive",    sig: "Many attack throws → bot goes defensive then counters" },
+                    { arch: "defensive",     sig: "Many attack takes → bot increases attack frequency" },
+                    { arch: "trap",          sig: "Stable high hand count → bot controls tempo to disrupt" },
+                    { arch: "hold_7s",       sig: "Never throws 7s → bot adds trap signal, expects counter-attack" },
+                  ].map(a => (
+                    <div key={a.arch} className="flex items-start gap-2 rounded-xl p-2.5"
+                      style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(245,158,11,0.1)" }}>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                        style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                        {a.arch}
+                      </span>
+                      <p className="text-[11px]" style={{ color: "rgba(203,213,225,0.65)" }}>{a.sig}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -3108,6 +3531,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "gameconfig",    icon: "🎯", label: "Game Config" },
       { key: "survivalconfig",icon: "🛡️", label: "Survival Config" },
       { key: "analytics",     icon: "📈", label: "Analytics" },
+      { key: "aiguide",       icon: "🧬", label: "AI Strategy Guide" },
     ],
   },
   {
@@ -3348,6 +3772,7 @@ export function AdminPage() {
               {section === "notify" && <NotifySection />}
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
               {section === "analytics" && <AnalyticsSection />}
+              {section === "aiguide" && <AiGuideSection />}
             </motion.div>
           </AnimatePresence>
         </div>
