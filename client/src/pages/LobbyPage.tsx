@@ -110,8 +110,10 @@ export function LobbyPage() {
     const roundCount = rounds
       ? Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, rounds))
       : clampedAiRounds;
+    const name = `${user?.username ?? 'My'}'s ${modeName ?? 'AI'} Game`;
+
     createRoom({
-      name: `${user?.username ?? 'My'}'s ${modeName ?? 'AI'} Game`,
+      name: name.length > 30 ? `${name.slice(0, 27)}...` : name,
       maxPlayers: botCount + 1,
       roundCount,
       isPrivate: true,

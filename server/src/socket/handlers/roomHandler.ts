@@ -81,9 +81,12 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         });
       }
 
+      const roomName = String(data.name || `${username}'s Room`).trim();
+      const sanitizedRoomName = roomName.length > 30 ? `${roomName.slice(0, 27)}...` : roomName;
+
       const room = await Room.create({
         code,
-        name: data.name || `${username}'s Room`,
+        name: sanitizedRoomName,
         hostId: userId,
         players: [{
           userId,
