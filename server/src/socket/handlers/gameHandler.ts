@@ -11,7 +11,6 @@ import { Game } from "../../models/Game";
 import { User } from "../../models/User";
 import { PlayerProgress } from "../../models/PlayerProgress";
 import { Transaction } from "../../models/Transaction";
-import { Tournament } from "../../models/Tournament";
 import { GameEngine, GameConfig } from "../../engine/GameEngine";
 import {
   BotPlayer,
@@ -48,8 +47,10 @@ const roomToGame = new Map<string, string>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 // Ready-for-next-round tracking: gameId → Set of userIds who have clicked "Play Next Round"
 const roundReadyPlayers = new Map<string, Set<string>>();
-// Survival bot personality per game (gameId → personality)
+// Survival bot personality per game (gameId → personality, shared fallback)
 const gameBotPersonality = new Map<string, BotPersonality>();
+// Per-bot personality override (gameId → botUserId → personality) for multi-bot stages
+const gameBotPersonalitiesMap = new Map<string, Map<string, BotPersonality>>();
 const gameDifficultyBoost = new Map<string, number>();
 // In-match behavior tracking for opponent modeling
 const gameBehavior = new Map<
@@ -123,6 +124,31 @@ export function getAllActiveRoomInfos() {
 
 export function setBotPersonality(gameId: string, personality: BotPersonality) {
   gameBotPersonality.set(gameId, personality);
+}
+
+// Assign distinct personalities to individual bots (for multi-bot stages)
+export function assignBotPersonalities(
+  gameId: string,
+  assignments: Array<{ userId: string; personality: BotPersonality }>,
+) {
+  const map = new Map<string, BotPersonality>();
+  for (const a of assignments) map.set(a.userId, a.personality);
+  gameBotPersonalitiesMap.set(gameId, map);
+  // Also set shared fallback to the first personality
+  if (assignments[0]) gameBotPersonality.set(gameId, assignments[0].personality);
+}
+
+// Resolve personality for a specific bot in a game
+function getBotPersonality(state: GameState, botPlayerId: string): BotPersonality {
+  const bot = state.players.find((p) => p.id === botPlayerId);
+  if (bot) {
+    const perBot = gameBotPersonalitiesMap.get(state.id);
+    if (perBot) {
+      const p = perBot.get(bot.userId);
+      if (p) return p;
+    }
+  }
+  return gameBotPersonality.get(state.id) ?? "smart";
 }
 
 async function initGameDifficultyBoost(gameState: GameState) {
@@ -270,9 +296,12 @@ export async function startRoomGame(
   const room = await Room.findOne({ code: roomCode });
   if (!room) return;
 
+  const botNamesConfig: string[] = (room.config as any).botNames ?? [];
+  const botPersonalitiesConfig: BotPersonality[] = (room.config as any).botPersonalities ?? [];
+
   const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => ({
     userId: `bot_${uuidv4().slice(0, 6)}`,
-    username: `Bot ${i + 1}`,
+    username: botNamesConfig[i] ?? `Bot ${i + 1}`,
     avatar: `bot_${i + 1}`,
     isBot: true,
   }));
@@ -300,9 +329,17 @@ export async function startRoomGame(
   await initGameDifficultyBoost(gameState);
   roomToGame.set(room.code, gameState.id);
 
-  // Apply bot personality from room config
-  const personality = (room.config as any).botPersonality ?? "smart";
-  setBotPersonality(gameState.id, personality);
+  // Apply per-bot personalities (multi-bot stages) or shared personality (single-bot)
+  if (botPersonalitiesConfig.length > 0) {
+    const bots = gameState.players.filter((p) => p.isBot);
+    assignBotPersonalities(gameState.id, bots.map((b, i) => ({
+      userId: b.userId,
+      personality: botPersonalitiesConfig[i] ?? botPersonalitiesConfig[0],
+    })));
+  } else {
+    const personality = (room.config as any).botPersonality ?? "smart";
+    setBotPersonality(gameState.id, personality);
+  }
 
   room.status = "playing";
   room.gameId = gameState.id;
@@ -385,11 +422,14 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }
 
       // Build player list (humans + bots)
+      const roomBotNames: string[] = (room.config as any).botNames ?? [];
+      const roomBotPersonalities: BotPersonality[] = (room.config as any).botPersonalities ?? [];
+
       const botPlayers = Array.from(
         { length: room.config.botCount },
         (_, i) => ({
           userId: `bot_${uuidv4().slice(0, 6)}`,
-          username: `Bot ${i + 1}`,
+          username: roomBotNames[i] ?? `Bot ${i + 1}`,
           avatar: `bot_${i + 1}`,
           isBot: true,
         }),
@@ -418,9 +458,17 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       await initGameDifficultyBoost(gameState);
       roomToGame.set(room.code, gameState.id);
 
-      // Apply bot personality from room config
-      const roomPersonality = (room.config as any).botPersonality ?? "smart";
-      setBotPersonality(gameState.id, roomPersonality);
+      // Apply per-bot personalities or shared personality from room config
+      if (roomBotPersonalities.length > 0) {
+        const bots = gameState.players.filter((p) => p.isBot);
+        assignBotPersonalities(gameState.id, bots.map((b, i) => ({
+          userId: b.userId,
+          personality: roomBotPersonalities[i] ?? roomBotPersonalities[0],
+        })));
+      } else {
+        const roomPersonality = (room.config as any).botPersonality ?? "smart";
+        setBotPersonality(gameState.id, roomPersonality);
+      }
 
       room.status = "playing";
       room.gameId = gameState.id;
@@ -946,204 +994,10 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   gameBotPersonality.delete(state.id);
 
-  // Tournament hooks — run async, non-blocking
-  handleTournamentMatchEnd(io, state, matchResult).catch(console.error);
+  // Survival hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
 }
 
-// ── Tournament match-end logic ────────────────────────────────────────────────
-
-const TOURNAMENT_PRIZE: Record<number, number> = { 10: 15, 20: 25 };
-
-async function handleTournamentMatchEnd(
-  io: Server,
-  state: GameState,
-  matchResult: any,
-) {
-  const tournament = await Tournament.findOne({
-    currentRoomCode: state.roomId,
-    status: "active",
-  });
-  if (!tournament) return;
-
-  // Use roundResult scores (last-round totals) if available; fall back to in-memory totals
-  const getScore = (userId: string) => {
-    if (state.roundResult) {
-      const pr = state.roundResult.playerResults.find((r) => {
-        const p = state.players.find((pl) => pl.id === r.playerId);
-        return p?.userId === userId;
-      });
-      if (pr) return pr.totalScore;
-    }
-    return state.players.find((p) => p.userId === userId)?.totalScore ?? 0;
-  };
-  const getBotScores = (): { username: string; score: number }[] => {
-    const bots = state.players.filter((p) => p.isBot);
-    return bots.map((b) => {
-      if (state.roundResult) {
-        const pr = state.roundResult!.playerResults.find(
-          (r) => r.playerId === b.id,
-        );
-        return { username: b.username, score: pr?.totalScore ?? b.totalScore };
-      }
-      return { username: b.username, score: b.totalScore };
-    });
-  };
-
-  const humanScore = getScore(tournament.userId);
-  const botScores = getBotScores();
-  const bestBotScore =
-    botScores.length > 0 ? Math.min(...botScores.map((b) => b.score)) : 0;
-  const isDraw = humanScore === bestBotScore;
-  const playerWon = humanScore < bestBotScore; // strict: lower score wins, equal = draw
-
-  tournament.gamesPlayed++;
-  if (isDraw) tournament.draws++;
-  else if (playerWon) tournament.playerWins++;
-  else tournament.botWins++;
-
-  tournament.gameResults.push({
-    gameNumber: tournament.gamesPlayed,
-    playerScore: humanScore,
-    botScore: bestBotScore,
-    playerWon,
-    isDraw,
-  });
-
-  // Tournament ends when someone reaches 2 wins OR all 3 games are played
-  const MAX_GAMES = 3;
-  const tournamentOver =
-    tournament.playerWins >= 2 ||
-    tournament.botWins >= 2 ||
-    tournament.gamesPlayed >= MAX_GAMES;
-
-  const payload: Record<string, any> = {
-    gameNumber: tournament.gamesPlayed,
-    playerWins: tournament.playerWins,
-    botWins: tournament.botWins,
-    draws: tournament.draws,
-    isDraw,
-    playerWon,
-    playerScore: humanScore,
-    botScore: bestBotScore,
-    botScores,
-    tournamentOver,
-  };
-
-  if (tournamentOver) {
-    tournament.completedAt = new Date();
-    tournament.currentRoomCode = null;
-
-    const overallWon =
-      tournament.playerWins >= 2 ||
-      (tournament.gamesPlayed >= MAX_GAMES &&
-        tournament.playerWins > tournament.botWins);
-    const overallLost =
-      tournament.botWins >= 2 ||
-      (tournament.gamesPlayed >= MAX_GAMES &&
-        tournament.botWins > tournament.playerWins);
-    const overallDraw = !overallWon && !overallLost; // playerWins === botWins after 3 games
-
-    if (overallWon) {
-      tournament.status = "won";
-      const prize = TOURNAMENT_PRIZE[tournament.entryFee] ?? 0;
-      const totalReturn = tournament.entryFee + prize;
-      await User.findByIdAndUpdate(tournament.userId, {
-        $inc: { walletBalance: totalReturn },
-      });
-      await Transaction.create({
-        userId: tournament.userId,
-        type: "winning",
-        amount: totalReturn,
-        status: "completed",
-        description: `Tournament won — ₹${prize} prize + ₹${tournament.entryFee} entry back`,
-        metadata: { tournamentId: tournament.id },
-      });
-      payload.won = true;
-      payload.prizeAmount = prize;
-      payload.totalReturn = totalReturn;
-    } else if (overallDraw) {
-      tournament.status = "draw";
-      // Refund entry fee on overall draw — no winner
-      await User.findByIdAndUpdate(tournament.userId, {
-        $inc: { walletBalance: tournament.entryFee },
-      });
-      await Transaction.create({
-        userId: tournament.userId,
-        type: "refund",
-        amount: tournament.entryFee,
-        status: "completed",
-        description: `Tournament draw — entry fee ₹${tournament.entryFee} refunded`,
-        metadata: { tournamentId: tournament.id },
-      });
-      payload.won = false;
-      payload.overallDraw = true;
-      payload.totalReturn = tournament.entryFee;
-    } else {
-      tournament.status = "lost";
-      payload.won = false;
-    }
-
-    await tournament.save();
-  } else {
-    // Save updated stats first so they're never lost if room creation fails
-    await tournament.save();
-
-    // Prepare next game room (game starts only when player explicitly resumes)
-    const user = await User.findById(tournament.userId).select(
-      "username avatar",
-    );
-    if (!user) return;
-
-    let nextCode: string;
-    let attempts = 0;
-    do {
-      nextCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      attempts++;
-    } while ((await Room.exists({ code: nextCode })) && attempts < 10);
-
-    await Room.create({
-      code: nextCode,
-      name: `Tournament — ${user.username}`.slice(0, 30),
-      hostId: tournament.userId,
-      players: [
-        {
-          userId: tournament.userId,
-          username: user.username,
-          avatar: user.avatar,
-          isReady: true,
-          isHost: true,
-          isBot: false,
-        },
-      ],
-      config: {
-        maxPlayers: 3,
-        roundCount: 2,
-        isPrivate: true,
-        turnTimeLimit: 30,
-        allowBots: true,
-        botCount: 2,
-        entryFee: 0,
-      },
-      paidPlayerIds: [],
-      status: "waiting",
-    });
-
-    tournament.currentRoomCode = nextCode;
-    await tournament.save();
-
-    payload.nextGameNumber = tournament.gamesPlayed + 1;
-    payload.nextRoomCode = nextCode;
-    // NOTE: we do NOT join the socket or call startRoomGame here.
-    // The game starts when the player clicks "Continue" which triggers tournament:start (resume path).
-  }
-
-  // Emit result to the player
-  const playerSocket = [...io.sockets.sockets.values()].find(
-    (s) => (s as any).userId === tournament.userId,
-  );
-  if (playerSocket) playerSocket.emit("tournament:game_result", payload);
-}
 
 // ── Prize Distribution ────────────────────────────────────────────────────────
 
@@ -1252,7 +1106,7 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
   const current = state.players[state.currentPlayerIndex];
   if (!current?.isBot) return;
 
-  const personality = gameBotPersonality.get(state.id) ?? "smart";
+  const personality = getBotPersonality(state, current.id);
   const delay = BotPlayer.getThinkDelay(
     personality,
     gameDifficultyBoost.get(state.id) ?? 0,
@@ -1270,7 +1124,7 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
 }
 
 function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
-  const personality = gameBotPersonality.get(state.id) ?? "smart";
+  const personality = getBotPersonality(state, botPlayerId);
   const boost = gameDifficultyBoost.get(state.id) ?? 0;
   const opponents = buildOpponentProfiles(state);
 
@@ -1319,7 +1173,7 @@ function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
 }
 
 function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
-  const personality = gameBotPersonality.get(state.id) ?? "smart";
+  const personality = getBotPersonality(state, botPlayerId);
   const boost = gameDifficultyBoost.get(state.id) ?? 0;
   const opponents = buildOpponentProfiles(state);
   const decision = BotPlayer.decide(state, botPlayerId, personality, boost, opponents);

@@ -19,11 +19,11 @@ import { Layout } from '../components/layout/Layout';
 const POINTS_PER_RUPEE = 100;
 
 const STAGES = [
-  { stage: 1, name: 'Safe Bot',        personality: 'safe',       emoji: '🛡️', color: '#22c55e', desc: 'Defensive & cautious', difficulty: 'Easy' },
-  { stage: 2, name: 'Aggressive Bot',  personality: 'aggressive', emoji: '⚡', color: '#f59e0b', desc: 'Fast attacks & pressure', difficulty: 'Medium' },
-  { stage: 3, name: 'Bluff Bot',       personality: 'bluff',      emoji: '🎭', color: '#a855f7', desc: 'Deceptive & unpredictable', difficulty: 'Hard' },
-  { stage: 4, name: 'Smart AI',        personality: 'smart',      emoji: '🧠', color: '#3b82f6', desc: 'Calculative & optimal', difficulty: 'Expert' },
-  { stage: 5, name: 'Boss AI',         personality: 'boss',       emoji: '💀', color: '#ef4444', desc: 'Maximum intelligence', difficulty: 'Boss' },
+  { stage: 1, name: 'Safe Bot',          botCount: 1, emojis: ['🛡️'], color: '#22c55e', desc: 'Defensive & cautious',                    difficulty: 'Easy'   },
+  { stage: 2, name: 'Aggressive Bot',    botCount: 1, emojis: ['⚡'], color: '#f59e0b', desc: 'Fast attacks & pressure',                 difficulty: 'Medium' },
+  { stage: 3, name: 'Bluff Bot',         botCount: 1, emojis: ['🎭'], color: '#a855f7', desc: 'Deceptive & unpredictable',               difficulty: 'Hard'   },
+  { stage: 4, name: 'Dual AI Challenge', botCount: 2, emojis: ['🧠','⚔️'], color: '#3b82f6', desc: 'Beat Smart + Aggressive AI',        difficulty: 'Expert' },
+  { stage: 5, name: 'Final Boss Arena',  botCount: 3, emojis: ['💀','🧠','⚔️'], color: '#ef4444', desc: 'Survive Boss + Smart + Aggressive AI', difficulty: 'Boss' },
 ];
 
 const TIER_DISPLAY = [
@@ -319,7 +319,7 @@ function StageTracker({ currentStage, stageResults }: { currentStage: number; st
                     opacity: isLocked ? 0.4 : 1,
                   }}
                 >
-                  {isCleared ? '✓' : isFailed ? '✗' : s.emoji}
+                  {isCleared ? '✓' : isFailed ? '✗' : s.emojis[0]}
                   {isActive && (
                     <motion.div
                       animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
@@ -349,24 +349,19 @@ function StageResultOverlay() {
 
   if (!stageResult) return null;
 
-  const { playerWon, isDraw, playerScore, botScore, pointsEarned, botName, stage,
-    tournamentOver, won, totalPointsEarned, nextStage, nextBotName, stageResults } = stageResult;
+  const { playerWon, isDraw, playerScore, botScore, botScores, scoreboard,
+    pointsEarned, stageName, stage, botNames, personalities,
+    tournamentOver, won, totalPointsEarned,
+    nextStage, nextStageName, nextStageDesc, nextBotNames, stageResults } = stageResult;
 
   const stageInfo = STAGES.find(s => s.stage === stage)!;
   const nextInfo  = nextStage ? STAGES.find(s => s.stage === nextStage) : null;
+  const isMultiBot = (botScores?.length ?? 0) > 1;
 
   const handleAction = () => {
-    if (tournamentOver) {
-      resetGame();
-      reset();
-      navigate('/survival');
-    } else if (playerWon) {
-      continueToNextStage();
-    } else {
-      resetGame();
-      reset();
-      navigate('/survival');
-    }
+    if (tournamentOver) { resetGame(); reset(); navigate('/survival'); }
+    else if (playerWon) { continueToNextStage(); }
+    else { resetGame(); reset(); navigate('/survival'); }
   };
 
   const heroEmoji = tournamentOver ? (won ? '🏆' : '😔') : playerWon ? '⭐' : '💀';
@@ -379,6 +374,8 @@ function StageResultOverlay() {
     ? 'radial-gradient(ellipse at 50% 0%, rgba(255,60,60,0.12) 0%, transparent 70%)'
     : `radial-gradient(ellipse at 50% 0%, ${stageInfo.color}18 0%, transparent 70%)`;
 
+  const stageEmojis = stageInfo.emojis.join(' ');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(16px)' }}>
       <motion.div
@@ -389,34 +386,62 @@ function StageResultOverlay() {
         style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: tournamentOver && won ? '1px solid rgba(251,191,36,0.4)' : '1px solid rgba(255,255,255,0.08)' }}
       >
         {/* Hero */}
-        <div className="pt-8 pb-5 px-6 text-center relative">
+        <div className="pt-8 pb-4 px-6 text-center relative">
           <div className="absolute inset-0 pointer-events-none" style={{ background: heroBg }} />
           <motion.div animate={{ y: [0, -8, 0] }} transition={{ repeat: 3, duration: 0.5 }} className="text-6xl mb-3 relative z-10">
             {heroEmoji}
           </motion.div>
           <h2 className="text-2xl font-black text-white relative z-10">{heroTitle}</h2>
-          <p className="text-sm mt-1 relative z-10" style={{ color: stageInfo.color }}>
-            {stageInfo.emoji} vs {botName}
+          <p className="text-sm mt-1 relative z-10 font-semibold" style={{ color: stageInfo.color }}>
+            {stageEmojis} {stageName ?? stageInfo.name}
           </p>
+          {isMultiBot && (
+            <div className="flex justify-center gap-1.5 mt-2 flex-wrap relative z-10">
+              {(botNames ?? []).map((n, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.07)', color: '#8b949e', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {stageInfo.emojis[i] ?? '🤖'} {n}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Score row */}
-        <div className="mx-5 mb-3 rounded-2xl py-3 px-5 flex justify-between items-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="text-center">
-            <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">Your Score</p>
-            <p className={`text-xl font-bold ${isDraw ? 'text-yellow-400' : playerWon ? 'text-neon-green' : 'text-red-400'}`}>{playerScore} pts</p>
+        {/* Scoreboard — ranked by score (lower = better) */}
+        <div className="mx-5 mb-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="py-1.5 px-4 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold">Final Scoreboard · Lower = Better</p>
           </div>
-          <div className="text-dark-muted">{isDraw ? '=' : 'vs'}</div>
-          <div className="text-center">
-            <p className="text-[10px] text-dark-muted uppercase tracking-wide mb-1">{botName}</p>
-            <p className={`text-xl font-bold ${isDraw ? 'text-yellow-400' : !playerWon ? 'text-neon-green' : 'text-red-400'}`}>{botScore} pts</p>
-          </div>
+          {(scoreboard ?? [
+            { name: 'You', score: playerScore, isHuman: true },
+            { name: botNames?.[0] ?? 'Bot', score: botScore, isHuman: false },
+          ]).map((entry, rank) => (
+            <div key={rank} className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderTop: rank > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                background: rank === 0 ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black" style={{ color: rank === 0 ? '#fbbf24' : rank === 1 ? '#9ca3af' : '#78716c', minWidth: 16 }}>
+                  #{rank + 1}
+                </span>
+                <span className="text-xs font-semibold" style={{ color: entry.isHuman ? (playerWon ? '#00ff88' : '#ff6b6b') : '#8b949e' }}>
+                  {entry.isHuman ? '👤 ' : '🤖 '}{entry.name}
+                </span>
+              </div>
+              <span className="text-sm font-black" style={{
+                color: entry.isHuman
+                  ? (playerWon ? '#00ff88' : '#ff6b6b')
+                  : (!entry.isHuman && rank === 0 ? '#fbbf24' : '#8b949e')
+              }}>
+                {entry.score} pts
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* Points earned */}
         {playerWon && pointsEarned > 0 && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
-            className="mx-5 mb-3 rounded-xl py-3 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
+            className="mx-5 mb-3 rounded-xl py-2.5 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
             <p className="text-[10px] text-neon-green/70 uppercase tracking-widest mb-0.5">Points Credited</p>
             <p className="text-2xl font-black text-neon-green">+{pointsEarned.toLocaleString()} pts</p>
             <p className="text-xs text-neon-green/60">+₹{(pointsEarned / POINTS_PER_RUPEE).toFixed(2)} added to wallet</p>
@@ -435,11 +460,16 @@ function StageResultOverlay() {
 
         {/* Next stage preview */}
         {!tournamentOver && playerWon && nextInfo && (
-          <div className="mx-5 mb-3 rounded-xl py-2 px-4 flex items-center gap-3" style={{ background: `${nextInfo.color}10`, border: `1px solid ${nextInfo.color}30` }}>
-            <span className="text-2xl">{nextInfo.emoji}</span>
-            <div>
-              <p className="text-xs font-bold" style={{ color: nextInfo.color }}>Stage {nextStage}: {nextBotName}</p>
-              <p className="text-[10px] text-dark-muted">{nextInfo.desc} · {nextInfo.difficulty}</p>
+          <div className="mx-5 mb-3 rounded-xl py-2 px-4" style={{ background: `${nextInfo.color}10`, border: `1px solid ${nextInfo.color}30` }}>
+            <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">Up Next</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold" style={{ color: nextInfo.color }}>Stage {nextStage}: {nextStageName ?? nextInfo.name}</p>
+                {nextStageDesc && <p className="text-[10px] text-dark-muted mt-0.5">{nextStageDesc}</p>}
+              </div>
+              <div className="flex gap-0.5">
+                {nextInfo.emojis.map((e, i) => <span key={i} className="text-lg">{e}</span>)}
+              </div>
             </div>
           </div>
         )}
@@ -447,10 +477,10 @@ function StageResultOverlay() {
         {/* Stage progress pills */}
         <div className="mx-5 mb-4 flex gap-1 justify-center">
           {stageResults.map((r, i) => (
-            <div key={i} className="w-6 h-2 rounded-full" style={{ background: r.playerWon ? '#22c55e' : '#ef4444' }} />
+            <div key={i} className="flex-1 h-2 rounded-full max-w-[40px]" style={{ background: r.playerWon ? '#22c55e' : '#ef4444' }} />
           ))}
           {Array.from({ length: 5 - stageResults.length }).map((_, i) => (
-            <div key={`e${i}`} className="w-6 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />
+            <div key={`e${i}`} className="flex-1 h-2 rounded-full max-w-[40px]" style={{ background: 'rgba(255,255,255,0.1)' }} />
           ))}
         </div>
 
@@ -464,7 +494,11 @@ function StageResultOverlay() {
               ? { background: `linear-gradient(135deg, ${nextInfo.color}, ${nextInfo.color}cc)`, color: '#0d1117' }
               : { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.1)' }}
           >
-            {tournamentOver && won ? '🏆 Claim Victory!' : playerWon && !tournamentOver ? `⚔️ Stage ${nextStage}: ${nextBotName}` : '🏠 Back to Lobby'}
+            {tournamentOver && won
+              ? '🏆 Claim Victory!'
+              : playerWon && !tournamentOver
+              ? `⚔️ Stage ${nextStage}: ${nextStageName ?? nextInfo?.name}`
+              : '🏠 Back to Lobby'}
           </motion.button>
         </div>
       </motion.div>
@@ -521,7 +555,7 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
                   border: `1.5px solid ${!res ? 'rgba(255,255,255,0.08)' : res.playerWon ? s.color : '#ff6b6b'}`,
                   color: !res ? '#4b5563' : res.playerWon ? s.color : '#ff6b6b',
                 }}>
-                {!res ? s.emoji : res.playerWon ? '✓' : '✗'}
+                {!res ? s.emojis[0] : res.playerWon ? '✓' : '✗'}
               </div>
             );
           })}
@@ -562,7 +596,7 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
                         background: !res ? 'rgba(255,255,255,0.04)' : res.playerWon ? `${s.color}20` : 'rgba(255,107,107,0.15)',
                         border: `1px solid ${!res ? 'rgba(255,255,255,0.08)' : res.playerWon ? s.color : '#ff6b6b'}`,
                       }}>
-                      {!res ? s.emoji : res.playerWon ? '✓' : '✗'}
+                      {!res ? s.emojis[0] : res.playerWon ? '✓' : '✗'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-dark-text">{s.name}</p>
@@ -886,7 +920,7 @@ export function SurvivalTournamentPage() {
                     <motion.div key={s.stage} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
                       className="flex items-center gap-3 px-3 py-2 rounded-xl"
                       style={{ background: `${s.color}08`, border: `1px solid ${s.color}20` }}>
-                      <span className="text-xl w-8 text-center">{s.emoji}</span>
+                      <span className="text-xl w-8 text-center">{s.emojis[0]}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-xs font-bold text-dark-text">Stage {s.stage}: {s.name}</p>

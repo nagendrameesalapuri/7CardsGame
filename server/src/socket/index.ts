@@ -6,7 +6,6 @@ import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './ha
 import { registerChatHandlers } from './handlers/chatHandler';
 import { registerVoiceHandlers } from './handlers/voiceHandler';
 import { registerSpectatorHandlers } from './handlers/spectatorHandler';
-import { registerTournamentHandlers } from './handlers/tournamentHandler';
 import { registerSurvivalHandlers } from './handlers/survivalHandler';
 import { PlayerProgress } from '../models/PlayerProgress';
 import { computeAndCacheBadge, getBadge } from '../utils/badgeCache';
@@ -89,7 +88,6 @@ export function initSocketIO(io: Server) {
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
     registerSpectatorHandlers(io, socket);
-    registerTournamentHandlers(io, socket);
     registerSurvivalHandlers(io, socket);
 
     // Notify client if they have an active game they can resume

@@ -6,7 +6,7 @@ import { AdminConfig, getAdminConfig } from "../models/AdminConfig";
 import { User } from "../models/User";
 import { Room } from "../models/Room";
 import { Game } from "../models/Game";
-import { Tournament } from "../models/Tournament";
+import { SurvivalTournament } from "../models/SurvivalTournament";
 import {
   getAllActiveRoomInfos,
   forceEndGame,
@@ -756,12 +756,15 @@ export default function createAdminRouter(io: Server) {
           $inc: { walletBalance: dr.amount },
         });
         // Record transaction
+        const desc = dr.submissionType === "voucher"
+          ? `₹${dr.amount} credited — ${dr.voucherBrand} voucher approved`
+          : `₹${dr.amount} credited — UTR ${dr.utrNumber} verified`;
         await Transaction.create({
           userId: dr.userId,
           type: "deposit",
           amount: dr.amount,
           status: "completed",
-          description: `Deposit ₹${dr.amount} approved (UTR: ${dr.utrNumber})`,
+          description: desc,
           metadata: { depositRequestId: dr.id, utrNumber: dr.utrNumber },
         });
       }
@@ -772,60 +775,100 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
-  // ── Tournament history (admin view) ────────────────────────────────────────
+  // ── Voucher reward delivery ──────────────────────────────────────────────────
+  router.patch("/withdrawals/:id/deliver", async (req: Request, res: Response) => {
+    try {
+      const { deliveredVoucherNumber, deliveredVoucherPin, deliveredVoucherExpiry, adminMessage } = req.body as {
+        deliveredVoucherNumber: string;
+        deliveredVoucherPin: string;
+        deliveredVoucherExpiry: string;
+        adminMessage?: string;
+      };
+      if (!deliveredVoucherNumber?.trim() || !deliveredVoucherPin?.trim() || !deliveredVoucherExpiry?.trim()) {
+        return res.status(400).json({ error: "Voucher number, PIN and expiry are required" });
+      }
+
+      const wr = await WithdrawalRequest.findById(req.params.id);
+      if (!wr) return res.status(404).json({ error: "Request not found" });
+      if (wr.redemptionType !== "voucher") return res.status(400).json({ error: "Not a voucher redemption" });
+      if (wr.status === "delivered") return res.status(400).json({ error: "Already delivered" });
+      if (wr.status === "rejected") return res.status(400).json({ error: "Request was rejected" });
+
+      wr.status = "delivered";
+      wr.deliveredVoucherNumber = deliveredVoucherNumber.trim();
+      wr.deliveredVoucherPin = deliveredVoucherPin.trim();
+      wr.deliveredVoucherExpiry = deliveredVoucherExpiry.trim();
+      wr.adminMessage = adminMessage?.trim();
+      wr.deliveredAt = new Date();
+      await wr.save();
+
+      await Transaction.findOneAndUpdate(
+        { "metadata.withdrawalRequestId": wr.id, type: "withdrawal" },
+        { status: "completed", description: `Reward delivered — ${wr.voucherBrand} voucher ₹${wr.amount}` },
+      );
+
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: "Failed to deliver voucher" });
+    }
+  });
+
+  // ── AI Survival Championship (admin view) ──────────────────────────────────
   router.get("/tournaments", async (req: Request, res: Response) => {
     try {
       const page = Math.max(1, parseInt((req.query.page as string) ?? "1"));
       const limit = 50;
-      const status = req.query.status as string | undefined;
+      const tier = req.query.tier as string | undefined;
       const filter: Record<string, any> = {};
-      if (status && ["active", "won", "lost", "draw"].includes(status))
-        filter.status = status;
+      if (tier && ["beginner", "pro", "elite", "boss_arena"].includes(tier))
+        filter.tier = tier;
 
-      const [tournaments, total] = await Promise.all([
-        Tournament.find(filter)
+      const [records, total] = await Promise.all([
+        SurvivalTournament.find(filter)
           .sort({ createdAt: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
           .lean(),
-        Tournament.countDocuments(filter),
+        SurvivalTournament.countDocuments(filter),
       ]);
 
-      const userIds = [...new Set(tournaments.map((t) => t.userId))];
+      const userIds = [...new Set(records.map((r) => String(r.userId)))];
       const users = await User.find({ _id: { $in: userIds } })
         .select("username avatar email")
         .lean();
       const userMap = Object.fromEntries(users.map((u) => [String(u._id), u]));
 
-      const [totalWon, totalLost, totalDraw, totalActive, totalPrize] =
+      const [totalWon, totalLost, totalActive, totalAbandoned, totalPointsPaid] =
         await Promise.all([
-          Tournament.countDocuments({ status: "won" }),
-          Tournament.countDocuments({ status: "lost" }),
-          Tournament.countDocuments({ status: "draw" }),
-          Tournament.countDocuments({ status: "active" }),
-          Tournament.aggregate([
+          SurvivalTournament.countDocuments({ status: "won" }),
+          SurvivalTournament.countDocuments({ status: "lost" }),
+          SurvivalTournament.countDocuments({ status: "active" }),
+          SurvivalTournament.countDocuments({ status: "abandoned" }),
+          SurvivalTournament.aggregate([
             { $match: { status: "won" } },
-            { $group: { _id: null, total: { $sum: "$prizeAmount" } } },
+            { $group: { _id: null, total: { $sum: "$totalPointsEarned" } } },
           ]).then((r) => r[0]?.total ?? 0),
         ]);
 
+      const tierCounts = await SurvivalTournament.aggregate([
+        { $group: { _id: "$tier", count: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ["$status", "won"] }, 1, 0] } } } },
+      ]);
+
       res.json({
-        tournaments: tournaments.map((t) => ({
-          id: t._id,
-          userId: t.userId,
-          username: userMap[t.userId]?.username ?? "Unknown",
-          avatar: (userMap[t.userId] as any)?.avatar ?? "",
-          email: (userMap[t.userId] as any)?.email ?? "",
-          entryFee: t.entryFee,
-          prizeAmount: t.prizeAmount,
-          status: t.status,
-          gamesPlayed: t.gamesPlayed,
-          playerWins: t.playerWins,
-          botWins: t.botWins,
-          draws: (t as any).draws ?? 0,
-          gameResults: t.gameResults,
-          createdAt: t.createdAt,
-          completedAt: (t as any).completedAt ?? null,
+        records: records.map((r) => ({
+          id: r._id,
+          userId: String(r.userId),
+          username: (userMap[String(r.userId)] as any)?.username ?? "Unknown",
+          avatar: (userMap[String(r.userId)] as any)?.avatar ?? "",
+          email: (userMap[String(r.userId)] as any)?.email ?? "",
+          tier: r.tier,
+          status: r.status,
+          currentStage: r.currentStage,
+          stagesCompleted: r.stageResults?.length ?? 0,
+          totalPointsEarned: r.totalPointsEarned,
+          createdAt: r.createdAt,
+          completedAt: (r as any).completedAt ?? null,
+          stageResults: r.stageResults,
         })),
         total,
         page,
@@ -833,13 +876,14 @@ export default function createAdminRouter(io: Server) {
         summary: {
           totalWon,
           totalLost,
-          totalDraw,
           totalActive,
-          totalPrizePaid: totalPrize,
+          totalAbandoned,
+          totalPointsPaid,
+          tierBreakdown: tierCounts,
         },
       });
     } catch {
-      res.status(500).json({ error: "Failed to load tournament history" });
+      res.status(500).json({ error: "Failed to load survival championship data" });
     }
   });
 

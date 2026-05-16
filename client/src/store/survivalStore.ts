@@ -8,18 +8,30 @@ export interface StageResult {
   playerWon: boolean;
   playerScore: number;
   botScore: number;
+  botScores?: number[];
+  botNames?: string[];
   pointsEarned: number;
+}
+
+export interface ScoreboardEntry {
+  name: string;
+  score: number;
+  isHuman: boolean;
 }
 
 export interface SurvivalStageResult {
   stage: number;
   totalStages: number;
-  personality: string;
-  botName: string;
+  stageName: string;
+  stageDesc?: string;
+  botNames: string[];
+  personalities: string[];
   playerWon: boolean;
   isDraw: boolean;
   playerScore: number;
   botScore: number;
+  botScores: number[];
+  scoreboard: ScoreboardEntry[];
   pointsEarned: number;
   stageResults: StageResult[];
   tournamentOver: boolean;
@@ -27,8 +39,10 @@ export interface SurvivalStageResult {
   totalPointsEarned?: number;
   nextStage?: number;
   nextRoomCode?: string;
-  nextBotName?: string;
-  nextPersonality?: string;
+  nextStageName?: string;
+  nextStageDesc?: string;
+  nextBotNames?: string[];
+  nextPersonalities?: string[];
   newWalletBalance?: number;
 }
 

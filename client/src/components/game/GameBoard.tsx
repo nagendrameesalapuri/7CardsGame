@@ -15,32 +15,12 @@ import { LiveScorePanel } from './LiveScorePanel';
 import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { VoiceChat } from './VoiceChat';
-import { useTournamentStore } from '../../store/tournamentStore';
 import { useSurvivalStore } from '../../store/survivalStore';
 
 // ── Premium game-mode badge ───────────────────────────────────────────────────
-function GameModeBadge({ isTournament, tournamentFee, playerWins, botWins, gameNumber,
-                         isSurvival, survivalStage, survivalTier, entryFee }: {
-  isTournament: boolean; tournamentFee: number; playerWins: number; botWins: number; gameNumber: number;
+function GameModeBadge({ isSurvival, survivalStage, survivalTier, entryFee }: {
   isSurvival: boolean; survivalStage: number; survivalTier: string | null; entryFee: number;
 }) {
-  if (isTournament) {
-    return (
-      <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg,rgba(251,191,36,0.18),rgba(239,68,68,0.12))', border: '1px solid rgba(251,191,36,0.35)' }}>
-        <span className="text-sm">⚔️</span>
-        <div className="flex flex-col leading-none">
-          <span className="text-[9px] text-yellow-400/70 font-semibold uppercase tracking-widest">Tournament · ₹{tournamentFee}</span>
-          <span className="text-[11px] font-black text-white">
-            G{gameNumber} &nbsp;
-            <span className="text-green-400">{playerWins}W</span>
-            <span className="text-dark-muted mx-0.5">–</span>
-            <span className="text-red-400">{botWins}W</span>
-          </span>
-        </div>
-      </div>
-    );
-  }
   if (isSurvival) {
     const STAGE_COLORS = ['#22c55e','#f59e0b','#a855f7','#3b82f6','#ef4444'];
     const color = STAGE_COLORS[(survivalStage - 1) % 5];
@@ -59,15 +39,15 @@ function GameModeBadge({ isTournament, tournamentFee, playerWins, botWins, gameN
   if (entryFee > 0) {
     return (
       <span className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
-        style={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
-        💰 Bet ₹{entryFee}
+        style={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)', boxShadow: '0 0 12px rgba(251,191,36,0.15)' }}>
+        ⚔️ Wager ₹{entryFee}
       </span>
     );
   }
   return (
     <span className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
-      style={{ background: 'rgba(99,102,241,0.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}>
-      🎮 Free
+      style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)', boxShadow: '0 0 10px rgba(99,102,241,0.12)' }}>
+      🎮 Free Play
     </span>
   );
 }
@@ -112,7 +92,6 @@ export function GameBoard() {
     subscribeToEvents, leaveRoom,
   } = useGameStore();
   const entryFee: number = (room?.config as any)?.entryFee ?? 0;
-  const { active: isTournament, entryFee: tournamentFee, playerWins, botWins, gameNumber } = useTournamentStore();
   const { active: isSurvival, currentStage: survivalStage, tier: survivalTier } = useSurvivalStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
 
@@ -169,7 +148,6 @@ export function GameBoard() {
             <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
           </div>
           <GameModeBadge
-            isTournament={isTournament} tournamentFee={tournamentFee} playerWins={playerWins} botWins={botWins} gameNumber={gameNumber}
             isSurvival={isSurvival} survivalStage={survivalStage} survivalTier={survivalTier} entryFee={entryFee}
           />
         </div>
@@ -257,25 +235,29 @@ export function GameBoard() {
           {/* Hand container — premium glass panel */}
           <div className="w-full rounded-2xl p-2 sm:p-4 relative overflow-hidden"
             style={{
-              background: 'rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: isMyTurn ? 'rgba(5,18,10,0.88)' : 'rgba(5,5,18,0.85)',
+              backdropFilter: 'blur(28px)',
+              border: isMyTurn ? '1px solid rgba(34,197,94,0.35)' : '1px solid rgba(255,255,255,0.07)',
               boxShadow: isMyTurn
-                ? '0 0 0 1px rgba(34,197,94,0.3), 0 -4px 32px rgba(34,197,94,0.12), inset 0 1px 0 rgba(255,255,255,0.06)'
-                : '0 -4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
-              transition: 'box-shadow 0.4s ease',
+                ? '0 0 0 1px rgba(34,197,94,0.2), 0 -8px 40px rgba(34,197,94,0.1), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(34,197,94,0.1)'
+                : '0 -4px 24px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
+              transition: 'all 0.4s ease',
             }}>
-            {isMyTurn && (
-              <div className="absolute inset-x-0 top-0 h-0.5 rounded-full"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.7), transparent)' }} />
-            )}
+            {/* Top glow bar */}
+            <div className="absolute inset-x-0 top-0 h-px"
+              style={{
+                background: isMyTurn
+                  ? 'linear-gradient(90deg,transparent,rgba(34,197,94,0.7),transparent)'
+                  : 'linear-gradient(90deg,transparent,rgba(99,102,241,0.3),transparent)',
+              }} />
             {/* Hand total badge */}
             <div className="absolute top-2 right-3">
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
                 style={{
-                  background: handTotal > 80 ? 'rgba(239,68,68,0.2)' : handTotal > 50 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.15)',
+                  background: handTotal > 80 ? 'rgba(239,68,68,0.18)' : handTotal > 50 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
                   color: handTotal > 80 ? '#f87171' : handTotal > 50 ? '#fbbf24' : '#4ade80',
-                  border: `1px solid ${handTotal > 80 ? 'rgba(239,68,68,0.3)' : handTotal > 50 ? 'rgba(245,158,11,0.3)' : 'rgba(34,197,94,0.25)'}`,
+                  border: `1px solid ${handTotal > 80 ? 'rgba(239,68,68,0.35)' : handTotal > 50 ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)'}`,
+                  boxShadow: handTotal <= 5 ? '0 0 10px rgba(34,197,94,0.3)' : undefined,
                 }}>
                 Hand: {handTotal} pts
               </span>

@@ -5,14 +5,17 @@ export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss";
 
 export const SURVIVAL_STAGES: Array<{
   stage: number;
-  personality: BotPersonality;
+  botCount: number;
+  personalities: BotPersonality[];
+  botNames: string[];
   name: string;
+  description: string;
 }> = [
-  { stage: 1, personality: "safe", name: "Safe Bot" },
-  { stage: 2, personality: "aggressive", name: "Aggressive Bot" },
-  { stage: 3, personality: "bluff", name: "Bluff Bot" },
-  { stage: 4, personality: "smart", name: "Smart AI" },
-  { stage: 5, personality: "boss", name: "Boss AI" },
+  { stage: 1, botCount: 1, personalities: ["safe"],                        botNames: ["Safe Bot"],                               name: "Safe Bot",          description: "1v1 · Defensive AI"          },
+  { stage: 2, botCount: 1, personalities: ["aggressive"],                  botNames: ["Aggressive Bot"],                         name: "Aggressive Bot",    description: "1v1 · Aggressive AI"          },
+  { stage: 3, botCount: 1, personalities: ["bluff"],                       botNames: ["Bluff Bot"],                              name: "Bluff Bot",         description: "1v1 · Deceptive AI"           },
+  { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Smart AI", "Aggressive AI"],              name: "Dual AI Challenge", description: "1v2 · Smart + Aggressive AI"  },
+  { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Boss AI", "Smart AI", "Aggressive AI"],   name: "Final Boss Arena",  description: "1v3 · Boss + Smart + Aggressive AI" },
 ];
 
 export const TIER_CONFIG: Record<
@@ -49,10 +52,12 @@ export interface ISurvivalTournament extends Document {
   entryPoints: number;
   stageResults: Array<{
     stage: number;
-    personality: string;
+    personality: string;          // primary (lead) bot personality
     playerWon: boolean;
     playerScore: number;
-    botScore: number;
+    botScore: number;             // best (lowest) bot score, backward compat
+    botScores: number[];          // all bot scores for multi-bot stages
+    botNames: string[];           // names of all bots in this stage
     pointsEarned: number;
   }>;
   totalPointsEarned: number;
@@ -79,11 +84,13 @@ const SurvivalTournamentSchema = new Schema<ISurvivalTournament>(
     entryPoints: { type: Number, required: true },
     stageResults: [
       {
-        stage: { type: Number },
-        personality: { type: String },
-        playerWon: { type: Boolean },
-        playerScore: { type: Number },
-        botScore: { type: Number },
+        stage:        { type: Number },
+        personality:  { type: String },
+        playerWon:    { type: Boolean },
+        playerScore:  { type: Number },
+        botScore:     { type: Number },
+        botScores:    [{ type: Number }],
+        botNames:     [{ type: String }],
         pointsEarned: { type: Number, default: 0 },
       },
     ],

@@ -9,7 +9,7 @@ import {
   TIER_CONFIG,
   SurvivalTier,
 } from '../../models/SurvivalTournament';
-import { startRoomGame, getActiveGame, setBotPersonality } from './gameHandler';
+import { startRoomGame, getActiveGame, setBotPersonality, assignBotPersonalities } from './gameHandler';
 import { GameState } from '../../../../shared/src/types';
 import { getAdminConfig } from '../../models/AdminConfig';
 import { awardXp } from '../../utils/progressionService';
@@ -45,20 +45,26 @@ async function createSurvivalRoom(
     attempts++;
   } while (await Room.exists({ code }) && attempts < 10);
 
+  const botCount = stageConfig.botCount;
+  const maxPlayers = 1 + botCount; // human + bots
+
   await Room.create({
     code,
     name: `Survival S${stage} — ${username}`.slice(0, 30),
     hostId: userId,
     players: [{ userId, username, avatar, isReady: true, isHost: true, isBot: false, socketId }],
     config: {
-      maxPlayers: 2,
+      maxPlayers,
       roundCount: 3,
       isPrivate: true,
       turnTimeLimit: 30,
       allowBots: true,
-      botCount: 1,
+      botCount,
       entryFee: 0,
-      botPersonality: stageConfig.personality,
+      // Multi-bot stages use botPersonalities array; single-bot uses botPersonality
+      ...(botCount > 1
+        ? { botPersonalities: stageConfig.personalities, botNames: stageConfig.botNames }
+        : { botPersonality: stageConfig.personalities[0] }),
     },
     paidPlayerIds: [],
     status: 'waiting',
@@ -107,58 +113,67 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
   if (!survival) return;
 
   const tierCfg = await getEffectiveTierConfig(survival.tier);
-  const stageIdx = survival.currentStage - 1; // 0-based index
+  const stageIdx = survival.currentStage - 1;
   const stageReward = tierCfg.stageRewards[stageIdx] ?? 0;
-
-  // Determine human score vs bot score
-  const humanPlayer = state.players.find(p => !p.isBot);
-  const botPlayer   = state.players.find(p => p.isBot);
-
-  const getScore = (playerId: string) => {
-    if (state.roundResult) {
-      const pr = state.roundResult.playerResults.find(r => {
-        const p = state.players.find(pl => pl.id === r.playerId);
-        return p?.id === playerId;
-      });
-      if (pr) return pr.totalScore;
-    }
-    return state.players.find(p => p.id === playerId)?.totalScore ?? 0;
-  };
-
-  const humanScore = humanPlayer ? getScore(humanPlayer.id) : 999;
-  const botScore   = botPlayer   ? getScore(botPlayer.id)   : 999;
-  const isDraw     = humanScore === botScore;
-  const playerWon  = humanScore < botScore;
-
   const stageConfig = SURVIVAL_STAGES.find(s => s.stage === survival.currentStage)!;
 
-  // Persist how many rounds were played in this match (roundNumber = rounds completed when match ends)
+  // Get final totalScore for any player from round results or player state
+  const getScore = (playerId: string): number => {
+    if (state.roundResult) {
+      const pr = state.roundResult.playerResults.find(r => r.playerId === playerId);
+      if (pr) return pr.totalScore;
+    }
+    return state.players.find(p => p.id === playerId)?.totalScore ?? 999;
+  };
+
+  const humanPlayer = state.players.find(p => !p.isBot);
+  const botPlayers  = state.players.filter(p => p.isBot);
+
+  const humanScore = humanPlayer ? getScore(humanPlayer.id) : 999;
+  const botScores  = botPlayers.map(b => getScore(b.id));
+  const minBotScore = botScores.length > 0 ? Math.min(...botScores) : 999;
+
+  // Human wins only if their score is strictly lower than EVERY bot (lower = better in 7-card)
+  const playerWon = humanScore < minBotScore;
+  const isDraw    = humanScore === minBotScore && botScores.every(s => s >= humanScore);
+
+  // Persist rounds played
   survival.roundsPlayed = (survival.roundsPlayed ?? 0) + state.roundNumber;
 
   survival.stageResults.push({
     stage:        survival.currentStage,
-    personality:  stageConfig.personality,
+    personality:  stageConfig.personalities[0],
     playerWon,
     playerScore:  humanScore,
-    botScore,
+    botScore:     minBotScore,          // best (lowest) bot score for compat
+    botScores,                          // all individual bot scores
+    botNames:     stageConfig.botNames,
     pointsEarned: playerWon ? stageReward : 0,
   });
 
   const payload: Record<string, any> = {
     stage:        survival.currentStage,
     totalStages:  5,
-    personality:  stageConfig.personality,
-    botName:      stageConfig.name,
+    stageName:    stageConfig.name,
+    stageDesc:    stageConfig.description,
+    botNames:     stageConfig.botNames,
+    personalities: stageConfig.personalities,
     playerWon,
     isDraw,
     playerScore:  humanScore,
-    botScore,
+    botScore:     minBotScore,
+    botScores,
+    // Leaderboard snapshot: all players ranked by score (lower = better)
+    scoreboard: [
+      { name: humanPlayer?.username ?? 'You', score: humanScore, isHuman: true },
+      ...botPlayers.map((b, i) => ({ name: stageConfig.botNames[i] ?? b.username, score: botScores[i], isHuman: false })),
+    ].sort((a, b) => a.score - b.score),
     pointsEarned: playerWon ? stageReward : 0,
     stageResults: survival.stageResults,
   };
 
   if (!playerWon) {
-    // Tournament lost
+    // Human eliminated
     survival.status = 'lost';
     survival.currentRoomCode = null;
     survival.completedAt = new Date();
@@ -166,10 +181,9 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
     payload.tournamentOver = true;
     payload.won = false;
     payload.totalPointsEarned = survival.totalPointsEarned;
-    // XP for participating (lost)
     awardXp(io, { userId: survival.userId, baseXp: XP_REWARDS.LOSE_GAME, isBot: true, won: false }).catch(console.error);
   } else {
-    // Stage cleared — credit reward immediately
+    // Stage cleared — credit reward
     const rupees = pointsToRupees(stageReward);
     await User.findByIdAndUpdate(survival.userId, { $inc: { walletBalance: rupees } });
     await Transaction.create({
@@ -177,14 +191,13 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
       type: 'winning',
       amount: rupees,
       status: 'completed',
-      description: `Survival Stage ${survival.currentStage} cleared — ${stageReward} pts`,
+      description: `Survival Stage ${survival.currentStage} cleared (${stageConfig.name}) — ${stageReward} pts`,
       metadata: { survivalTournamentId: survival.id, stage: survival.currentStage },
     });
 
     survival.totalPointsEarned += stageReward;
     payload.newWalletBalance = (await User.findById(survival.userId).select('walletBalance').lean())?.walletBalance ?? 0;
 
-    // XP for stage clear
     const isBossStage = survival.currentStage === 5;
     awardXp(io, {
       userId: survival.userId,
@@ -196,7 +209,7 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
     }).catch(console.error);
 
     if (survival.currentStage >= 5) {
-      // All stages cleared — won!
+      // Championship complete — won!
       survival.status = 'won';
       survival.currentRoomCode = null;
       survival.completedAt = new Date();
@@ -204,7 +217,6 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
       payload.tournamentOver = true;
       payload.won = true;
       payload.totalPointsEarned = survival.totalPointsEarned;
-      // Bonus XP for full championship win
       awardXp(io, {
         userId: survival.userId,
         baseXp: XP_REWARDS.COMPLETE_SURVIVAL,
@@ -212,7 +224,7 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
         isSurvivalWin: true,
       }).catch(console.error);
     } else {
-      // Prepare next stage room
+      // Prepare next stage room (uses per-stage botCount & personalities)
       const nextStage = survival.currentStage + 1;
       const humanUser = await User.findById(survival.userId).select('username avatar');
       if (!humanUser) { await survival.save(); return; }
@@ -225,12 +237,25 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
       } while (await Room.exists({ code: nextCode }) && att < 10);
 
       const nextStageConfig = SURVIVAL_STAGES.find(s => s.stage === nextStage)!;
+      const nextBotCount = nextStageConfig.botCount;
+
       await Room.create({
         code: nextCode,
         name: `Survival S${nextStage} — ${humanUser.username}`.slice(0, 30),
         hostId: survival.userId,
         players: [{ userId: survival.userId, username: humanUser.username, avatar: humanUser.avatar, isReady: true, isHost: true, isBot: false }],
-        config: { maxPlayers: 2, roundCount: 3, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 1, entryFee: 0, botPersonality: nextStageConfig.personality },
+        config: {
+          maxPlayers: 1 + nextBotCount,
+          roundCount: 3,
+          isPrivate: true,
+          turnTimeLimit: 30,
+          allowBots: true,
+          botCount: nextBotCount,
+          entryFee: 0,
+          ...(nextBotCount > 1
+            ? { botPersonalities: nextStageConfig.personalities, botNames: nextStageConfig.botNames }
+            : { botPersonality: nextStageConfig.personalities[0] }),
+        },
         paidPlayerIds: [],
         status: 'waiting',
       });
@@ -242,8 +267,10 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
       payload.tournamentOver = false;
       payload.nextStage = nextStage;
       payload.nextRoomCode = nextCode;
-      payload.nextBotName = nextStageConfig.name;
-      payload.nextPersonality = nextStageConfig.personality;
+      payload.nextStageName = nextStageConfig.name;
+      payload.nextStageDesc = nextStageConfig.description;
+      payload.nextBotNames  = nextStageConfig.botNames;
+      payload.nextPersonalities = nextStageConfig.personalities;
     }
   }
 
@@ -289,7 +316,15 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
               const game = getActiveGame(existing.currentRoomCode);
               if (game) {
                 const stageConfig = SURVIVAL_STAGES.find(s => s.stage === existing.currentStage)!;
-                setBotPersonality(game.id, stageConfig.personality);
+                if (stageConfig.botCount > 1) {
+                  const bots = game.players.filter(p => p.isBot);
+                  assignBotPersonalities(game.id, bots.map((b, i) => ({
+                    userId: b.userId,
+                    personality: stageConfig.personalities[i] ?? stageConfig.personalities[0],
+                  })));
+                } else {
+                  setBotPersonality(game.id, stageConfig.personalities[0]);
+                }
               }
             }
             emitGameState(socket, existing.currentRoomCode, userId);
@@ -344,7 +379,7 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
         await startRoomGame(io, roomCode);
 
         const game = getActiveGame(roomCode);
-        if (game) setBotPersonality(game.id, 'safe');
+        if (game) setBotPersonality(game.id, SURVIVAL_STAGES[0].personalities[0]);
 
         emitGameState(socket, roomCode, userId);
         socket.emit('survival:started', {
@@ -354,8 +389,10 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
           totalStages:  5,
           entryPoints:  tierCfg.entryPoints,
           roomCode,
-          botName:      SURVIVAL_STAGES[0].name,
-          personality:  SURVIVAL_STAGES[0].personality,
+          stageName:    SURVIVAL_STAGES[0].name,
+          stageDesc:    SURVIVAL_STAGES[0].description,
+          botNames:     SURVIVAL_STAGES[0].botNames,
+          personalities: SURVIVAL_STAGES[0].personalities,
         });
       } catch (err) {
         console.error('[Survival] Setup error:', err);
@@ -384,7 +421,15 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
         const game = getActiveGame(survival.currentRoomCode);
         if (game) {
           const stageConfig = SURVIVAL_STAGES.find(s => s.stage === survival.currentStage)!;
-          setBotPersonality(game.id, stageConfig.personality);
+          if (stageConfig.botCount > 1) {
+            const bots = game.players.filter(p => p.isBot);
+            assignBotPersonalities(game.id, bots.map((b, i) => ({
+              userId: b.userId,
+              personality: stageConfig.personalities[i] ?? stageConfig.personalities[0],
+            })));
+          } else {
+            setBotPersonality(game.id, stageConfig.personalities[0]);
+          }
         }
       }
 

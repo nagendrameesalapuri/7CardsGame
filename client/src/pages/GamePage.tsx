@@ -1,17 +1,14 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { useTournamentStore } from '../store/tournamentStore';
 import { useSurvivalStore } from '../store/survivalStore';
 import { GameBoard } from '../components/game/GameBoard';
-import { TournamentResultOverlay } from '../components/game/TournamentResultOverlay';
 import { socketGame, on } from '../services/socket';
 
 export function GamePage() {
   const { game, room, forceEndedMsg, subscribeToEvents, leaveRoom, reset } = useGameStore();
   const { isAuthenticated } = useAuthStore();
-  const { subscribe: subscribeTournament, gameResult, active: tournamentActive } = useTournamentStore();
   const { active: isSurvival } = useSurvivalStore();
   const navigate = useNavigate();
 
@@ -19,15 +16,14 @@ export function GamePage() {
     if (!isAuthenticated) { navigate('/'); return; }
 
     const unsub1 = subscribeToEvents();
-    const unsub2 = subscribeTournament();
 
     // Reconnect if we have a room but lost game state
     if (room && !game) {
       socketGame.reconnect(room.code);
     }
 
-    return () => { unsub1(); unsub2(); };
-  }, [isAuthenticated, navigate, subscribeToEvents, subscribeTournament, room, game]);
+    return () => { unsub1(); };
+  }, [isAuthenticated, navigate, subscribeToEvents, room, game]);
 
   // Auto-redirect to lobby when admin force-ends the game
   useEffect(() => {
@@ -45,7 +41,7 @@ export function GamePage() {
         currentStage: result.nextStage ?? state.currentStage,
         stageResults: result.stageResults,
         totalPointsEarned: result.totalPointsEarned ?? state.totalPointsEarned,
-        stageResult: result,
+        stageResult: result as any,
         active: !result.tournamentOver,
       }));
       leaveRoom();
@@ -56,7 +52,7 @@ export function GamePage() {
 
   if (!isAuthenticated) return null;
 
-  if (!game && !room && !tournamentActive && !isSurvival) {
+  if (!game && !room && !isSurvival) {
     return (
       <div className="min-h-screen bg-dark-bg flex flex-col items-center justify-center gap-4">
         <p className="text-dark-muted text-lg">No active game found.</p>
@@ -70,10 +66,5 @@ export function GamePage() {
     );
   }
 
-  return (
-    <>
-      <GameBoard />
-      {gameResult && <TournamentResultOverlay />}
-    </>
-  );
+  return <GameBoard />;
 }

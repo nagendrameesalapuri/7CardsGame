@@ -15,9 +15,175 @@ import { SupportModal } from '../components/lobby/SupportModal';
 import { PublicAdminConfig } from '../types';
 import { DailyLoginModal } from '../components/DailyLoginModal';
 import { PlayVsAIModal } from '../components/lobby/PlayVsAIModal';
+import { GameGuideModal } from '../components/lobby/GameGuideModal';
 import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
 
 type Tab = 'play' | 'history';
+
+// ── Premium playing card SVG ──────────────────────────────────────────────────
+function FloatingCard({ rank, suit, color, style }: { rank: string; suit: string; color: string; style?: React.CSSProperties }) {
+  return (
+    <div className="rounded-xl flex flex-col justify-between p-2 select-none"
+      style={{
+        width: 54, height: 76,
+        background: 'linear-gradient(145deg,#ffffff,#f0f0f0)',
+        border: '1px solid rgba(255,255,255,0.9)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.8)',
+        ...style,
+      }}>
+      <div style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{rank}</div>
+      <div style={{ color, fontSize: 22, lineHeight: 1, textAlign: 'center' }}>{suit}</div>
+      <div style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1, transform: 'rotate(180deg)' }}>{rank}</div>
+    </div>
+  );
+}
+
+// ── Left side decoration ──────────────────────────────────────────────────────
+function LeftSideDecor() {
+  const cards = [
+    { rank: 'K', suit: '♠', color: '#1a1a2e' },
+    { rank: 'Q', suit: '♥', color: '#c0392b' },
+    { rank: 'J', suit: '♦', color: '#c0392b' },
+    { rank: 'A', suit: '♣', color: '#1a1a2e' },
+  ];
+  return (
+    <div className="fixed left-0 top-0 bottom-0 pointer-events-none hidden xl:flex flex-col items-center justify-center gap-6 pl-6"
+      style={{ width: 'calc((100vw - 672px) / 2)', zIndex: 1 }}>
+
+      {/* Stacked cards fan */}
+      <div className="relative" style={{ width: 90, height: 120 }}>
+        {cards.map((c, i) => (
+          <motion.div key={i}
+            animate={{ y: [0, i % 2 === 0 ? -4 : 4, 0] }}
+            transition={{ duration: 3 + i * 0.5, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ position: 'absolute', left: i * 10, top: i * 8, zIndex: i }}>
+            <FloatingCard {...c} />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Suit symbols */}
+      <div className="flex flex-col gap-3 items-center">
+        {[
+          { s: '♠', color: 'rgba(129,140,248,0.7)', glow: 'rgba(99,102,241,0.4)' },
+          { s: '♥', color: 'rgba(248,113,113,0.7)', glow: 'rgba(239,68,68,0.3)' },
+          { s: '♦', color: 'rgba(251,191,36,0.7)',  glow: 'rgba(245,158,11,0.3)' },
+          { s: '♣', color: 'rgba(52,211,153,0.7)',  glow: 'rgba(16,185,129,0.3)' },
+        ].map(({ s, color, glow }, i) => (
+          <motion.div key={s}
+            animate={{ scale: [1, 1.12, 1], opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 2.5 + i * 0.4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
+            className="font-black"
+            style={{ fontSize: 28, color, textShadow: `0 0 16px ${glow}`, lineHeight: 1 }}>
+            {s}
+          </motion.div>
+        ))}
+      </div>
+
+      {/* XP tip card */}
+      <motion.div
+        animate={{ y: [0, -5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        className="rounded-2xl px-4 py-3 text-center"
+        style={{
+          background: 'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(168,85,247,0.12))',
+          border: '1px solid rgba(99,102,241,0.3)',
+          boxShadow: '0 8px 32px rgba(99,102,241,0.15)',
+          maxWidth: 130,
+        }}>
+        <p className="text-2xl mb-1">⭐</p>
+        <p className="text-[11px] font-black text-white leading-tight">Win games</p>
+        <p className="text-[11px] font-black text-white leading-tight">earn XP</p>
+        <p className="text-[10px] mt-1 font-semibold" style={{ color: '#a5b4fc' }}>Level up → unlock ranks</p>
+      </motion.div>
+
+      {/* Vertical label */}
+      <p className="text-[9px] font-black uppercase tracking-[0.3em] mt-2"
+        style={{ color: 'rgba(99,102,241,0.35)', writingMode: 'vertical-rl' }}>
+        Arena of Sevens
+      </p>
+    </div>
+  );
+}
+
+// ── Right side decoration ─────────────────────────────────────────────────────
+function RightSideDecor() {
+  const features = [
+    { icon: '🏆', title: '5-Stage',      sub: 'AI Tournament'    },
+    { icon: '⚔️', title: 'Wager',        sub: 'Real Stakes'      },
+    { icon: '🎁', title: 'Daily',        sub: 'Login Rewards'    },
+    { icon: '🎰', title: 'Lucky',        sub: 'Spin Every Day'   },
+  ];
+  return (
+    <div className="fixed right-0 top-0 bottom-0 pointer-events-none hidden xl:flex flex-col items-center justify-center gap-5 pr-6"
+      style={{ width: 'calc((100vw - 672px) / 2)', zIndex: 1 }}>
+
+      {/* Feature chips */}
+      <div className="flex flex-col gap-2 items-center w-full" style={{ maxWidth: 140 }}>
+        <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: 'rgba(52,211,153,0.5)' }}>Features</p>
+        {features.map((f, i) => (
+          <motion.div key={f.title}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 + i * 0.12 }}
+            whileHover={{ scale: 1.04, x: -3 }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+            }}>
+            <span className="text-base">{f.icon}</span>
+            <div>
+              <p className="text-[11px] font-black text-white leading-none">{f.title}</p>
+              <p className="text-[9px] mt-0.5 font-semibold" style={{ color: 'rgba(148,163,184,0.65)' }}>{f.sub}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Stacked cards (mirrored) */}
+      <div className="relative" style={{ width: 90, height: 110 }}>
+        {[
+          { rank: '7', suit: '♦', color: '#c0392b' },
+          { rank: '7', suit: '♣', color: '#1a1a2e' },
+          { rank: '7', suit: '♠', color: '#1a1a2e' },
+        ].map((c, i) => (
+          <motion.div key={i}
+            animate={{ rotate: [0, i % 2 === 0 ? 2 : -2, 0] }}
+            transition={{ duration: 3 + i * 0.6, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ position: 'absolute', left: i * 12, top: i * 7, zIndex: i }}>
+            <FloatingCard {...c} />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Live badge */}
+      <motion.div
+        animate={{ y: [0, -5, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+        className="rounded-2xl px-4 py-3 text-center"
+        style={{
+          background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,182,212,0.1))',
+          border: '1px solid rgba(16,185,129,0.28)',
+          boxShadow: '0 8px 32px rgba(16,185,129,0.12)',
+          maxWidth: 130,
+        }}>
+        <div className="flex items-center justify-center gap-1.5 mb-1">
+          <motion.div className="w-2 h-2 rounded-full bg-emerald-400"
+            animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
+          <p className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Live</p>
+        </div>
+        <p className="text-xl font-black text-white">Low wins</p>
+        <p className="text-[10px] mt-1" style={{ color: 'rgba(52,211,153,0.7)' }}>Lowest score takes the round</p>
+      </motion.div>
+
+      {/* Vertical label */}
+      <p className="text-[9px] font-black uppercase tracking-[0.3em] mt-2"
+        style={{ color: 'rgba(16,185,129,0.35)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+        Master the Show
+      </p>
+    </div>
+  );
+}
 
 // ── Ambient floating orb ──────────────────────────────────────────────────────
 function AmbientOrb({ x, y, size, color, delay }: { x: string; y: string; size: number; color: string; delay: number }) {
@@ -82,6 +248,7 @@ export function LobbyPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [showDailyLogin, setShowDailyLogin] = useState(false);
   const { progress, load: loadProgression, subscribe: subscribeProgression } = useProgressionStore();
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
@@ -203,6 +370,9 @@ export function LobbyPage() {
           style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.4) 1px,transparent 1px)', backgroundSize: '48px 48px' }} />
       </div>
 
+      <LeftSideDecor />
+      <RightSideDecor />
+
       <div className="relative max-w-2xl mx-auto" style={{ zIndex: 1 }}>
 
         {/* ── Premium hero header ── */}
@@ -287,6 +457,12 @@ export function LobbyPage() {
               </button>
             ))}
           </div>
+          <button onClick={() => setShowGuide(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+            style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}
+            title="How to Play">
+            📖
+          </button>
           <button onClick={() => setShowSupport(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
@@ -319,64 +495,6 @@ export function LobbyPage() {
 
         {activeTab === 'play' && (
           <div className="space-y-4">
-
-            {/* ── Tournament Banner ── */}
-            {adminConfig.featureFlags.tournamentBannerEnabled && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                whileHover={{ scale: 1.012, y: -3 }} whileTap={{ scale: 0.99 }}
-                onClick={() => navigate('/tournament')}
-                className="relative overflow-hidden rounded-2xl cursor-pointer group"
-                style={{
-                  background: 'linear-gradient(145deg,rgba(20,8,4,0.97),rgba(30,12,3,0.95))',
-                  border: '1px solid rgba(245,158,11,0.35)',
-                  boxShadow: '0 4px 40px rgba(245,158,11,0.1)',
-                }}
-              >
-                <Shimmer />
-                {/* Background art */}
-                <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full" style={{ background: 'radial-gradient(circle,rgba(245,158,11,0.2),transparent 70%)', filter: 'blur(30px)' }} />
-                <div className="absolute -bottom-10 -left-10 w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle,rgba(239,68,68,0.15),transparent 70%)', filter: 'blur(24px)' }} />
-                {/* Decorative crossing swords */}
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">⚔️</div>
-
-                <div className="relative flex items-center gap-4 px-5 py-4">
-                  <div className="flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                    style={{ background: 'linear-gradient(135deg,rgba(245,158,11,0.2),rgba(239,68,68,0.15))', border: '1px solid rgba(245,158,11,0.3)' }}>
-                    ⚔️
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-base font-black text-white leading-tight">Bots vs Human Tournament</p>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(239,68,68,0.2)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.35)' }}>
-                        🔥 LIVE
-                      </span>
-                    </div>
-                    <p className="text-xs text-dark-muted">Play vs 2 Bots · Win ₹15–₹45 · Entry ₹10 or ₹20</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex -space-x-1">
-                        {['🧑','👩','👨','🧑'].map((e, i) => (
-                          <span key={i} className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center"
-                            style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)' }}>{e}</span>
-                        ))}
-                      </div>
-                      <span className="text-[10px] text-dark-muted">+24 playing now</span>
-                    </div>
-                  </div>
-                  <motion.div
-                    className="flex-shrink-0 flex flex-col items-end gap-2"
-                    animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
-                  >
-                    <span className="text-xs font-black px-3 py-2 rounded-xl"
-                      style={{ background: 'linear-gradient(135deg,#f59e0b,#ef4444)', color: '#fff', boxShadow: '0 4px 16px rgba(245,158,11,0.4)' }}>
-                      Play Now →
-                    </span>
-                    <span className="text-[10px] text-amber-400 font-semibold">Win up to ₹45</span>
-                  </motion.div>
-                </div>
-              </motion.div>
-            )}
 
             {/* ── AI Survival Championship ── */}
             {adminConfig.featureFlags.survivalEnabled !== false && (
@@ -720,6 +838,10 @@ export function LobbyPage() {
       <CreateRoomModal isOpen={showCreate} onClose={() => setShowCreate(false)} adminConfig={adminConfig} />
       <JoinRoomModal isOpen={showJoin} onClose={() => setShowJoin(false)} />
       <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
+
+      <AnimatePresence>
+        {showGuide && <GameGuideModal onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
     </Layout>
   );
 }

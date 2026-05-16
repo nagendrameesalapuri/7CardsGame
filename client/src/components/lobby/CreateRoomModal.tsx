@@ -122,14 +122,14 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
           <span className="text-dark-text text-sm">Private Room (invite-only)</span>
         </label>
 
-        {/* ── Entry Fee & Prize Pool ──────────────────────────────────── */}
+        {/* ── Game Mode ──────────────────────────────────────────────── */}
         <div className={`rounded-xl p-3 space-y-3 transition-all ${isCashGame && !isGuest ? 'border border-yellow-500/30 bg-yellow-500/5' : 'border border-dark-border bg-dark-surface/40'}`}>
           <div className="flex items-center justify-between">
             <label className="text-sm font-semibold text-dark-text flex items-center gap-2">
-              💰 Entry Fee
+              🎮 Game Mode
               {isCashGame && !isGuest && (
                 <span className="text-[10px] bg-yellow-500/25 text-yellow-300 px-1.5 py-0.5 rounded-full font-medium">
-                  Cash Game
+                  Competitive
                 </span>
               )}
             </label>
@@ -138,7 +138,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             )}
           </div>
 
-          {/* Free / Bet Match toggle */}
+          {/* Free / Wager toggle */}
           <div className="flex gap-2">
             <button
               type="button"
@@ -149,7 +149,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-neon-green/50'
               }`}
             >
-              🎮 Free
+              🎮 Free Play
             </button>
             <button
               type="button"
@@ -165,11 +165,11 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-yellow-400/50'
               }`}
             >
-              🎰 Bet Match
+              ⚔️ Wager Game
             </button>
           </div>
 
-          {/* Bet amount input — shown only when Bet Match is active */}
+          {/* Wager amount input */}
           {isCashGame && !isGuest && (
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-muted text-sm font-medium">₹</span>
@@ -190,16 +190,16 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   setForm(f => ({ ...f, entryFee: clamped }));
                   setEntryFeeText(String(clamped));
                 }}
-                placeholder="Enter bet amount per player"
+                placeholder="Enter wager amount per player"
                 className="w-full bg-dark-bg border border-yellow-400/40 rounded-lg pl-7 pr-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-yellow-400 transition-colors"
               />
             </div>
           )}
 
-          {/* Wallet balance indicator */}
+          {/* Wallet balance */}
           {!isGuest && walletBalance !== null && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-dark-muted">Your wallet balance</span>
+              <span className="text-dark-muted">Wallet Balance</span>
               <span className={isCashGame && walletBalance < form.entryFee ? 'text-red-400 font-bold' : 'text-neon-green font-bold'}>
                 ₹{walletBalance}
               </span>
@@ -213,25 +213,25 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             </div>
           )}
 
-          {/* Prize pool calculator */}
+          {/* Wager breakdown */}
           {isCashGame && !isGuest ? (
             <div className="rounded-lg p-3 bg-dark-bg border border-yellow-500/20 space-y-2">
-              <p className="text-xs text-dark-muted uppercase tracking-wider font-semibold">Prize Pool Breakdown</p>
+              <p className="text-xs text-dark-muted uppercase tracking-wider font-semibold">Wager Breakdown</p>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-dark-muted">Entry Fee × Max Players</span>
+                <span className="text-dark-muted">Wager × Max Players</span>
                 <span className="text-dark-text font-mono">₹{form.entryFee} × {form.maxPlayers}</span>
               </div>
               <div className="h-px bg-dark-border" />
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-yellow-300">🏆 Winner Gets</span>
+                <span className="text-sm font-bold text-yellow-300">🏆 Winner Earns</span>
                 <span className="text-2xl font-bold text-yellow-400">₹{prizePool}</span>
               </div>
               <p className="text-[10px] text-dark-muted">
-                ₹{form.entryFee} deducted from each player's wallet on join. Winner takes entire pot.
+                ₹{form.entryFee} deducted from each player's wallet on join. Winner takes the pot.
               </p>
             </div>
           ) : form.entryFee === 0 && !isGuest ? (
-            <p className="text-xs text-dark-muted">Free game — no entry fee, no prize money.</p>
+            <p className="text-xs text-dark-muted">Free Play — casual game, no wager required.</p>
           ) : null}
         </div>
 
@@ -248,7 +248,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
               : !hasEnoughFunds
               ? `Need ₹${form.entryFee - (walletBalance ?? 0)} more`
               : isCashGame && !isGuest
-              ? `Create · ₹${prizePool} Prize Pool`
+              ? `Create · ₹${prizePool} Pot`
               : 'Create Room'}
           </Button>
         </div>

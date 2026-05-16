@@ -19,7 +19,6 @@ import roomRoutes from './routes/rooms';
 import userRoutes from './routes/users';
 import gameRoutes from './routes/games';
 import walletRoutes from './routes/wallet';
-import tournamentRoutes from './routes/tournaments';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
 import survivalRoutes from './routes/survival';
@@ -101,7 +100,6 @@ async function bootstrap() {
   app.use('/api/users', userRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
-  app.use('/api/tournaments', tournamentRoutes);
   app.use('/api/survival', survivalRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/progression', progressionRoutes);

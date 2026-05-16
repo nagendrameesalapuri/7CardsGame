@@ -797,14 +797,6 @@ function FeaturesSection({
           }
         />
         <Toggle
-          label="Tournament Banner"
-          desc="Show the Bot Tournament banner on the lobby page"
-          value={flags.tournamentBannerEnabled ?? true}
-          onChange={(v) =>
-            setFlags((f: any) => ({ ...f, tournamentBannerEnabled: v }))
-          }
-        />
-        <Toggle
           label="AI Survival Championship"
           desc="Show the AI Survival Championship banner on the lobby page"
           value={flags.survivalEnabled ?? true}
@@ -951,227 +943,142 @@ function GameConfigSection({
   );
 }
 
-function WalletConfigSection({
-  config,
-  onSave,
-}: {
-  config: any;
-  onSave: (data: any) => void;
-}) {
+function WalletConfigSection({ config, onSave }: { config: any; onSave: (data: any) => void }) {
   const [wc, setWc] = useState({ ...config.walletConfig });
   const [saving, setSaving] = useState(false);
-  const [uploadingQr, setUploadingQr] = useState(false);
 
-  useEffect(() => {
-    setWc({ ...config.walletConfig });
-  }, [config]);
+  useEffect(() => { setWc({ ...config.walletConfig }); }, [config]);
 
-  const save = async () => {
-    setSaving(true);
-    await onSave({ walletConfig: wc });
-    setSaving(false);
-  };
+  const save = async () => { setSaving(true); await onSave({ walletConfig: wc }); setSaving(false); };
 
-  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingQr(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setWc((w: any) => ({ ...w, qrCodeUrl: base64 }));
-        setUploadingQr(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error("Failed to upload QR code", err);
-      setUploadingQr(false);
-    }
-  };
+  const InfoCard = ({ icon, title, desc }: { icon: string; title: string; desc: string }) => (
+    <div className="flex items-start gap-3 p-4 rounded-2xl"
+      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+      <span className="text-2xl flex-shrink-0">{icon}</span>
+      <div>
+        <p className="text-sm font-bold text-white">{title}</p>
+        <p className="text-xs text-dark-muted mt-0.5">{desc}</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-bold text-white">Wallet Configuration</h2>
-      <p className="text-xs text-dark-muted">
-        Control deposit/withdraw buttons and UPI payment details.
-      </p>
-
-      {/* Feature toggles */}
-      <div className="space-y-3">
-        <Toggle
-          label="Deposit Button Enabled"
-          desc="Allow users to add money to their wallet"
-          value={wc.depositEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, depositEnabled: v }))}
-        />
-        <Toggle
-          label="Withdraw Button Enabled"
-          desc="Allow users to withdraw money from their wallet"
-          value={wc.withdrawEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, withdrawEnabled: v }))}
-        />
-        <Toggle
-          label="QR Code Enabled"
-          desc="Show QR code for UPI payments"
-          value={wc.qrEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, qrEnabled: v }))}
-        />
+    <div className="max-w-2xl space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-black text-white">⚙️ Reward Config</h2>
+        <p className="text-sm text-dark-muted mt-1">Control voucher submission and reward redemption for players.</p>
       </div>
 
-      {/* UPI Details */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide">
-          UPI Details
-        </p>
-        <div>
-          <label className="text-xs text-dark-muted block mb-1">UPI ID</label>
-          <input
-            type="text"
-            value={wc.upiId}
-            onChange={(e) =>
-              setWc((w: any) => ({ ...w, upiId: e.target.value }))
-            }
-            placeholder="e.g. paytmqr5p0dyv@ptys"
-            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-dark-muted block mb-1">UPI Name</label>
-          <input
-            type="text"
-            value={wc.upiName}
-            onChange={(e) =>
-              setWc((w: any) => ({ ...w, upiName: e.target.value }))
-            }
-            placeholder="e.g. 7Cards Game"
-            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
-          />
-        </div>
+      {/* System overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <InfoCard icon="🎟️" title="Submit Vouchers" desc="Players submit gift cards (₹50/₹100) to earn Tournament Credits" />
+        <InfoCard icon="⚔️" title="Play & Win" desc="Players use credits to enter arenas and compete for prizes" />
+        <InfoCard icon="🎁" title="Redeem Rewards" desc="Winners redeem up to ₹500 in brand gift vouchers" />
       </div>
 
-      {/* QR Code Upload */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide">
-          QR Code Image
-        </p>
-        <div
-          className="rounded-lg p-4 border-2 border-dashed border-dark-border hover:border-neon-green/50 transition-colors cursor-pointer"
-          style={{ background: "rgba(255,255,255,0.02)" }}
-        >
-          <label className="cursor-pointer flex flex-col items-center gap-2">
-            <span className="text-2xl">📱</span>
-            <span className="text-xs text-dark-muted text-center">
-              {wc.qrCodeUrl
-                ? "Click to change QR code"
-                : "Click to upload QR code (PNG/JPG)"}
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleQrUpload}
-              disabled={uploadingQr}
-              className="hidden"
+      {/* Controls */}
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="px-5 py-3" style={{ background: "rgba(167,139,250,0.08)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <p className="text-xs font-black uppercase tracking-wider" style={{ color: "#a78bfa" }}>Feature Controls</p>
+        </div>
+        <div className="divide-y divide-white/5">
+          <div className="px-5 py-4">
+            <Toggle
+              label="Voucher Submission Enabled"
+              desc="Allow players to submit gift vouchers and earn Tournament Credits"
+              value={wc.depositEnabled}
+              onChange={(v) => setWc((w: any) => ({ ...w, depositEnabled: v }))}
             />
-          </label>
-        </div>
-        {wc.qrCodeUrl && (
-          <div className="rounded-lg p-3 bg-dark-surface flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-green-400">✓</span>
-              <span className="text-xs text-dark-text truncate">
-                QR code uploaded ({Math.round(wc.qrCodeUrl.length / 1024)} KB)
-              </span>
-            </div>
-            <button
-              onClick={() => setWc((w: any) => ({ ...w, qrCodeUrl: "" }))}
-              className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-            >
-              Remove
-            </button>
           </div>
-        )}
+          <div className="px-5 py-4">
+            <Toggle
+              label="Reward Redemption Enabled"
+              desc="Allow players to redeem their Reward Balance for brand gift vouchers"
+              value={wc.withdrawEnabled}
+              onChange={(v) => setWc((w: any) => ({ ...w, withdrawEnabled: v }))}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Preview */}
-      {wc.qrCodeUrl && (
-        <div className="rounded-lg p-4 bg-dark-surface text-center">
-          <p className="text-xs text-dark-muted mb-2">QR Code Preview</p>
-          <img
-            src={wc.qrCodeUrl}
-            alt="QR Code"
-            className="max-w-[200px] mx-auto rounded-lg border border-dark-border"
-          />
+      {/* Limits reference */}
+      <div className="rounded-2xl p-5 space-y-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        <p className="text-xs font-black uppercase tracking-wider text-dark-muted">System Limits (hardcoded)</p>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            { label: "Voucher amounts", value: "₹50 or ₹100 only" },
+            { label: "Daily voucher limit", value: "₹300 per player" },
+            { label: "Min redemption", value: "₹50" },
+            { label: "Max redemption", value: "₹500" },
+            { label: "Supported brands", value: "6 brands" },
+            { label: "Credits per ₹1", value: "100 credits" },
+          ].map((r) => (
+            <div key={r.label} className="flex items-center justify-between gap-2 py-2 px-3 rounded-xl"
+              style={{ background: "rgba(255,255,255,0.03)" }}>
+              <span className="text-dark-muted text-xs">{r.label}</span>
+              <span className="text-white font-bold text-xs">{r.value}</span>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
-      <button
-        onClick={save}
-        disabled={saving || uploadingQr}
-        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-        style={{ background: "rgba(147,51,234,0.8)", color: "white" }}
-      >
-        {saving ? "Saving…" : uploadingQr ? "Uploading…" : "Save Config"}
+      <button onClick={save} disabled={saving}
+        className="px-8 py-3 rounded-xl font-black text-sm transition-all disabled:opacity-50"
+        style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff" }}>
+        {saving ? "Saving…" : "Save Reward Config"}
       </button>
     </div>
   );
 }
 
-// ── Deposits Section ─────────────────────────────────────────────────────────
+// ── Voucher Queue Section (Deposits) ─────────────────────────────────────────
 
 const DEP_STATUS_STYLE: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-300",
+  pending:  "bg-yellow-500/20 text-yellow-300",
   approved: "bg-green-500/20 text-green-400",
   rejected: "bg-red-500/20 text-red-400",
+};
+
+const BRAND_ICONS: Record<string, string> = {
+  Amazon: "📦", Flipkart: "🛒", Myntra: "👗", Ajio: "👔", Swiggy: "🍔", Zomato: "🍕",
 };
 
 function DepositsSection() {
   const [deposits, setDeposits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [noteMap, setNoteMap] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<
-    "all" | "pending" | "approved" | "rejected"
-  >("pending");
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [screenshotModal, setScreenshotModal] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await admin.getDeposits();
       setDeposits(data.deposits);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const process = async (id: string, status: "approved" | "rejected") => {
+    setProcessingId(id);
     try {
       await admin.processDeposit(id, status, noteMap[id]);
-      setDeposits((prev) =>
-        prev.map((d) => (d._id === id ? { ...d, status } : d)),
-      );
-    } catch {
-      /* ignore */
-    }
+      setDeposits((prev) => prev.map((d) => (d._id === id ? { ...d, status } : d)));
+    } catch { /* ignore */ } finally { setProcessingId(null); }
   };
 
-  const filtered =
-    filter === "all" ? deposits : deposits.filter((d) => d.status === filter);
+  const filtered = filter === "all" ? deposits : deposits.filter((d) => d.status === filter);
   const pendingCount = deposits.filter((d) => d.status === "pending").length;
 
-  if (loading)
-    return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold text-white">
-          Deposit Requests
+          🎟️ Voucher Verification Queue
           {pendingCount > 0 && (
             <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">
               {pendingCount} pending
@@ -1180,16 +1087,9 @@ function DepositsSection() {
         </h2>
         <div className="flex gap-1.5">
           {(["pending", "approved", "rejected", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={clsx(
-                "px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize",
-                filter === f
-                  ? "bg-neon-green text-dark-bg"
-                  : "bg-dark-surface text-dark-muted border border-dark-border",
-              )}
-            >
+            <button key={f} onClick={() => setFilter(f)}
+              className={clsx("px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize",
+                filter === f ? "bg-indigo-500 text-white" : "bg-dark-surface text-dark-muted border border-dark-border")}>
               {f}
             </button>
           ))}
@@ -1198,37 +1098,52 @@ function DepositsSection() {
 
       {filtered.length === 0 ? (
         <p className="text-dark-muted text-sm py-8 text-center">
-          No {filter === "all" ? "" : filter} deposit requests
+          No {filter === "all" ? "" : filter} voucher submissions
         </p>
       ) : (
         <div className="space-y-3">
           {filtered.map((d) => (
-            <div
-              key={d._id}
-              className="rounded-2xl p-4 space-y-3"
-              style={cardStyle}
-            >
+            <div key={d._id} className="rounded-2xl p-4 space-y-3" style={cardStyle}>
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
-                  <p className="font-semibold text-white">{d.username}</p>
-                  <p className="text-xs text-dark-muted">
-                    UTR:{" "}
-                    <span className="font-mono text-white">{d.utrNumber}</span>
+                  <p className="font-semibold text-white flex items-center gap-1.5">
+                    {BRAND_ICONS[d.voucherBrand] ?? "🎟️"} {d.username}
                   </p>
-                  <p className="text-xs text-dark-muted">
-                    {new Date(d.createdAt).toLocaleString()}
-                  </p>
+                  {d.submissionType === "voucher" ? (
+                    <div className="space-y-0.5 mt-1">
+                      <p className="text-xs text-indigo-300 font-semibold">{d.voucherBrand} Voucher</p>
+                      {d.voucherNumber && (
+                        <p className="text-xs text-dark-muted font-mono">
+                          Code: <span className="text-white">{d.voucherNumber}</span>
+                        </p>
+                      )}
+                      {d.voucherPin && (
+                        <p className="text-xs text-dark-muted font-mono">
+                          PIN: <span className="text-white">{d.voucherPin}</span>
+                        </p>
+                      )}
+                      {d.voucherExpiry && (
+                        <p className="text-xs text-dark-muted">
+                          Expiry: <span className="text-white">{d.voucherExpiry}</span>
+                        </p>
+                      )}
+                      {d.screenshotUrl && (
+                        <button onClick={() => setScreenshotModal(d.screenshotUrl)}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors underline text-left">
+                          📸 View Screenshot
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-dark-muted mt-1">
+                      UTR: <span className="font-mono text-white">{d.utrNumber}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-dark-muted mt-1">{new Date(d.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-neon-green">
-                    ₹{d.amount}
-                  </p>
-                  <span
-                    className={clsx(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      DEP_STATUS_STYLE[d.status] ?? "",
-                    )}
-                  >
+                  <p className="text-xl font-bold text-indigo-300">₹{d.amount}</p>
+                  <span className={clsx("text-xs px-2 py-0.5 rounded-full", DEP_STATUS_STYLE[d.status] ?? "")}>
                     {d.status}
                   </span>
                 </div>
@@ -1236,151 +1151,242 @@ function DepositsSection() {
 
               {d.status === "pending" && (
                 <div className="flex gap-2 flex-wrap items-center">
-                  <input
-                    placeholder="Admin note (optional)"
-                    value={noteMap[d._id] ?? ""}
-                    onChange={(e) =>
-                      setNoteMap((p) => ({ ...p, [d._id]: e.target.value }))
-                    }
+                  <input placeholder="Admin note (optional)" value={noteMap[d._id] ?? ""}
+                    onChange={(e) => setNoteMap((p) => ({ ...p, [d._id]: e.target.value }))}
                     className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
                   />
-                  <button
-                    onClick={() => process(d._id, "approved")}
-                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors"
-                  >
+                  <button onClick={() => process(d._id, "approved")} disabled={processingId === d._id}
+                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
                     ✓ Approve & Credit
                   </button>
-                  <button
-                    onClick={() => process(d._id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors"
-                  >
+                  <button onClick={() => process(d._id, "rejected")} disabled={processingId === d._id}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
                     ✗ Reject
                   </button>
                 </div>
               )}
               {d.adminNote && (
-                <p className="text-xs text-dark-muted italic">
-                  Note: {d.adminNote}
-                </p>
+                <p className="text-xs text-dark-muted italic">Note: {d.adminNote}</p>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Screenshot lightbox */}
+      {screenshotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => setScreenshotModal(null)}>
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setScreenshotModal(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-dark-surface border border-dark-border text-white flex items-center justify-center text-sm z-10 hover:bg-dark-border transition-colors">
+              ×
+            </button>
+            <img src={screenshotModal} alt="Voucher screenshot"
+              className="w-full rounded-2xl object-contain max-h-[80vh]"
+              style={{ border: "1px solid rgba(99,102,241,0.4)" }} />
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Withdrawals Section ────────────────────────────────────────────────────────
+// ── Reward Delivery Section (Withdrawals) ────────────────────────────────────
 
 const WD_STATUS_STYLE: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-300",
-  approved: "bg-green-500/20 text-green-400",
-  rejected: "bg-red-500/20 text-red-400",
+  pending:   "bg-yellow-500/20 text-yellow-300",
+  approved:  "bg-green-500/20 text-green-400",
+  rejected:  "bg-red-500/20 text-red-400",
+  delivered: "bg-indigo-500/20 text-indigo-400",
 };
 
 function WithdrawalsSection() {
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [noteMap, setNoteMap] = useState<Record<string, string>>({});
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deliverMap, setDeliverMap] = useState<Record<string, {
+    voucherNumber: string; voucherPin: string; voucherExpiry: string; adminMessage: string;
+  }>>({});
+  const [deliverOpen, setDeliverOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await admin.getWithdrawals();
       setWithdrawals(data.withdrawals);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const process = async (id: string, status: "approved" | "rejected") => {
+    setProcessingId(id);
     try {
       await admin.processWithdrawal(id, status, noteMap[id]);
-      setWithdrawals((prev) =>
-        prev.map((w) => (w._id === id ? { ...w, status } : w)),
-      );
-    } catch {
-      /* ignore */
-    }
+      setWithdrawals((prev) => prev.map((w) => (w._id === id ? { ...w, status } : w)));
+    } catch { /* ignore */ } finally { setProcessingId(null); }
   };
 
-  if (loading)
-    return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+  const deliver = async (id: string) => {
+    const d = deliverMap[id];
+    if (!d?.voucherNumber?.trim() || !d?.voucherPin?.trim() || !d?.voucherExpiry?.trim()) return;
+    setProcessingId(id);
+    try {
+      await admin.deliverVoucher(id, {
+        deliveredVoucherNumber: d.voucherNumber.trim(),
+        deliveredVoucherPin: d.voucherPin.trim(),
+        deliveredVoucherExpiry: d.voucherExpiry.trim(),
+        adminMessage: d.adminMessage?.trim() || undefined,
+      });
+      setWithdrawals((prev) => prev.map((w) => (w._id === id ? { ...w, status: "delivered" } : w)));
+      setDeliverOpen(null);
+    } catch { /* ignore */ } finally { setProcessingId(null); }
+  };
+
+  const setDeliverField = (id: string, field: string, value: string) => {
+    setDeliverMap((p) => ({ ...p, [id]: { ...p[id], [field]: value } }));
+  };
+
+  const pendingCount = withdrawals.filter((w) => w.status === "pending").length;
+
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-white">Withdrawal Requests</h2>
+      <h2 className="text-xl font-bold text-white">
+        🎁 Reward Delivery
+        {pendingCount > 0 && (
+          <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">
+            {pendingCount} pending
+          </span>
+        )}
+      </h2>
       {withdrawals.length === 0 ? (
-        <p className="text-dark-muted text-sm py-8 text-center">
-          No withdrawal requests
-        </p>
+        <p className="text-dark-muted text-sm py-8 text-center">No reward redemption requests</p>
       ) : (
         <div className="space-y-3">
           {withdrawals.map((w) => (
-            <div
-              key={w._id}
-              className="rounded-2xl p-4 space-y-2"
-              style={cardStyle}
-            >
+            <div key={w._id} className="rounded-2xl p-4 space-y-2" style={cardStyle}>
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
-                  <p className="font-semibold text-white">{w.username}</p>
-                  <p className="text-sm text-dark-muted">
-                    {w.upiId
-                      ? `UPI: ${w.upiId}`
-                      : `Bank: ${w.bankDetails?.accountName}`}
+                  <p className="font-semibold text-white flex items-center gap-1.5">
+                    {BRAND_ICONS[w.voucherBrand] ?? "🎁"} {w.username}
                   </p>
-                  <p className="text-xs text-dark-muted">
-                    {new Date(w.createdAt).toLocaleString()}
-                  </p>
+                  {w.redemptionType === "voucher" ? (
+                    <p className="text-xs text-purple-300 mt-0.5">{w.voucherBrand} voucher redemption</p>
+                  ) : (
+                    <p className="text-xs text-dark-muted mt-0.5">
+                      {w.upiId ? `UPI: ${w.upiId}` : w.bankDetails?.accountName ? `Bank: ${w.bankDetails.accountName}` : "Bank transfer"}
+                    </p>
+                  )}
+                  <p className="text-xs text-dark-muted">{new Date(w.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-neon-green">
-                    ₹{w.amount}
-                  </p>
-                  <span
-                    className={clsx(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      WD_STATUS_STYLE[w.status] ?? "",
-                    )}
-                  >
+                  <p className="text-xl font-bold text-purple-400">₹{w.amount}</p>
+                  <span className={clsx("text-xs px-2 py-0.5 rounded-full", WD_STATUS_STYLE[w.status] ?? "")}>
                     {w.status}
                   </span>
                 </div>
               </div>
+
+              {/* Pending: approve/reject + option to deliver directly */}
               {w.status === "pending" && (
-                <div className="flex gap-2 flex-wrap items-center pt-1">
-                  <input
-                    placeholder="Admin note (optional)"
-                    value={noteMap[w._id] ?? ""}
-                    onChange={(e) =>
-                      setNoteMap((p) => ({ ...p, [w._id]: e.target.value }))
-                    }
-                    className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
-                  />
-                  <button
-                    onClick={() => process(w._id, "approved")}
-                    className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => process(w._id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors"
-                  >
-                    Reject
+                <div className="space-y-2 pt-1">
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <input placeholder="Admin note (optional)" value={noteMap[w._id] ?? ""}
+                      onChange={(e) => setNoteMap((p) => ({ ...p, [w._id]: e.target.value }))}
+                      className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
+                    />
+                    <button onClick={() => process(w._id, "approved")} disabled={processingId === w._id}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                      Approve
+                    </button>
+                    <button onClick={() => process(w._id, "rejected")} disabled={processingId === w._id}
+                      className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                      Reject
+                    </button>
+                    {w.redemptionType === "voucher" && (
+                      <button onClick={() => setDeliverOpen(deliverOpen === w._id ? null : w._id)}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors">
+                        🎁 Deliver Voucher
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Approved voucher: deliver form */}
+              {w.status === "approved" && w.redemptionType === "voucher" && (
+                <div className="pt-1">
+                  <button onClick={() => setDeliverOpen(deliverOpen === w._id ? null : w._id)}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors">
+                    🎁 Deliver Voucher
                   </button>
                 </div>
               )}
-              {w.adminNote && (
-                <p className="text-xs text-dark-muted italic">{w.adminNote}</p>
+
+              {/* Deliver voucher form */}
+              {deliverOpen === w._id && (
+                <div className="mt-2 p-3 rounded-xl space-y-2"
+                  style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+                  <p className="text-xs font-bold text-indigo-300">Enter {w.voucherBrand} Voucher Details</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Voucher Code *</label>
+                      <input placeholder="Code / Number"
+                        value={deliverMap[w._id]?.voucherNumber ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherNumber", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">PIN *</label>
+                      <input placeholder="PIN"
+                        value={deliverMap[w._id]?.voucherPin ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherPin", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Expiry *</label>
+                      <input placeholder="MM/YY"
+                        value={deliverMap[w._id]?.voucherExpiry ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherExpiry", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Message (optional)</label>
+                      <input placeholder="e.g. Enjoy!"
+                        value={deliverMap[w._id]?.adminMessage ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "adminMessage", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <button onClick={() => deliver(w._id)} disabled={processingId === w._id ||
+                    !deliverMap[w._id]?.voucherNumber?.trim() || !deliverMap[w._id]?.voucherPin?.trim() || !deliverMap[w._id]?.voucherExpiry?.trim()}
+                    className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors disabled:opacity-40">
+                    {processingId === w._id ? "Delivering…" : "✓ Mark as Delivered"}
+                  </button>
+                </div>
               )}
+
+              {/* Delivered: show delivered voucher details */}
+              {w.status === "delivered" && w.deliveredVoucherNumber && (
+                <div className="mt-1 p-3 rounded-xl space-y-1"
+                  style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+                  <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Delivered Voucher</p>
+                  <p className="text-xs font-mono text-white">Code: {w.deliveredVoucherNumber}</p>
+                  <p className="text-xs font-mono text-white">PIN: {w.deliveredVoucherPin} · Exp: {w.deliveredVoucherExpiry}</p>
+                  {w.adminMessage && <p className="text-xs text-dark-muted italic">"{w.adminMessage}"</p>}
+                </div>
+              )}
+
+              {w.adminNote && <p className="text-xs text-dark-muted italic">Note: {w.adminNote}</p>}
             </div>
           ))}
         </div>
@@ -1667,7 +1673,7 @@ function WalletsSection() {
                   : "border-transparent text-dark-muted hover:text-white",
               )}
             >
-              ➕ Add Money
+              💳 Credit Player
             </button>
             <button
               onClick={() => {
@@ -1682,14 +1688,14 @@ function WalletsSection() {
                   : "border-transparent text-dark-muted hover:text-white",
               )}
             >
-              ➖ Remove Money
+              🔻 Debit Player
             </button>
           </div>
 
           {tab === "add" ? (
             <>
               <p className="text-sm font-semibold text-white">
-                💸 Credit User Wallet
+                💳 Credit Player Balance
               </p>
 
               {/* User dropdown */}
@@ -1870,9 +1876,9 @@ function WalletsSection() {
                 style={{ background: "rgba(0,255,136,0.85)", color: "#0d1117" }}
               >
                 {crediting
-                  ? "Adding…"
+                  ? "Crediting…"
                   : selected
-                    ? `Add Money to ${selected.username}`
+                    ? `Credit ₹ to ${selected.username}`
                     : "Select a user first"}
               </button>
 
@@ -1888,7 +1894,7 @@ function WalletsSection() {
           ) : (
             <>
               <p className="text-sm font-semibold text-white">
-                🗑️ Debit User Wallet
+                🔻 Debit Player Balance
               </p>
 
               {/* User dropdown - reuse same logic */}
@@ -2069,9 +2075,9 @@ function WalletsSection() {
                 style={{ background: "rgba(255,107,107,0.85)", color: "#fff" }}
               >
                 {debiting
-                  ? "Removing…"
+                  ? "Debiting…"
                   : selected
-                    ? `Remove Money from ${selected.username}`
+                    ? `Debit ₹ from ${selected.username}`
                     : "Select a user first"}
               </button>
 
@@ -2096,103 +2102,122 @@ function WalletsSection() {
 
 // ── Tournaments Section ────────────────────────────────────────────────────────
 
+const TIER_META: Record<string, { label: string; color: string; icon: string }> = {
+  beginner:   { label: "Beginner",   color: "#60a5fa", icon: "🌱" },
+  pro:        { label: "Pro",        color: "#a78bfa", icon: "⚡" },
+  elite:      { label: "Elite",      color: "#f59e0b", icon: "🔥" },
+  boss_arena: { label: "Boss Arena", color: "#ff6b6b", icon: "💀" },
+};
+
+const STAGE_PERSONALITIES = ["Safe", "Aggressive", "Bluff", "Smart", "Boss"];
+
 function TournamentsSection() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
+  const [tierFilter, setTierFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(
-    (p = 1, s = filter) => {
+    (p = 1, t = tierFilter) => {
       setLoading(true);
       admin
-        .getTournaments({ page: p, status: s || undefined })
+        .getSurvivalChampionship({ page: p, tier: t || undefined })
         .then((r) => setData(r.data))
         .catch(() => {})
         .finally(() => setLoading(false));
     },
-    [filter],
+    [tierFilter],
   );
 
-  useEffect(() => {
-    load(1);
-  }, []);
+  useEffect(() => { load(1); }, []);
 
-  const applyFilter = (s: string) => {
-    setFilter(s);
-    setPage(1);
-    load(1, s);
-  };
+  const applyTier = (t: string) => { setTierFilter(t); setPage(1); load(1, t); };
+  const changePage = (p: number) => { setPage(p); load(p); };
 
-  const changePage = (p: number) => {
-    setPage(p);
-    load(p);
-  };
-
-  const STATUS_FILTERS = [
-    { value: "", label: "All" },
-    { value: "active", label: "Active" },
-    { value: "won", label: "Won" },
-    { value: "lost", label: "Lost" },
-    { value: "draw", label: "Draw" },
+  const TIER_FILTERS = [
+    { value: "", label: "All Tiers" },
+    { value: "beginner", label: "🌱 Beginner" },
+    { value: "pro", label: "⚡ Pro" },
+    { value: "elite", label: "🔥 Elite" },
+    { value: "boss_arena", label: "💀 Boss Arena" },
   ];
+
+  const STATUS_COLOR: Record<string, string> = {
+    active: "#60a5fa",
+    won: "#00ff88",
+    lost: "#ff6b6b",
+    abandoned: "#6b7280",
+  };
 
   return (
     <div className="space-y-5">
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(16,185,129,0.12),rgba(245,158,11,0.08))", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">🤖</span>
+          <div>
+            <h2 className="text-base font-black text-white">AI Survival Championship</h2>
+            <p className="text-xs text-dark-muted">Survive 5 AI stages across 4 tiers · Beginner → Boss Arena</p>
+          </div>
+        </div>
+        <div className="flex gap-4 mt-3 flex-wrap">
+          {STAGE_PERSONALITIES.map((s, i) => (
+            <span key={s} className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "#8b949e" }}>
+              Stage {i + 1}: {s} AI
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* Summary cards */}
       {data?.summary && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            {
-              label: "Active",
-              value: data.summary.totalActive,
-              color: "#60a5fa",
-            },
-            { label: "Won", value: data.summary.totalWon, color: "#00ff88" },
-            { label: "Lost", value: data.summary.totalLost, color: "#ff6b6b" },
-            { label: "Draws", value: data.summary.totalDraw, color: "#fbbf24" },
-            {
-              label: "Prize Paid",
-              value: `₹${data.summary.totalPrizePaid}`,
-              color: "#ffd700",
-            },
+            { label: "Active",    value: data.summary.totalActive,    color: "#60a5fa" },
+            { label: "Completed", value: data.summary.totalWon,       color: "#00ff88" },
+            { label: "Lost",      value: data.summary.totalLost,      color: "#ff6b6b" },
+            { label: "Abandoned", value: data.summary.totalAbandoned, color: "#6b7280" },
+            { label: "Pts Paid",  value: (data.summary.totalPointsPaid ?? 0).toLocaleString(), color: "#ffd700" },
           ].map((s) => (
-            <div
-              key={s.label}
-              className="rounded-2xl p-3 text-center"
-              style={cardStyle}
-            >
-              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">
-                {s.label}
-              </p>
-              <p className="text-xl font-black" style={{ color: s.color }}>
-                {s.value}
-              </p>
+            <div key={s.label} className="rounded-2xl p-3 text-center" style={cardStyle}>
+              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">{s.label}</p>
+              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Filter tabs */}
+      {/* Tier breakdown */}
+      {data?.summary?.tierBreakdown?.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {data.summary.tierBreakdown.map((tb: any) => {
+            const meta = TIER_META[tb._id] ?? { label: tb._id, color: "#8b949e", icon: "🎮" };
+            const winRate = tb.count > 0 ? Math.round((tb.won / tb.count) * 100) : 0;
+            return (
+              <div key={tb._id} className="rounded-2xl p-3" style={{ ...cardStyle, border: `1px solid ${meta.color}22` }}>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span>{meta.icon}</span>
+                  <p className="text-xs font-bold" style={{ color: meta.color }}>{meta.label}</p>
+                </div>
+                <p className="text-lg font-black text-white">{tb.count}</p>
+                <p className="text-[10px] text-dark-muted">{tb.won} won · {winRate}% win rate</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tier filter */}
       <div className="flex gap-2 flex-wrap">
-        {STATUS_FILTERS.map((f) => (
+        {TIER_FILTERS.map((f) => (
           <button
             key={f.value}
-            onClick={() => applyFilter(f.value)}
+            onClick={() => applyTier(f.value)}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={
-              filter === f.value
-                ? {
-                    background: "rgba(0,255,136,0.15)",
-                    color: "#00ff88",
-                    border: "1px solid rgba(0,255,136,0.4)",
-                  }
-                : {
-                    background: "rgba(255,255,255,0.04)",
-                    color: "#8b949e",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                  }
-            }
+            style={tierFilter === f.value
+              ? { background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.4)" }
+              : { background: "rgba(255,255,255,0.04)", color: "#8b949e", border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {f.label}
           </button>
@@ -2203,140 +2228,90 @@ function TournamentsSection() {
         <div className="flex justify-center py-10">
           <div className="w-6 h-6 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : !data?.tournaments?.length ? (
-        <p className="text-center text-dark-muted py-10">
-          No tournaments found.
-        </p>
+      ) : !data?.records?.length ? (
+        <p className="text-center text-dark-muted py-10">No survival runs found.</p>
       ) : (
         <div className="space-y-2">
-          {data.tournaments.map((t: any) => (
-            <div
-              key={t.id}
-              className="rounded-2xl p-4 space-y-2"
-              style={cardStyle}
-            >
-              {/* Row 1: user + status + fee */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Avatar avatar={t.avatar} username={t.username} size="sm" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-dark-text truncate">
-                      {t.username}
-                    </p>
-                    <p className="text-[10px] text-dark-muted truncate">
-                      {t.email}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <StatusBadge status={t.status} />
-                  <span className="text-xs text-dark-muted">₹{t.entryFee}</span>
-                </div>
-              </div>
-
-              {/* Row 2: game dots + series score */}
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 3 }, (_, i) => {
-                    const gr = t.gameResults?.[i];
-                    const bg = !gr
-                      ? "rgba(255,255,255,0.05)"
-                      : gr.isDraw
-                        ? "rgba(251,191,36,0.2)"
-                        : gr.playerWon
-                          ? "rgba(0,255,136,0.2)"
-                          : "rgba(255,107,107,0.2)";
-                    const border = !gr
-                      ? "rgba(255,255,255,0.08)"
-                      : gr.isDraw
-                        ? "rgba(251,191,36,0.5)"
-                        : gr.playerWon
-                          ? "rgba(0,255,136,0.5)"
-                          : "rgba(255,107,107,0.5)";
-                    return (
-                      <div
-                        key={i}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{
-                          background: bg,
-                          border: `1px solid ${border}`,
-                        }}
-                      >
-                        {!gr
-                          ? String(i + 1)
-                          : gr.isDraw
-                            ? "="
-                            : gr.playerWon
-                              ? "✓"
-                              : "✗"}
-                      </div>
-                    );
-                  })}
-                </div>
-                <span className="text-xs text-dark-muted">
-                  {t.playerWins}W – {t.botWins}L
-                  {(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ""} · {t.gamesPlayed}{" "}
-                  game{t.gamesPlayed !== 1 ? "s" : ""}
-                </span>
-              </div>
-
-              {/* Row 3: prize / refund + date */}
-              <div className="flex justify-between items-center text-xs">
-                <span
-                  style={{
-                    color:
-                      t.status === "won"
-                        ? "#00ff88"
-                        : t.status === "draw"
-                          ? "#fbbf24"
-                          : t.status === "lost"
-                            ? "#ff6b6b"
-                            : "#60a5fa",
-                  }}
+          {data.records.map((r: any) => {
+            const meta = TIER_META[r.tier] ?? { label: r.tier, color: "#8b949e", icon: "🎮" };
+            const isExpanded = expandedId === r.id;
+            return (
+              <div key={r.id} className="rounded-2xl overflow-hidden" style={cardStyle}>
+                <button
+                  className="w-full p-4 text-left"
+                  onClick={() => setExpandedId(isExpanded ? null : r.id)}
                 >
-                  {t.status === "won"
-                    ? `+₹${t.prizeAmount} prize`
-                    : t.status === "draw"
-                      ? `₹${t.entryFee} refunded`
-                      : t.status === "lost"
-                        ? `−₹${t.entryFee}`
-                        : "In progress"}
-                </span>
-                <span className="text-dark-muted">
-                  {new Date(t.createdAt).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar avatar={r.avatar} username={r.username} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-dark-text truncate">{r.username}</p>
+                        <p className="text-[10px] text-dark-muted truncate">{r.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44` }}>
+                        {meta.icon} {meta.label}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize" style={{ background: `${STATUS_COLOR[r.status] ?? "#8b949e"}22`, color: STATUS_COLOR[r.status] ?? "#8b949e", border: `1px solid ${STATUS_COLOR[r.status] ?? "#8b949e"}44` }}>
+                        {r.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stage progress dots */}
+                  <div className="flex items-center gap-2 mt-3">
+                    <div className="flex gap-1">
+                      {Array.from({ length: 5 }, (_, i) => {
+                        const sr = r.stageResults?.[i];
+                        const done = !!sr;
+                        const won = sr?.playerWon;
+                        const bg = !done ? "rgba(255,255,255,0.05)" : won ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)";
+                        const border = !done ? "rgba(255,255,255,0.08)" : won ? "rgba(0,255,136,0.5)" : "rgba(255,107,107,0.5)";
+                        return (
+                          <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: bg, border: `1px solid ${border}` }}>
+                            {!done ? String(i + 1) : won ? "✓" : "✗"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <span className="text-xs text-dark-muted">{r.stagesCompleted}/5 stages · {r.totalPointsEarned ?? 0} pts</span>
+                    <span className="ml-auto text-[10px] text-dark-muted">{new Date(r.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                  </div>
+                </button>
+
+                {/* Expanded stage detail */}
+                {isExpanded && r.stageResults?.length > 0 && (
+                  <div className="border-t border-white/5 p-4 space-y-2">
+                    {r.stageResults.map((sr: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="text-dark-muted">Stage {idx + 1} · {STAGE_PERSONALITIES[idx] ?? sr.personality} AI</span>
+                        <div className="flex items-center gap-3">
+                          <span style={{ color: sr.playerWon ? "#00ff88" : "#ff6b6b" }}>
+                            {sr.playerWon ? "Win" : "Loss"} · You {sr.playerScore} – Bot {sr.botScore}
+                          </span>
+                          <span style={{ color: "#ffd700" }}>+{sr.pointsEarned ?? 0} pts</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Pagination */}
       {data && data.pages > 1 && (
         <div className="flex justify-center gap-2">
-          <button
-            onClick={() => changePage(page - 1)}
-            disabled={page <= 1}
+          <button onClick={() => changePage(page - 1)} disabled={page <= 1}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}
-          >
-            ← Prev
-          </button>
-          <span className="text-xs text-dark-muted self-center">
-            Page {page} of {data.pages} ({data.total} total)
-          </span>
-          <button
-            onClick={() => changePage(page + 1)}
-            disabled={page >= data.pages}
+            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}>← Prev</button>
+          <span className="text-xs text-dark-muted self-center">Page {page} of {data.pages} ({data.total} total)</span>
+          <button onClick={() => changePage(page + 1)} disabled={page >= data.pages}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}
-          >
-            Next →
-          </button>
+            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}>Next →</button>
         </div>
       )}
     </div>
@@ -2732,12 +2707,22 @@ const SURVIVAL_TIER_LABELS: Record<string, string> = {
   boss_arena: "Boss Arena",
 };
 
+const SURVIVAL_TIER_ICONS: Record<string, string> = {
+  beginner: "🌱",
+  pro: "⚡",
+  elite: "🔥",
+  boss_arena: "💀",
+};
+
 const SURVIVAL_TIER_COLORS: Record<string, string> = {
   beginner: "#4ade80",
   pro: "#60a5fa",
   elite: "#a78bfa",
   boss_arena: "#f97316",
 };
+
+const STAGE_NAMES = ["Safe AI", "Aggressive AI", "Bluff AI", "Smart AI", "Boss AI"];
+const STAGE_ICONS = ["🛡️", "⚔️", "🎭", "🧠", "👑"];
 
 function SurvivalConfigSection({
   config,
@@ -2790,73 +2775,125 @@ function SurvivalConfigSection({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-white">AI Survival Championship Config</h2>
-      <p className="text-xs text-dark-muted">
-        Set entry fees and stage rewards for each tier. 100 pts = ₹1.
-      </p>
-
-      {(["beginner", "pro", "elite", "boss_arena"] as const).map((tier) => (
-        <div key={tier} className="rounded-2xl p-4 space-y-3" style={cardStyle}>
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-sm" style={{ color: SURVIVAL_TIER_COLORS[tier] }}>
-              {SURVIVAL_TIER_LABELS[tier]}
-            </span>
-            <button
-              onClick={() => resetTier(tier)}
-              className="text-xs px-3 py-1 rounded-lg border border-dark-border text-dark-muted hover:text-white hover:border-white/20 transition-all"
-            >
-              Reset to Default
-            </button>
-          </div>
-
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(16,185,129,0.1),rgba(139,92,246,0.08))", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)" }}>🏆</div>
           <div>
-            <label className="text-xs text-dark-muted block mb-1">Entry Fee (pts)</label>
-            <input
-              type="number"
-              min={1}
-              value={tiers[tier].entryPoints}
-              onChange={(e) => setEntry(tier, parseInt(e.target.value) || 1)}
-              className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
-            />
-            <p className="text-[10px] text-dark-muted mt-0.5">
-              ≡ ₹{(tiers[tier].entryPoints / 100).toFixed(0)}
-            </p>
-          </div>
-
-          <div>
-            <label className="text-xs text-dark-muted block mb-2">
-              Stage Rewards (pts) — Stage 1 → 5
-            </label>
-            <div className="grid grid-cols-5 gap-2">
-              {[0, 1, 2, 3, 4].map((idx) => (
-                <div key={idx}>
-                  <label className="text-[10px] text-dark-muted block text-center mb-1">
-                    S{idx + 1}
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={tiers[tier].stageRewards[idx] ?? 0}
-                    onChange={(e) => setReward(tier, idx, parseInt(e.target.value) || 1)}
-                    className="w-full bg-dark-bg border border-dark-border rounded-lg px-1 py-1.5 text-dark-text text-xs text-center focus:outline-none focus:border-neon-green"
-                  />
-                  <p className="text-[9px] text-dark-muted text-center mt-0.5">
-                    ₹{((tiers[tier].stageRewards[idx] ?? 0) / 100).toFixed(0)}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <h2 className="text-base font-black text-white">AI Survival Championship</h2>
+            <p className="text-xs text-dark-muted">Configure entry costs & stage rewards for all 4 tiers</p>
           </div>
         </div>
-      ))}
+        <div className="flex items-center gap-2 mt-3 p-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <span className="text-sm">💡</span>
+          <p className="text-[11px] text-dark-muted"><span className="text-white font-semibold">100 pts = ₹1</span> · Players spend entry points to enter a tier and earn stage rewards for each AI they defeat.</p>
+        </div>
+      </div>
+
+      {(["beginner", "pro", "elite", "boss_arena"] as const).map((tier) => {
+        const color = SURVIVAL_TIER_COLORS[tier];
+        const icon = SURVIVAL_TIER_ICONS[tier];
+        const label = SURVIVAL_TIER_LABELS[tier];
+        const totalReward = (tiers[tier].stageRewards as number[]).reduce((a: number, b: number) => a + b, 0);
+        const netGain = totalReward - tiers[tier].entryPoints;
+
+        return (
+          <div key={tier} className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${color}22`, background: "rgba(13,17,23,0.8)" }}>
+            {/* Tier header bar */}
+            <div className="flex items-center justify-between px-5 py-3.5" style={{ background: `linear-gradient(135deg,${color}12,transparent)`, borderBottom: `1px solid ${color}18` }}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ background: `${color}18`, border: `1px solid ${color}33` }}>
+                  {icon}
+                </div>
+                <div>
+                  <p className="text-sm font-black" style={{ color }}>{label} Tier</p>
+                  <p className="text-[10px] text-dark-muted">Entry · Stage Rewards · Max Payout</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-[10px] text-dark-muted">Max Payout</p>
+                  <p className="text-sm font-black" style={{ color }}>₹{(totalReward / 100).toFixed(0)}</p>
+                </div>
+                <button
+                  onClick={() => resetTier(tier)}
+                  className="text-[10px] px-2.5 py-1 rounded-lg transition-all"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#8b949e", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  ↺ Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* Entry Fee */}
+              <div className="flex items-start gap-4">
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: `${color}aa` }}>
+                    🎟️ Entry Cost (pts)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      value={tiers[tier].entryPoints}
+                      onChange={(e) => setEntry(tier, parseInt(e.target.value) || 1)}
+                      className="flex-1 bg-dark-bg border rounded-xl px-3 py-2.5 text-white text-sm font-bold focus:outline-none transition-all"
+                      style={{ borderColor: `${color}33` }}
+                    />
+                    <div className="text-center px-3 py-2 rounded-xl min-w-[60px]" style={{ background: `${color}10`, border: `1px solid ${color}22` }}>
+                      <p className="text-[10px] text-dark-muted">= Rupees</p>
+                      <p className="text-sm font-black" style={{ color }}>₹{(tiers[tier].entryPoints / 100).toFixed(0)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-center px-4 py-2 rounded-xl" style={{ background: netGain > 0 ? "rgba(0,255,136,0.08)" : "rgba(255,107,107,0.08)", border: `1px solid ${netGain > 0 ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)"}` }}>
+                  <p className="text-[10px] text-dark-muted">Net Gain</p>
+                  <p className="text-sm font-black" style={{ color: netGain > 0 ? "#00ff88" : "#ff6b6b" }}>{netGain > 0 ? "+" : ""}₹{(netGain / 100).toFixed(0)}</p>
+                </div>
+              </div>
+
+              {/* Stage Rewards */}
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider mb-3 block" style={{ color: `${color}aa` }}>
+                  🏅 Stage Rewards — Defeat each AI to earn
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[0, 1, 2, 3, 4].map((idx) => (
+                    <div key={idx} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}15` }}>
+                      <div className="py-1.5 text-center" style={{ background: `${color}0d` }}>
+                        <p className="text-[10px] font-bold" style={{ color: `${color}cc` }}>{STAGE_ICONS[idx]}</p>
+                        <p className="text-[9px] text-dark-muted mt-0.5">{STAGE_NAMES[idx].split(" ")[0]}</p>
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        value={tiers[tier].stageRewards[idx] ?? 0}
+                        onChange={(e) => setReward(tier, idx, parseInt(e.target.value) || 1)}
+                        className="w-full bg-dark-bg px-1 py-2 text-white text-xs text-center font-bold focus:outline-none"
+                        style={{ borderTop: `1px solid ${color}15` }}
+                      />
+                      <div className="py-1 text-center" style={{ background: "rgba(255,255,255,0.02)" }}>
+                        <p className="text-[9px] font-semibold" style={{ color: `${color}99` }}>
+                          ₹{((tiers[tier].stageRewards[idx] ?? 0) / 100).toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
 
       <button
         onClick={saveAll}
         disabled={saving}
-        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-        style={{ background: "rgba(147,51,234,0.8)", color: "white" }}
+        className="w-full py-3.5 rounded-xl font-black text-sm transition-all disabled:opacity-50"
+        style={{ background: "linear-gradient(135deg,rgba(139,92,246,0.9),rgba(16,185,129,0.7))", color: "white", boxShadow: "0 4px 20px rgba(139,92,246,0.3)" }}
       >
-        {saving ? "Saving…" : "Save All Tiers"}
+        {saving ? "Saving Changes…" : "💾 Save Championship Config"}
       </button>
     </div>
   );
@@ -3052,23 +3089,68 @@ function AnalyticsSection() {
 
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
-const NAV: { key: Section; icon: string; label: string }[] = [
-  { key: "overview", icon: "📊", label: "Overview" },
-  { key: "rooms", icon: "🎮", label: "Live Rooms" },
-  { key: "users", icon: "👤", label: "Users" },
-  { key: "leaderboard", icon: "🏆", label: "Leaderboard" },
-  { key: "deposits", icon: "📥", label: "Deposits" },
-  { key: "withdrawals", icon: "💸", label: "Withdrawals" },
-  { key: "wallets", icon: "💰", label: "Wallets" },
-  { key: "tournaments", icon: "⚔️", label: "Tournaments" },
-  { key: "support", icon: "🎧", label: "Support" },
-  { key: "features", icon: "⚙️", label: "Features" },
-  { key: "gameconfig", icon: "🎯", label: "Game Config" },
-  { key: "walletconfig", icon: "💳", label: "Wallet Config" },
-  { key: "survivalconfig", icon: "🏆", label: "Survival Config" },
-  { key: "analytics", icon: "📈", label: "Game Analytics" },
-  { key: "notify", icon: "📢", label: "Notify Users" },
+type NavGroup = {
+  label: string;
+  accent: string;
+  bg: string;
+  items: { key: Section; icon: string; label: string }[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "ARENA",
+    accent: "#f59e0b",
+    bg: "rgba(245,158,11,0.08)",
+    items: [
+      { key: "overview",      icon: "📊", label: "Dashboard" },
+      { key: "rooms",         icon: "🎮", label: "Live Rooms" },
+      { key: "tournaments",   icon: "🤖", label: "AI Championship" },
+      { key: "gameconfig",    icon: "🎯", label: "Game Config" },
+      { key: "survivalconfig",icon: "🛡️", label: "Survival Config" },
+      { key: "analytics",     icon: "📈", label: "Analytics" },
+    ],
+  },
+  {
+    label: "PLAYERS",
+    accent: "#60a5fa",
+    bg: "rgba(96,165,250,0.08)",
+    items: [
+      { key: "users",         icon: "👥", label: "Players" },
+      { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
+      { key: "support",       icon: "🎧", label: "Support" },
+      { key: "notify",        icon: "📢", label: "Notify Players" },
+    ],
+  },
+  {
+    label: "REWARDS",
+    accent: "#a78bfa",
+    bg: "rgba(167,139,250,0.08)",
+    items: [
+      { key: "deposits",      icon: "🎟️", label: "Voucher Queue" },
+      { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
+      { key: "wallets",       icon: "💰", label: "Player Wallets" },
+      { key: "walletconfig",  icon: "⚙️", label: "Reward Config" },
+    ],
+  },
+  {
+    label: "SYSTEM",
+    accent: "#6b7280",
+    bg: "rgba(107,114,128,0.06)",
+    items: [
+      { key: "features",      icon: "🔧", label: "Feature Flags" },
+    ],
+  },
 ];
+
+const NAV_FLAT = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, accent: g.accent })));
+
+function findNavItem(key: Section) {
+  for (const g of NAV_GROUPS) {
+    const item = g.items.find((i) => i.key === key);
+    if (item) return { ...item, group: g };
+  }
+  return null;
+}
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -3136,148 +3218,139 @@ export function AdminPage() {
     );
   }
 
+  const currentNav = findNavItem(section);
+
   return (
-    <div
-      className="min-h-screen bg-dark-bg flex"
-      style={{
-        background: "linear-gradient(135deg, #0a0b0e 0%, #0d0e14 100%)",
-      }}
-    >
+    <div className="min-h-screen flex" style={{ background: "radial-gradient(ellipse 120% 60% at 50% 0%, rgba(20,12,50,1) 0%, rgba(6,6,18,1) 60%)" }}>
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
-      {/* Mobile overlay */}
       <AnimatePresence>
         {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          />
+            className="fixed inset-0 z-40 bg-black/70 lg:hidden" />
         )}
       </AnimatePresence>
 
       <motion.aside
         className={clsx(
-          "fixed top-0 left-0 h-full z-50 lg:relative lg:translate-x-0 flex flex-col w-56 flex-shrink-0",
+          "fixed top-0 left-0 h-full z-50 lg:relative lg:translate-x-0 flex flex-col flex-shrink-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
-        style={{
-          background: "rgba(10,11,14,0.98)",
-          borderRight: "1px solid rgba(255,255,255,0.05)",
-        }}
+        style={{ width: 220, background: "rgba(8,8,20,0.99)", borderRight: "1px solid rgba(255,255,255,0.06)" }}
       >
         {/* Logo */}
-        <div className="p-5 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🔐</span>
-            <div>
-              <p className="font-bold text-white text-sm">Admin Panel</p>
-              <p className="text-[10px] text-dark-muted">7 Cards Show</p>
+        <div className="px-4 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+              style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.4)" }}>
+              ⚔️
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-white text-sm leading-tight">Arena of Sevens</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(99,102,241,0.8)" }}>Admin Panel</p>
             </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => {
-                setSection(item.key);
-                setSidebarOpen(false);
-              }}
-              className={clsx(
-                "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left",
-                section === item.key
-                  ? "bg-purple-500/20 text-purple-300"
-                  : "text-dark-muted hover:text-dark-text hover:bg-white/5",
-              )}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </button>
+        {/* Grouped Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              {/* Group header */}
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] px-2 mb-1.5"
+                style={{ color: group.accent, opacity: 0.7 }}>
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = section === item.key;
+                  return (
+                    <button key={item.key}
+                      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium transition-all text-left relative"
+                      style={active ? {
+                        background: group.bg,
+                        color: group.accent,
+                        borderLeft: `3px solid ${group.accent}`,
+                      } : { color: "rgba(156,163,175,0.7)" }}>
+                      {!active && <span style={{ width: 3 }} />}
+                      <span className="text-sm leading-none">{item.icon}</span>
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </nav>
 
         {/* Bottom */}
-        <div className="p-3 border-t border-white/5 space-y-1">
-          <button
-            onClick={() => navigate("/lobby")}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-dark-muted hover:text-dark-text hover:bg-white/5 transition-all"
-          >
-            🎮 Back to Game
+        <div className="px-2 py-3 space-y-0.5" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => navigate("/lobby")}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] transition-all text-left"
+            style={{ color: "rgba(156,163,175,0.6)" }}>
+            <span className="text-sm">🎮</span>
+            <span>Back to Game</span>
           </button>
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-neon-red/70 hover:text-neon-red hover:bg-neon-red/5 transition-all"
-          >
-            🔓 Logout
+          <button onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] transition-all text-left"
+            style={{ color: "rgba(239,68,68,0.7)" }}>
+            <span className="text-sm">🔓</span>
+            <span>Logout</span>
           </button>
         </div>
       </motion.aside>
 
       {/* ── Main content ────────────────────────────────────────────── */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {/* Mobile header */}
-        <div className="flex items-center gap-3 mb-6 lg:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl bg-dark-surface border border-dark-border"
-          >
-            <svg
-              className="w-4 h-4 text-dark-text"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
+      <main className="flex-1 min-w-0 overflow-y-auto">
+        {/* Top bar */}
+        <div className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4"
+          style={{ background: "rgba(8,8,20,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-xl border transition-colors"
+            style={{ background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.08)" }}>
+            <svg className="w-4 h-4 text-dark-text" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="font-bold text-white">
-            {NAV.find((n) => n.key === section)?.icon}{" "}
-            {NAV.find((n) => n.key === section)?.label}
-          </span>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 min-w-0">
+            {currentNav && (
+              <>
+                <span className="text-[10px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-md"
+                  style={{ background: `${currentNav.group?.bg}`, color: currentNav.group?.accent, border: `1px solid ${currentNav.group?.accent}30` }}>
+                  {currentNav.group?.label}
+                </span>
+                <span className="text-dark-muted text-xs">›</span>
+                <span className="text-sm font-semibold text-white truncate">{currentNav.icon} {currentNav.label}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={section}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-          >
-            {section === "overview" && <OverviewSection />}
-            {section === "rooms" && <RoomsSection />}
-            {section === "users" && <UsersSection />}
-            {section === "leaderboard" && <LeaderboardSection />}
-            {section === "deposits" && <DepositsSection />}
-            {section === "withdrawals" && <WithdrawalsSection />}
-            {section === "wallets" && <WalletsSection />}
-            {section === "tournaments" && <TournamentsSection />}
-            {section === "support" && <SupportSection />}
-            {section === "features" && (
-              <FeaturesSection config={config} onSave={saveConfig} />
-            )}
-            {section === "gameconfig" && (
-              <GameConfigSection config={config} onSave={saveConfig} />
-            )}
-            {section === "walletconfig" && (
-              <WalletConfigSection config={config} onSave={saveConfig} />
-            )}
-            {section === "notify" && <NotifySection />}
-            {section === "survivalconfig" && (
-              <SurvivalConfigSection config={config} onSave={saveConfig} />
-            )}
-            {section === "analytics" && <AnalyticsSection />}
-          </motion.div>
-        </AnimatePresence>
+        <div className="p-4 sm:p-6 lg:p-8">
+          <AnimatePresence mode="wait">
+            <motion.div key={section}
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+              {section === "overview" && <OverviewSection />}
+              {section === "rooms" && <RoomsSection />}
+              {section === "users" && <UsersSection />}
+              {section === "leaderboard" && <LeaderboardSection />}
+              {section === "deposits" && <DepositsSection />}
+              {section === "withdrawals" && <WithdrawalsSection />}
+              {section === "wallets" && <WalletsSection />}
+              {section === "tournaments" && <TournamentsSection />}
+              {section === "support" && <SupportSection />}
+              {section === "features" && <FeaturesSection config={config} onSave={saveConfig} />}
+              {section === "gameconfig" && <GameConfigSection config={config} onSave={saveConfig} />}
+              {section === "walletconfig" && <WalletConfigSection config={config} onSave={saveConfig} />}
+              {section === "notify" && <NotifySection />}
+              {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
+              {section === "analytics" && <AnalyticsSection />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </main>
 
       {/* ── Toast notification ─────────────────────────────────────── */}

@@ -104,36 +104,24 @@ export const XP_REWARDS = {
 
 // 7-day daily reward cycle
 export const DAILY_REWARDS = [
-  { day: 1, points: 50, xp: 20, label: "Welcome Back!", emoji: "👋" },
-  { day: 2, points: 75, xp: 25, label: "2-Day Streak", emoji: "🔥" },
-  { day: 3, points: 150, xp: 40, label: "3-Day Streak!", emoji: "⚡" },
-  { day: 4, points: 100, xp: 30, label: "4-Day Streak", emoji: "💫" },
-  { day: 5, points: 125, xp: 35, label: "5-Day Streak", emoji: "🌟" },
-  { day: 6, points: 200, xp: 50, label: "6-Day Streak!", emoji: "✨" },
-  { day: 7, points: 500, xp: 150, label: "7-Day Champion!", emoji: "🏆" },
+  { day: 1, points: 20,  xp: 20,  label: "Welcome Back!",   emoji: "👋" },
+  { day: 2, points: 30,  xp: 25,  label: "2-Day Streak",    emoji: "🔥" },
+  { day: 3, points: 50,  xp: 40,  label: "3-Day Streak!",   emoji: "⚡" },
+  { day: 4, points: 40,  xp: 30,  label: "4-Day Streak",    emoji: "💫" },
+  { day: 5, points: 50,  xp: 35,  label: "5-Day Streak",    emoji: "🌟" },
+  { day: 6, points: 75,  xp: 50,  label: "6-Day Streak!",   emoji: "✨" },
+  { day: 7, points: 150, xp: 150, label: "7-Day Champion!", emoji: "🏆" },
 ] as const;
 
 // Lucky spin outcomes (weight = relative probability)
 export const LUCKY_OUTCOMES = [
-  {
-    weight: 30,
-    points: 0,
-    xp: 0,
-    label: "Better luck next time!",
-    emoji: "💨",
-  },
-  { weight: 25, points: 50, xp: 10, label: "+50 pts", emoji: "⭐" },
-  { weight: 20, points: 100, xp: 15, label: "+100 pts", emoji: "💫" },
-  { weight: 12, points: 250, xp: 25, label: "+250 pts", emoji: "✨" },
-  { weight: 8, points: 500, xp: 50, label: "+500 pts", emoji: "🌟" },
-  {
-    weight: 4,
-    points: 1000,
-    xp: 100,
-    label: "JACKPOT! +1,000 pts",
-    emoji: "🎰",
-  },
-  { weight: 1, points: 5000, xp: 500, label: "MEGA JACKPOT!", emoji: "💥" },
+  { weight: 30, points: 0,    xp: 0,   label: "Better luck next time!", emoji: "💨" },
+  { weight: 25, points: 20,   xp: 10,  label: "+20 pts",                emoji: "⭐" },
+  { weight: 20, points: 40,   xp: 15,  label: "+40 pts",                emoji: "💫" },
+  { weight: 12, points: 100,  xp: 25,  label: "+100 pts",               emoji: "✨" },
+  { weight: 8,  points: 200,  xp: 50,  label: "+200 pts",               emoji: "🌟" },
+  { weight: 4,  points: 400,  xp: 100, label: "JACKPOT! +400 pts",      emoji: "🎰" },
+  { weight: 1,  points: 1500, xp: 500, label: "MEGA JACKPOT!",          emoji: "💥" },
 ];
 
 export function spinLucky() {
@@ -163,7 +151,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Win your first game",
     emoji: "🩸",
     xpReward: 50,
-    pointsReward: 100,
+    pointsReward: 25,
     rarity: "common",
   },
   {
@@ -172,7 +160,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Win 3 games in a row",
     emoji: "🔥",
     xpReward: 75,
-    pointsReward: 200,
+    pointsReward: 50,
     rarity: "common",
   },
   {
@@ -181,7 +169,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Win 5 games in a row",
     emoji: "🌋",
     xpReward: 150,
-    pointsReward: 500,
+    pointsReward: 100,
     rarity: "rare",
   },
   {
@@ -190,7 +178,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Win 10 games in a row",
     emoji: "⚡",
     xpReward: 500,
-    pointsReward: 2000,
+    pointsReward: 400,
     rarity: "legendary",
   },
   {
@@ -199,7 +187,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Play 10 games",
     emoji: "🎮",
     xpReward: 30,
-    pointsReward: 50,
+    pointsReward: 10,
     rarity: "common",
   },
   {
@@ -208,7 +196,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Play 50 games",
     emoji: "🎖️",
     xpReward: 100,
-    pointsReward: 300,
+    pointsReward: 75,
     rarity: "rare",
   },
   {
@@ -217,7 +205,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Play 100 games",
     emoji: "💯",
     xpReward: 300,
-    pointsReward: 1000,
+    pointsReward: 200,
     rarity: "epic",
   },
   {
@@ -226,7 +214,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Win 50 games total",
     emoji: "🦈",
     xpReward: 200,
-    pointsReward: 500,
+    pointsReward: 100,
     rarity: "epic",
   },
   {
@@ -244,7 +232,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Clear Stage 3 of AI Survival",
     emoji: "⚔️",
     xpReward: 150,
-    pointsReward: 200,
+    pointsReward: 50,
     rarity: "rare",
   },
   {
@@ -262,7 +250,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Defeat the Boss AI in Survival",
     emoji: "💀",
     xpReward: 200,
-    pointsReward: 500,
+    pointsReward: 100,
     rarity: "epic",
   },
   {
@@ -271,7 +259,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Login 7 days in a row",
     emoji: "📅",
     xpReward: 100,
-    pointsReward: 500,
+    pointsReward: 100,
     rarity: "rare",
   },
   {
@@ -280,7 +268,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Login 30 days in a row",
     emoji: "🗓️",
     xpReward: 500,
-    pointsReward: 2000,
+    pointsReward: 400,
     rarity: "legendary",
   },
   {
@@ -289,7 +277,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Reach Silver rank",
     emoji: "🥈",
     xpReward: 100,
-    pointsReward: 300,
+    pointsReward: 50,
     rarity: "common",
   },
   {
@@ -298,7 +286,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Reach Gold rank",
     emoji: "🥇",
     xpReward: 200,
-    pointsReward: 500,
+    pointsReward: 100,
     rarity: "rare",
   },
   {
@@ -307,7 +295,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Reach Platinum rank",
     emoji: "💎",
     xpReward: 400,
-    pointsReward: 1000,
+    pointsReward: 200,
     rarity: "epic",
   },
   {
@@ -316,7 +304,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Reach Diamond rank",
     emoji: "💠",
     xpReward: 800,
-    pointsReward: 2000,
+    pointsReward: 400,
     rarity: "legendary",
   },
   {
@@ -325,7 +313,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Reach Master rank",
     emoji: "👑",
     xpReward: 2000,
-    pointsReward: 5000,
+    pointsReward: 1000,
     rarity: "legendary",
   },
 ];
