@@ -42,6 +42,7 @@ const RoomConfigSchema = new Schema<RoomConfig>({
   allowBots: { type: Boolean, default: true },
   botCount:  { type: Number, default: 0, min: 0, max: 9 },
   entryFee:  { type: Number, default: 0, min: 0, max: 10000 },
+  botPersonality: { type: String, default: 'smart' },
 }, { _id: false });
 
 const RoomSchema = new Schema<IRoom>(

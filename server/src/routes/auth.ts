@@ -102,4 +102,42 @@ router.post('/logout', (_req: Request, res: Response) => {
   res.json({ message: 'Logged out' });
 });
 
+// ── Test Login (development only) ─────────────────────────────────────────────
+// Used by Playwright tests to bypass Google OAuth.
+// NEVER active in production.
+
+if (process.env.NODE_ENV === 'development') {
+  router.post('/test-login', async (req: Request, res: Response) => {
+    try {
+      const username = (req.body as any).username ?? 'PlaywrightUser';
+      const email    = (req.body as any).email    ?? 'playwright@test.local';
+
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = await User.create({
+          username: username.slice(0, 20),
+          email,
+          avatar: 'avatar_1',
+          isGuest: false,
+        });
+      }
+
+      const token = generateToken(user.id);
+      res.json({
+        token,
+        user: {
+          id:       user.id,
+          username: user.username,
+          avatar:   user.avatar,
+          email:    user.email,
+          isGuest:  false,
+        },
+      });
+    } catch (err) {
+      console.error('[Test Login Error]', err);
+      res.status(500).json({ error: 'Test login failed' });
+    }
+  });
+}
+
 export default router;

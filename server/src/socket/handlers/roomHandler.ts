@@ -45,6 +45,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     allowBots?: boolean;
     botCount?: number;
     entryFee?: number;
+    botPersonality?: string;
   }) => {
     try {
       const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
@@ -80,9 +81,12 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         });
       }
 
+      const roomName = String(data.name || `${username}'s Room`).trim();
+      const sanitizedRoomName = roomName.length > 30 ? `${roomName.slice(0, 27)}...` : roomName;
+
       const room = await Room.create({
         code,
-        name: data.name || `${username}'s Room`,
+        name: sanitizedRoomName,
         hostId: userId,
         players: [{
           userId,
@@ -102,6 +106,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           allowBots: data.allowBots ?? true,
           botCount: Math.min(data.botCount ?? 0, 9),
           entryFee,
+          botPersonality: data.botPersonality ?? 'smart',
         },
         paidPlayerIds: entryFee > 0 ? [userId] : [],
       });

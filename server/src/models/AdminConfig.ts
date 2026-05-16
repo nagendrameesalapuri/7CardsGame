@@ -1,10 +1,27 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+interface SurvivalTierCfg {
+  entryPoints: number;
+  stageRewards: number[];
+}
+
 export interface IAdminConfig extends Document {
   featureFlags: {
     spectatorModeEnabled: boolean;
     publicRoomsEnabled: boolean;
     tournamentBannerEnabled: boolean;
+    survivalTiers: {
+      beginner: boolean;
+      pro: boolean;
+      elite: boolean;
+      boss_arena: boolean;
+    };
+  };
+  survivalConfig: {
+    beginner: SurvivalTierCfg;
+    pro: SurvivalTierCfg;
+    elite: SurvivalTierCfg;
+    boss_arena: SurvivalTierCfg;
   };
   gameConfig: {
     minPlayers: number;
@@ -31,6 +48,13 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
       spectatorModeEnabled: { type: Boolean, default: true },
       publicRoomsEnabled: { type: Boolean, default: true },
       tournamentBannerEnabled: { type: Boolean, default: true },
+      survivalEnabled: { type: Boolean, default: true },
+      survivalTiers: {
+        beginner: { type: Boolean, default: true },
+        pro: { type: Boolean, default: true },
+        elite: { type: Boolean, default: true },
+        boss_arena: { type: Boolean, default: true },
+      },
     },
     gameConfig: {
       minPlayers: { type: Number, default: 2, min: 2, max: 10 },
@@ -39,6 +63,27 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
       maxRounds: { type: Number, default: 20, min: 1, max: 50 },
       maxSpectators: { type: Number, default: 10, min: 0, max: 50 },
       maxBots: { type: Number, default: 4, min: 0, max: 9 },
+    },
+    survivalConfig: {
+      beginner: {
+        entryPoints: { type: Number, default: 1000 },
+        stageRewards: { type: [Number], default: [100, 200, 300, 450, 700] },
+      },
+      pro: {
+        entryPoints: { type: Number, default: 2000 },
+        stageRewards: { type: [Number], default: [200, 350, 600, 900, 1500] },
+      },
+      elite: {
+        entryPoints: { type: Number, default: 5000 },
+        stageRewards: { type: [Number], default: [600, 900, 1400, 2200, 3800] },
+      },
+      boss_arena: {
+        entryPoints: { type: Number, default: 10000 },
+        stageRewards: {
+          type: [Number],
+          default: [1200, 1800, 2600, 4200, 7600],
+        },
+      },
     },
     walletConfig: {
       depositEnabled: { type: Boolean, default: true },

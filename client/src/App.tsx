@@ -14,7 +14,8 @@ import { WalletPage } from './pages/WalletPage';
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { AdminPage } from './pages/AdminPage';
 import { SpectatorPage } from './pages/SpectatorPage';
-import { TournamentPage } from './pages/TournamentPage';
+import { SurvivalTournamentPage } from './pages/SurvivalTournamentPage';
+import { ProgressionPage } from './pages/ProgressionPage';
 
 // Handle Google OAuth callback token — runs inside BrowserRouter so useNavigate works
 function AuthCallback() {
@@ -87,7 +88,8 @@ export function App() {
           <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
-          <Route path="/tournament" element={<ProtectedRoute><TournamentPage /></ProtectedRoute>} />
+          <Route path="/survival" element={<ProtectedRoute><SurvivalTournamentPage /></ProtectedRoute>} />
+          <Route path="/progression" element={<ProtectedRoute><ProgressionPage /></ProtectedRoute>} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

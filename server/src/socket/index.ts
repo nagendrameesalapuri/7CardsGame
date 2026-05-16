@@ -6,7 +6,9 @@ import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './ha
 import { registerChatHandlers } from './handlers/chatHandler';
 import { registerVoiceHandlers } from './handlers/voiceHandler';
 import { registerSpectatorHandlers } from './handlers/spectatorHandler';
-import { registerTournamentHandlers } from './handlers/tournamentHandler';
+import { registerSurvivalHandlers } from './handlers/survivalHandler';
+import { PlayerProgress } from '../models/PlayerProgress';
+import { computeAndCacheBadge, getBadge } from '../utils/badgeCache';
 
 // In-memory set of online user IDs
 const onlineUsers = new Map<string, string>(); // userId → socketId
@@ -71,6 +73,14 @@ export function initSocketIO(io: Server) {
     // Track online users (skip spectator virtual IDs)
     if (!isSpectator) {
       onlineUsers.set(uid, socket.id);
+      // Join personal room so progression events reach this user
+      socket.join(`user:${uid}`);
+      // Prime the badge cache for this user
+      PlayerProgress.findOne({ userId: uid })
+        .then(p => { if (p) computeAndCacheBadge(uid, p.achievements.map(a => a.id)); })
+        .catch(() => {});
+      // Record last seen on connect
+      User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
     }
 
     registerRoomHandlers(io, socket);
@@ -78,7 +88,7 @@ export function initSocketIO(io: Server) {
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
     registerSpectatorHandlers(io, socket);
-    registerTournamentHandlers(io, socket);
+    registerSurvivalHandlers(io, socket);
 
     // Notify client if they have an active game they can resume
     if (!isSpectator) {
@@ -118,6 +128,8 @@ export function initSocketIO(io: Server) {
 
       if (!isSpectator) {
         onlineUsers.delete(uid);
+        // Record last seen on disconnect so "last seen" is accurate
+        User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
       }
 
       const game = getActiveGame(socket.data.roomCode);
@@ -147,6 +159,7 @@ function buildClientStateForSocket(state: any, userId: string) {
       handCount: p.handCount, totalScore: p.totalScore, roundScore: p.roundScore,
       isConnected: p.isConnected, isEliminated: p.isEliminated,
       seatIndex: p.seatIndex, isBot: p.isBot,
+      badge: p.isBot ? undefined : getBadge(p.userId),
     })),
     deckCount: state.deck?.length ?? 0,
     myHand: myPlayer?.hand ?? [],

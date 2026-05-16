@@ -89,6 +89,7 @@ export const socketRoom = {
     allowBots?: boolean;
     botCount?: number;
     entryFee?: number;
+    botPersonality?: string;
   }) => getSocket().emit('room:create', data),
 
   join: (code: string) => getSocket().emit('room:join', code),
@@ -123,6 +124,15 @@ export const socketTournament = {
   start:  (entryFee: number) => getSocket().emit('tournament:start', { entryFee }),
   status: ()                 => getSocket().emit('tournament:status'),
   cancel: ()                 => getSocket().emit('tournament:cancel'),
+};
+
+// ── Survival Championship events ──────────────────────────────────────────────
+
+export const socketSurvival = {
+  start:    (tier: string) => getSocket().emit('survival:start', { tier }),
+  status:   ()             => getSocket().emit('survival:status'),
+  continue: ()             => getSocket().emit('survival:continue'),
+  abandon:  ()             => getSocket().emit('survival:abandon'),
 };
 
 // ── Event listener helpers (typed) ───────────────────────────────────────────
@@ -163,6 +173,14 @@ type EventMap = {
   'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
   'tournament:cancelled':     { refunded: boolean; amount: number };
   'tournament:error':         string;
+  // Survival Championship
+  'survival:started':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; roomCode: string; botName: string; personality: string };
+  'survival:resumed':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; totalPointsEarned: number; stageResults: any[]; currentRoomCode: string | null };
+  'survival:stage_result':    { stage: number; totalStages: number; personality: string; botName: string; playerWon: boolean; isDraw: boolean; playerScore: number; botScore: number; pointsEarned: number; stageResults: any[]; tournamentOver: boolean; won?: boolean; totalPointsEarned?: number; nextStage?: number; nextRoomCode?: string; nextBotName?: string; nextPersonality?: string; newWalletBalance?: number };
+  'survival:status_result':   any;
+  'survival:abandoned':       { totalPointsEarned: number; refunded?: boolean; refundAmount?: number; forcedByAdmin?: boolean };
+  'survival:error':           string;
+  'progression:update':       { xpGained: number; multiplier: number; newXp: number; newLevel: number; newRank: string; leveled: boolean; rankedUp: boolean; winStreak: number; xpProgress: number; xpNeeded: number; newAchievements?: any[] };
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };

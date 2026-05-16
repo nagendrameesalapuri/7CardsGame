@@ -21,7 +21,7 @@ function BellPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => { markAllRead(); }, [markAllRead]);
 
   const typeColor: Record<string, string> = {
-    success: '#00ff88',
+    success: '#22c55e',
     warning: '#fbbf24',
     info: '#60a5fa',
   };
@@ -30,12 +30,12 @@ function BellPanel({ onClose }: { onClose: () => void }) {
     <div
       ref={ref}
       className="absolute right-0 top-10 w-80 rounded-2xl shadow-2xl z-50 overflow-hidden"
-      style={{ background: 'rgba(12,14,18,0.98)', border: '1px solid rgba(255,255,255,0.08)' }}
+      style={{ background: 'rgba(8,10,20,0.98)', border: '1px solid rgba(255,255,255,0.09)' }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-        <span className="text-sm font-bold text-dark-text">Notifications</span>
+        <span className="text-sm font-bold text-white">Notifications</span>
         {notifications.length > 0 && (
-          <button onClick={clearAll} className="text-[10px] text-dark-muted hover:text-neon-red transition-colors">
+          <button onClick={clearAll} className="text-[10px] text-dark-muted hover:text-red-400 transition-colors">
             Clear all
           </button>
         )}
@@ -49,7 +49,7 @@ function BellPanel({ onClose }: { onClose: () => void }) {
               <div className="flex items-start gap-2">
                 <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: typeColor[n.type] ?? '#60a5fa', marginTop: 6 }} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-dark-text">{n.title}</p>
+                  <p className="text-xs font-semibold text-white">{n.title}</p>
                   <p className="text-[11px] text-dark-muted mt-0.5 leading-relaxed">{n.message}</p>
                   <p className="text-[10px] text-dark-muted/60 mt-1">
                     {new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -71,7 +71,6 @@ export function Header() {
   const { unreadCount, addNotification } = useNotificationStore();
   const [bellOpen, setBellOpen] = useState(false);
 
-  // Listen for admin push notifications on the socket
   useEffect(() => {
     if (!isAuthenticated) return;
     try {
@@ -82,9 +81,9 @@ export function Header() {
   }, [isAuthenticated, addNotification]);
 
   const navItems = [
-    { to: '/lobby',       label: 'Play',    icon: '🎮' },
+    { to: '/lobby',       label: 'Play',    icon: '⚔️' },
     { to: '/leaderboard', label: 'Board',   icon: '🏆' },
-    { to: '/wallet',      label: 'Wallet',  icon: '💰' },
+    { to: '/wallet',      label: 'Rewards', icon: '🎁' },
     { to: '/profile',     label: 'Profile', icon: '👤' },
   ];
 
@@ -94,22 +93,27 @@ export function Header() {
       <header className="bg-dark-surface/90 backdrop-blur-md border-b border-dark-border sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 font-bold text-xl text-dark-text hover:text-neon-green transition-colors">
-            <span className="text-2xl">🃏</span>
-            <span className="font-game">7 Cards Show</span>
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg"
+              style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))', border: '1px solid rgba(99,102,241,0.4)' }}>
+              ⚔️
+            </div>
+            <div className="leading-tight">
+              <span className="font-black text-base text-white tracking-tight">Arena of Sevens</span>
+              <span className="hidden sm:block text-[9px] text-dark-muted tracking-widest uppercase font-semibold" style={{ color: 'rgba(99,102,241,0.8)' }}>Master the SHOW</span>
+            </div>
           </Link>
 
           {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-6 text-sm text-dark-muted">
-            <Link to="/lobby" className="hover:text-dark-text transition-colors">Play</Link>
-            <Link to="/leaderboard" className="hover:text-dark-text transition-colors">Leaderboard</Link>
-            <Link to="/wallet" className="hover:text-dark-text transition-colors">Wallet</Link>
-            <Link to="/profile" className="hover:text-dark-text transition-colors">Profile</Link>
+            <Link to="/lobby"       className="hover:text-white transition-colors">Play</Link>
+            <Link to="/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>
+            <Link to="/wallet"      className="hover:text-white transition-colors">Rewards</Link>
+            <Link to="/profile"     className="hover:text-white transition-colors">Profile</Link>
           </nav>
 
           {/* Right: bell + theme + user */}
           <div className="flex items-center gap-3">
-            {/* Notification bell — only for authenticated users */}
             {isAuthenticated && (
               <div className="relative">
                 <button
@@ -142,7 +146,7 @@ export function Header() {
                 </button>
                 <button
                   onClick={logout}
-                  className="text-xs text-dark-muted hover:text-neon-red transition-colors px-2 py-1 rounded"
+                  className="text-xs text-dark-muted hover:text-red-400 transition-colors px-2 py-1 rounded"
                 >
                   Logout
                 </button>
@@ -159,7 +163,7 @@ export function Header() {
         </div>
       </header>
 
-      {/* Mobile bottom nav — only shown when authenticated */}
+      {/* Mobile bottom nav */}
       {isAuthenticated && (
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-20 bg-dark-surface/95 backdrop-blur-md border-t border-dark-border">
           <div className="flex items-center justify-around h-14">
