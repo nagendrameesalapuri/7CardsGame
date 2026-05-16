@@ -89,6 +89,7 @@ export const socketRoom = {
     allowBots?: boolean;
     botCount?: number;
     entryFee?: number;
+    botPersonality?: string;
   }) => getSocket().emit('room:create', data),
 
   join: (code: string) => getSocket().emit('room:join', code),

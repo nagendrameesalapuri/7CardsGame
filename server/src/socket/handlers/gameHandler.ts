@@ -300,6 +300,10 @@ export async function startRoomGame(
   await initGameDifficultyBoost(gameState);
   roomToGame.set(room.code, gameState.id);
 
+  // Apply bot personality from room config
+  const personality = (room.config as any).botPersonality ?? "smart";
+  setBotPersonality(gameState.id, personality);
+
   room.status = "playing";
   room.gameId = gameState.id;
   await room.save();
@@ -413,6 +417,10 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       gameDifficultyBoost.set(gameState.id, 0);
       await initGameDifficultyBoost(gameState);
       roomToGame.set(room.code, gameState.id);
+
+      // Apply bot personality from room config
+      const roomPersonality = (room.config as any).botPersonality ?? "smart";
+      setBotPersonality(gameState.id, roomPersonality);
 
       room.status = "playing";
       room.gameId = gameState.id;
@@ -1248,6 +1256,7 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
   const delay = BotPlayer.getThinkDelay(
     personality,
     gameDifficultyBoost.get(state.id) ?? 0,
+    current.id,
   );
 
   setTimeout(() => {
@@ -1263,6 +1272,7 @@ function scheduleBotTurnIfNeeded(io: Server, state: GameState) {
 function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
   const personality = gameBotPersonality.get(state.id) ?? "smart";
   const boost = gameDifficultyBoost.get(state.id) ?? 0;
+  const opponents = buildOpponentProfiles(state);
 
   // Safe fallback when any primary bot action fails: draw from deck, then discard worst card
   if (!state.hasDrawnThisTurn) {
@@ -1276,24 +1286,15 @@ function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
         const s2 = activeGames.get(state.id);
         if (!s2) return;
         const discardIds = BotPlayer.decideDiscard(
-          s2,
-          botPlayerId,
-          personality,
-          boost,
+          s2, botPlayerId, personality, boost, buildOpponentProfiles(s2),
         );
-        const discardResult = GameEngine.processDiscard(
-          s2,
-          botPlayerId,
-          discardIds,
-        );
+        const discardResult = GameEngine.processDiscard(s2, botPlayerId, discardIds);
         if (discardResult.success) applyBotResult(io, discardResult);
         else {
           // Last resort: discard the first card in hand
           const bot2 = s2.players.find((p) => p.id === botPlayerId);
           if (bot2?.hand[0]) {
-            const lastResort = GameEngine.processDiscard(s2, botPlayerId, [
-              bot2.hand[0].id,
-            ]);
+            const lastResort = GameEngine.processDiscard(s2, botPlayerId, [bot2.hand[0].id]);
             if (lastResort.success) applyBotResult(io, lastResort);
           }
         }
@@ -1302,24 +1303,15 @@ function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
   } else {
     // Already drew — just discard worst card
     const discardIds = BotPlayer.decideDiscard(
-      state,
-      botPlayerId,
-      personality,
-      boost,
+      state, botPlayerId, personality, boost, opponents,
     );
-    const discardResult = GameEngine.processDiscard(
-      state,
-      botPlayerId,
-      discardIds,
-    );
+    const discardResult = GameEngine.processDiscard(state, botPlayerId, discardIds);
     if (discardResult.success) {
       applyBotResult(io, discardResult);
     } else {
       const bot = state.players.find((p) => p.id === botPlayerId);
       if (bot?.hand[0]) {
-        const lastResort = GameEngine.processDiscard(state, botPlayerId, [
-          bot.hand[0].id,
-        ]);
+        const lastResort = GameEngine.processDiscard(state, botPlayerId, [bot.hand[0].id]);
         if (lastResort.success) applyBotResult(io, lastResort);
       }
     }
@@ -1329,15 +1321,14 @@ function botFallbackAction(io: Server, state: GameState, botPlayerId: string) {
 function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
   const personality = gameBotPersonality.get(state.id) ?? "smart";
   const boost = gameDifficultyBoost.get(state.id) ?? 0;
-  const decision = BotPlayer.decide(state, botPlayerId, personality, boost);
+  const opponents = buildOpponentProfiles(state);
+  const decision = BotPlayer.decide(state, botPlayerId, personality, boost, opponents);
   let result: ReturnType<typeof GameEngine.processDrawCard> | null = null;
 
   switch (decision.action) {
     case "draw":
       result = GameEngine.processDrawCard(
-        state,
-        botPlayerId,
-        decision.source ?? "deck",
+        state, botPlayerId, decision.source ?? "deck",
       );
       // Fallback to deck if discard-pile draw fails
       if (!result.success && decision.source === "discard") {
@@ -1348,11 +1339,7 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       if (!state.hasDrawnThisTurn) {
         // Try as a cut first (discard without drawing — valid when cards match top of discard)
         if (decision.cardIds?.length) {
-          const cutAttempt = GameEngine.processDiscard(
-            state,
-            botPlayerId,
-            decision.cardIds,
-          );
+          const cutAttempt = GameEngine.processDiscard(state, botPlayerId, decision.cardIds);
           if (cutAttempt.success) {
             result = cutAttempt;
             break;
@@ -1360,9 +1347,8 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
         }
         // Not a valid cut — draw first, then discard
         const drawResult = GameEngine.processDrawCard(
-          state,
-          botPlayerId,
-          BotPlayer.decideDrawSource(state, botPlayerId, boost),
+          state, botPlayerId,
+          BotPlayer.decideDrawSource(state, botPlayerId, boost, opponents),
         );
         if (drawResult.success) {
           activeGames.set(drawResult.state.id, drawResult.state);
@@ -1373,16 +1359,9 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
             const s2 = activeGames.get(state.id);
             if (!s2) return;
             const discardIds = BotPlayer.decideDiscard(
-              s2,
-              botPlayerId,
-              personality,
-              boost,
+              s2, botPlayerId, personality, boost, buildOpponentProfiles(s2),
             );
-            const discardResult = GameEngine.processDiscard(
-              s2,
-              botPlayerId,
-              discardIds,
-            );
+            const discardResult = GameEngine.processDiscard(s2, botPlayerId, discardIds);
             if (discardResult.success) applyBotResult(io, discardResult);
             else botFallbackAction(io, s2, botPlayerId);
           }, 800);
@@ -1394,7 +1373,7 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       } else {
         const discardIds =
           decision.cardIds ??
-          BotPlayer.decideDiscard(state, botPlayerId, personality, boost);
+          BotPlayer.decideDiscard(state, botPlayerId, personality, boost, opponents);
         result = GameEngine.processDiscard(state, botPlayerId, discardIds);
       }
       break;

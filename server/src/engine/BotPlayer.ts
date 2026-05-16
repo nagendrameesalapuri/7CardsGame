@@ -161,7 +161,7 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
     attackAllAt: 2,
     attackOneAt: 5,
     skipAt: 4,
-    randomPlayChance: 0.04, // 4% anti-determinism — picks between near-optimal lines
+    randomPlayChance: 0.04, // ~1.2% effective sub-optimal rate (4% trigger × 30% chance to deviate)
     alwaysAttack: false,
     comboPreservation: 0.55,
     pressureBias: 0.62,
@@ -197,6 +197,16 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
 const SHOW_CONFIDENCE_MIN = 0.28;
 const SHOW_CONFIDENCE_MAX = 0.92;
 const DISCARD_SAVE_THRESHOLD = 1;
+
+// Per-personality maximum hand total at which SHOW is ever considered.
+// Hard ceiling — confidence logic runs within this range.
+const SHOW_HARD_MAX: Record<BotPersonality, number> = {
+  safe:       5,
+  aggressive: 7,
+  bluff:      9,
+  smart:      6,
+  boss:       5,
+};
 
 // Low-value cards that are extremely useful to opponents if discarded
 const DENIAL_PRIORITY_RANKS = new Set(["A", "2", "3"]);
@@ -905,9 +915,8 @@ export class BotPlayer {
     const topDiscard = state.discardPile[state.discardPile.length - 1];
     if (!topDiscard) return "deck";
 
-    // Never take 7/J/Joker from discard — they're more valuable as unknowns
+    // Never take real 7s or Jacks from discard — they're tempo weapons best kept unknown
     if (!topDiscard.isJoker && (topDiscard.rank === "7" || topDiscard.rank === "J")) return "deck";
-    if (topDiscard.rank === "Joker") return "deck";
 
     const discardValue = DeckManager.getCardValue(topDiscard);
     const hand = bot.hand;
@@ -1033,7 +1042,7 @@ export class BotPlayer {
       }
     }
 
-    // ── 4. IMMEDIATE SHOW if discard drops us to ≤5 ──────────────────────────
+    // ── 4b. IMMEDIATE SHOW if discard drops us to ≤5 ─────────────────────────
     if (normalBestScore <= 5 && normalBest.length > 0) {
       return normalBest.map((c) => c.id);
     }
@@ -1175,7 +1184,7 @@ export class BotPlayer {
     const boost = BotPlayer.normalizeBoost(difficultyBoost);
 
     if (total <= 5) return true;
-    if (total >= 9) return false;
+    if (total > SHOW_HARD_MAX[personality]) return false;
 
     const confidence = BotPlayer.estimateShowConfidence(
       state, botPlayerId, personality, boost, opponents,
@@ -1255,10 +1264,13 @@ export class BotPlayer {
     }
 
     // ── SHOW check (before drawing) ──────────────────────────────────────────
+    // Always use the base personality for show thresholds — effectivePersonality
+    // is for discard/draw tactics only. Boss in "defensive" mode should still
+    // show at its own threshold (≤5), not inherit "safe" config.
     if (
       !state.hasDrawnThisTurn &&
       BotPlayer.shouldCallShow(
-        state, botPlayerId, effectivePersonality, difficultyBoost, opponents,
+        state, botPlayerId, personality, difficultyBoost, opponents,
       )
     ) {
       return { action: "show" };
