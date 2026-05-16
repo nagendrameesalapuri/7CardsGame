@@ -159,13 +159,8 @@ export function GameBoard() {
           currentPlayerName={currentPlayer?.username ?? ''}
         />
 
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <VoiceChat />
-          <ChatPanel
-            messages={game.chatMessages}
-            playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
-          />
-        </div>
+        {/* Spacer keeps timer centered */}
+        <div className="flex-shrink-0 w-[72px]" />
       </div>
 
       {/* ── Mobile mini-scores bar ── */}
@@ -226,14 +221,14 @@ export function GameBoard() {
         </div>
 
         {/* Player hand area */}
-        <div className="w-full flex flex-col gap-2">
+        <div className="w-full flex flex-col gap-1.5">
           {/* Mobile action bar */}
           <div className="sm:hidden w-full px-1">
             <ActionButtons hand={myHand} isMyTurn={isMyTurn} hasDrawnThisTurn={game.hasDrawnThisTurn} underAttack={underAttack} />
           </div>
 
           {/* Hand container — premium glass panel */}
-          <div className="w-full rounded-2xl p-2 sm:p-4 relative overflow-hidden"
+          <div className="w-full rounded-2xl p-2 sm:p-3 relative overflow-hidden"
             style={{
               background: isMyTurn ? 'rgba(5,18,10,0.88)' : 'rgba(5,5,18,0.85)',
               backdropFilter: 'blur(28px)',
@@ -250,18 +245,6 @@ export function GameBoard() {
                   ? 'linear-gradient(90deg,transparent,rgba(34,197,94,0.7),transparent)'
                   : 'linear-gradient(90deg,transparent,rgba(99,102,241,0.3),transparent)',
               }} />
-            {/* Hand total badge */}
-            <div className="absolute top-2 right-3">
-              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
-                style={{
-                  background: handTotal > 80 ? 'rgba(239,68,68,0.18)' : handTotal > 50 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
-                  color: handTotal > 80 ? '#f87171' : handTotal > 50 ? '#fbbf24' : '#4ade80',
-                  border: `1px solid ${handTotal > 80 ? 'rgba(239,68,68,0.35)' : handTotal > 50 ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)'}`,
-                  boxShadow: handTotal <= 5 ? '0 0 10px rgba(34,197,94,0.3)' : undefined,
-                }}>
-                Hand: {handTotal} pts
-              </span>
-            </div>
             <PlayerHand
               hand={myHand}
               isMyTurn={isMyTurn}
@@ -269,6 +252,49 @@ export function GameBoard() {
               underAttack={underAttack}
               handTotal={handTotal}
             />
+          </div>
+
+          {/* ── Bottom control bar: mic+chat left · hand badge right ── */}
+          <div className="flex items-center justify-between px-1 pb-safe">
+            {/* Mic + Chat circular buttons */}
+            <div className="flex items-center gap-2">
+              <VoiceChat size="lg" />
+              <ChatPanel
+                size="lg"
+                messages={game.chatMessages}
+                playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
+              />
+            </div>
+
+            {/* Hand total pill */}
+            <div className="flex items-center gap-2">
+              {handTotal <= 5 && (
+                <motion.span
+                  animate={{ opacity: [1, 0.5, 1] }}
+                  transition={{ repeat: Infinity, duration: 0.8 }}
+                  className="text-[10px] font-black px-2 py-1 rounded-full"
+                  style={{
+                    background: isMyTurn ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)',
+                    color: '#4ade80',
+                    border: '1px solid rgba(34,197,94,0.4)',
+                  }}
+                >
+                  {isMyTurn ? '✓ SHOW now!' : '✓ Ready to SHOW'}
+                </motion.span>
+              )}
+              <span
+                className="text-[11px] font-black px-3 py-1.5 rounded-full"
+                style={{
+                  background: handTotal > 80 ? 'rgba(239,68,68,0.18)' : handTotal > 50 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
+                  color: handTotal > 80 ? '#f87171' : handTotal > 50 ? '#fbbf24' : '#4ade80',
+                  border: `1px solid ${handTotal > 80 ? 'rgba(239,68,68,0.35)' : handTotal > 50 ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)'}`,
+                  boxShadow: handTotal <= 5 ? '0 0 10px rgba(34,197,94,0.3)' : undefined,
+                  backdropFilter: 'blur(12px)',
+                }}
+              >
+                Hand: {handTotal} pts
+              </span>
+            </div>
           </div>
 
           {/* SHOW button */}
