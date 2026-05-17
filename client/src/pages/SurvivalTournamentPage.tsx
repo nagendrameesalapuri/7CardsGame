@@ -342,6 +342,82 @@ function StageTracker({ currentStage, stageResults }: { currentStage: number; st
   );
 }
 
+function TiebreakerOverlay() {
+  const { tiebreakerResult, playTiebreaker } = useSurvivalStore();
+  const { reset: resetGame } = useGameStore();
+
+  if (!tiebreakerResult) return null;
+
+  const { stage, stageName, botNames, playerScore, botScore, scoreboard } = tiebreakerResult;
+  const stageInfo = STAGES.find(s => s.stage === stage)!;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(16px)' }}>
+      <motion.div
+        initial={{ scale: 0.75, opacity: 0, y: 40 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: '1px solid rgba(251,191,36,0.35)' }}>
+
+        {/* Hero */}
+        <div className="pt-8 pb-4 px-6 text-center relative"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.15) 0%, transparent 70%)' }}>
+          <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: 4, duration: 0.45 }} className="text-5xl mb-3">
+            ⚡
+          </motion.div>
+          <h2 className="text-2xl font-black text-white">It's a Tie!</h2>
+          <p className="text-sm mt-1 font-semibold" style={{ color: stageInfo.color }}>
+            {stageInfo.emojis[0]} Stage {stage}: {stageName}
+          </p>
+          <p className="text-xs mt-2" style={{ color: 'rgba(148,163,184,0.7)' }}>
+            One tiebreaker round — lowest score wins
+          </p>
+        </div>
+
+        {/* Score display */}
+        <div className="mx-5 mb-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="py-1.5 px-4 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold">Match Scores · Tied</p>
+          </div>
+          {(scoreboard ?? [
+            { name: 'You', score: playerScore, isHuman: true },
+            { name: botNames?.[0] ?? 'Bot', score: botScore, isHuman: false },
+          ]).map((entry, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined }}>
+              <span className="text-xs font-semibold" style={{ color: entry.isHuman ? '#fbbf24' : '#8b949e' }}>
+                {entry.isHuman ? '👤 ' : '🤖 '}{entry.name}
+              </span>
+              <span className="text-sm font-black" style={{ color: '#fbbf24' }}>{entry.score} pts</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Warning */}
+        <div className="mx-5 mb-4 rounded-xl px-4 py-2.5"
+          style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <p className="text-[11px] text-center" style={{ color: 'rgba(239,68,68,0.8)' }}>
+            ⚠️ If you tie again in the tiebreaker, you'll be eliminated
+          </p>
+        </div>
+
+        {/* CTA */}
+        <div className="px-5 pb-6">
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={() => { resetGame(); playTiebreaker(); }}
+            className="w-full py-3.5 rounded-2xl font-bold text-base"
+            style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0d1117' }}>
+            ⚡ Play Tiebreaker Round
+          </motion.button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function StageResultOverlay() {
   const { stageResult, clearStageResult, continueToNextStage, reset } = useSurvivalStore();
   const { reset: resetGame } = useGameStore();
@@ -726,7 +802,7 @@ function SurvivalHistoryTab() {
 export function SurvivalTournamentPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
-  const { subscribe, active, currentStage, stageResults, stageResult, totalPointsEarned } = useSurvivalStore();
+  const { subscribe, active, currentStage, stageResults, stageResult, tiebreakerResult, totalPointsEarned } = useSurvivalStore();
   const { subscribeToEvents } = useGameStore();
   const [balance, setBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
@@ -806,6 +882,9 @@ export function SurvivalTournamentPage() {
 
   return (
     <Layout>
+      {/* Tiebreaker overlay (shown when match is tied) */}
+      <AnimatePresence>{tiebreakerResult && <TiebreakerOverlay />}</AnimatePresence>
+
       {/* Stage result overlay (shown after each match) */}
       <AnimatePresence>{stageResult && <StageResultOverlay />}</AnimatePresence>
 
@@ -991,6 +1070,7 @@ export function SurvivalTournamentPage() {
                   <li>• Fight 5 AI opponents, each progressively harder</li>
                   <li>• Win a stage → points credited immediately to wallet</li>
                   <li>• Lose any stage → eliminated, tournament ends</li>
+                  <li>• <strong className="text-yellow-400">Tie</strong> → one tiebreaker round added; tie again = eliminated</li>
                   <li>• Defeat Boss AI → become Champion, earn maximum reward</li>
                   <li>• <strong className="text-yellow-400">1 Rupee = {POINTS_PER_RUPEE} Points</strong> — rewards auto-convert to wallet</li>
                   <li>• 🔄 If you disconnect, resume from this page anytime</li>

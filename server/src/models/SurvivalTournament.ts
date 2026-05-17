@@ -63,6 +63,7 @@ export interface ISurvivalTournament extends Document {
   totalPointsEarned: number;
   roundsPlayed: number;
   currentRoomCode: string | null;
+  tiebreakerPending: boolean;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -97,6 +98,7 @@ const SurvivalTournamentSchema = new Schema<ISurvivalTournament>(
     totalPointsEarned: { type: Number, default: 0 },
     roundsPlayed: { type: Number, default: 0 },
     currentRoomCode: { type: String, default: null },
+    tiebreakerPending: { type: Boolean, default: false },
     completedAt: { type: Date },
   },
   { timestamps: true },

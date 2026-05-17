@@ -90,16 +90,23 @@ export function TurnTimer({ turnStartTime, turnTimeLimit, isMyTurn, currentPlaye
         )}
       </div>
 
-      {/* Mobile "YOU" pulse */}
-      {isMyTurn && (
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ repeat: Infinity, duration: 0.7 }}
-          className="sm:hidden text-[10px] font-black leading-none"
-          style={{ color: ringColor }}>
-          YOU
-        </motion.span>
-      )}
+      {/* Mobile label */}
+      <div className="sm:hidden flex flex-col items-start gap-0.5 min-w-0">
+        {isMyTurn ? (
+          <motion.span
+            animate={{ opacity: isCritical ? [1, 0.3, 1] : [1, 0.5, 1] }}
+            transition={{ repeat: Infinity, duration: isCritical ? 0.5 : 0.9 }}
+            className="text-[11px] font-black leading-none whitespace-nowrap"
+            style={{ color: ringColor }}>
+            {isCritical ? '⚡ Hurry!' : '🎯 YOUR TURN'}
+          </motion.span>
+        ) : (
+          <span className="text-[10px] font-semibold leading-none truncate max-w-[72px]"
+            style={{ color: 'rgba(226,232,240,0.7)' }}>
+            {currentPlayerName.length > 9 ? currentPlayerName.slice(0, 8) + '…' : currentPlayerName}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

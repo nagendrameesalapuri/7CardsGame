@@ -28,6 +28,7 @@ export interface SurvivalStageResult {
   personalities: string[];
   playerWon: boolean;
   isDraw: boolean;
+  eliminatedByDraw?: boolean;
   playerScore: number;
   botScore: number;
   botScores: number[];
@@ -46,6 +47,19 @@ export interface SurvivalStageResult {
   newWalletBalance?: number;
 }
 
+export interface SurvivalTiebreakerResult {
+  stage: number;
+  stageName: string;
+  stageDesc?: string;
+  botNames: string[];
+  personalities: string[];
+  playerScore: number;
+  botScore: number;
+  botScores: number[];
+  scoreboard: ScoreboardEntry[];
+  stageResults: StageResult[];
+}
+
 interface SurvivalStore {
   active: boolean;
   survivalId: string | null;
@@ -56,10 +70,13 @@ interface SurvivalStore {
   totalPointsEarned: number;
   stageResults: StageResult[];
   stageResult: SurvivalStageResult | null;
+  tiebreakerResult: SurvivalTiebreakerResult | null;
 
   subscribe: () => () => void;
   clearStageResult: () => void;
+  clearTiebreakerResult: () => void;
   continueToNextStage: () => void;
+  playTiebreaker: () => void;
   reset: () => void;
 }
 
@@ -73,6 +90,7 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
   totalPointsEarned: 0,
   stageResults: [],
   stageResult: null,
+  tiebreakerResult: null,
 
   subscribe: () => {
     const unsubs: Array<() => void> = [];
@@ -107,16 +125,22 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
 
     unsubs.push(on('survival:stage_result', (result: any) => {
       set(s => ({
-        currentStage:     result.nextStage ?? s.currentStage,
-        stageResults:     result.stageResults,
+        currentStage:      result.nextStage ?? s.currentStage,
+        stageResults:      result.stageResults,
         totalPointsEarned: result.totalPointsEarned ?? s.totalPointsEarned,
-        stageResult:      result,
-        active:           !result.tournamentOver,
+        stageResult:       result,
+        tiebreakerResult:  null,
+        active:            !result.tournamentOver,
       }));
 
       if (result.tournamentOver && result.won) {
         notify.success(`Champion! You defeated all 5 bots! +${result.totalPointsEarned} pts earned!`, { duration: 6000 });
       }
+    }));
+
+    unsubs.push(on('survival:tiebreaker', (result: any) => {
+      set({ tiebreakerResult: result, stageResult: null });
+      notify.error('It\'s a Tie! One tiebreaker round added — win it to advance!', { duration: 4000 });
     }));
 
     unsubs.push(on('survival:error', (msg: any) => notify.error(msg)));
@@ -137,8 +161,15 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
 
   clearStageResult: () => set({ stageResult: null }),
 
+  clearTiebreakerResult: () => set({ tiebreakerResult: null }),
+
   continueToNextStage: () => {
     set({ stageResult: null });
+    socketSurvival.continue();
+  },
+
+  playTiebreaker: () => {
+    set({ tiebreakerResult: null });
     socketSurvival.continue();
   },
 
@@ -152,5 +183,6 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
     totalPointsEarned: 0,
     stageResults: [],
     stageResult: null,
+    tiebreakerResult: null,
   }),
 }));

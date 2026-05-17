@@ -177,6 +177,7 @@ type EventMap = {
   'survival:started':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; roomCode: string; botName: string; personality: string };
   'survival:resumed':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; totalPointsEarned: number; stageResults: any[]; currentRoomCode: string | null };
   'survival:stage_result':    { stage: number; totalStages: number; personality: string; botName: string; playerWon: boolean; isDraw: boolean; playerScore: number; botScore: number; pointsEarned: number; stageResults: any[]; tournamentOver: boolean; won?: boolean; totalPointsEarned?: number; nextStage?: number; nextRoomCode?: string; nextBotName?: string; nextPersonality?: string; newWalletBalance?: number };
+  'survival:tiebreaker':      { stage: number; stageName: string; stageDesc?: string; botNames: string[]; personalities: string[]; playerScore: number; botScore: number; botScores: number[]; scoreboard: any[]; stageResults: any[] };
   'survival:status_result':   any;
   'survival:abandoned':       { totalPointsEarned: number; refunded?: boolean; refundAmount?: number; forcedByAdmin?: boolean };
   'survival:error':           string;

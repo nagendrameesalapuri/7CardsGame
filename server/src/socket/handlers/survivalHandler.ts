@@ -61,9 +61,9 @@ async function createSurvivalRoom(
       allowBots: true,
       botCount,
       entryFee: 0,
-      // Multi-bot stages use botPersonalities array; single-bot uses botPersonality
+      botNames: stageConfig.botNames,
       ...(botCount > 1
-        ? { botPersonalities: stageConfig.personalities, botNames: stageConfig.botNames }
+        ? { botPersonalities: stageConfig.personalities }
         : { botPersonality: stageConfig.personalities[0] }),
     },
     paidPlayerIds: [],
@@ -140,15 +140,87 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
   // Persist rounds played
   survival.roundsPlayed = (survival.roundsPlayed ?? 0) + state.roundNumber;
 
+  const scoreboard = [
+    { name: humanPlayer?.username ?? 'You', score: humanScore, isHuman: true },
+    ...botPlayers.map((b, i) => ({ name: stageConfig.botNames[i] ?? b.username, score: botScores[i], isHuman: false })),
+  ].sort((a, b) => a.score - b.score);
+
+  // ── TIEBREAKER: first draw → give one bonus round instead of eliminating ────
+  if (isDraw && !survival.tiebreakerPending) {
+    let tieCode: string;
+    let tieAtt = 0;
+    do {
+      tieCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      tieAtt++;
+    } while (await Room.exists({ code: tieCode }) && tieAtt < 10);
+
+    await Room.create({
+      code: tieCode,
+      name: `Tiebreak S${survival.currentStage} — ${humanPlayer?.username ?? 'Player'}`.slice(0, 30),
+      hostId: String(survival.userId),
+      players: [{
+        userId:   String(survival.userId),
+        username: humanPlayer?.username ?? 'Player',
+        avatar:   humanPlayer?.avatar   ?? '',
+        isReady: true, isHost: true, isBot: false,
+      }],
+      config: {
+        maxPlayers:    1 + stageConfig.botCount,
+        roundCount:    1,
+        isPrivate:     true,
+        turnTimeLimit: 30,
+        allowBots:     true,
+        botCount:      stageConfig.botCount,
+        entryFee:      0,
+        botNames: stageConfig.botNames,
+        ...(stageConfig.botCount > 1
+          ? { botPersonalities: stageConfig.personalities }
+          : { botPersonality:   stageConfig.personalities[0] }),
+      },
+      paidPlayerIds: [],
+      status: 'waiting',
+    });
+
+    survival.tiebreakerPending = true;
+    survival.currentRoomCode   = tieCode;
+    await survival.save();
+
+    const playerSocket = [...io.sockets.sockets.values()].find(s => (s as any).userId === String(survival.userId));
+    if (playerSocket) {
+      playerSocket.emit('survival:tiebreaker', {
+        stage:         survival.currentStage,
+        stageName:     stageConfig.name,
+        stageDesc:     stageConfig.description,
+        botNames:      stageConfig.botNames,
+        personalities: stageConfig.personalities,
+        playerScore:   humanScore,
+        botScore:      minBotScore,
+        botScores,
+        scoreboard,
+        stageResults:  survival.stageResults,
+      });
+    }
+    return;
+  }
+
+  // ── If tiebreaker also tied → player loses (no infinite rounds) ───────────
+  // If tiebreaker was decisive (win or loss) → clear the flag
+  if (survival.tiebreakerPending) {
+    survival.tiebreakerPending = false;
+  }
+
+  // A draw that reaches here means it was the tiebreaker round and still tied → loss
+  const resolvedPlayerWon = isDraw ? false : playerWon;
+
   survival.stageResults.push({
     stage:        survival.currentStage,
     personality:  stageConfig.personalities[0],
-    playerWon,
+    playerWon:    resolvedPlayerWon,
     playerScore:  humanScore,
-    botScore:     minBotScore,          // best (lowest) bot score for compat
-    botScores,                          // all individual bot scores
+    botScore:     minBotScore,
+    botScores,
     botNames:     stageConfig.botNames,
-    pointsEarned: playerWon ? stageReward : 0,
+    pointsEarned: resolvedPlayerWon ? stageReward : 0,
   });
 
   const payload: Record<string, any> = {
@@ -158,21 +230,17 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
     stageDesc:    stageConfig.description,
     botNames:     stageConfig.botNames,
     personalities: stageConfig.personalities,
-    playerWon,
-    isDraw,
+    playerWon:    resolvedPlayerWon,
+    isDraw:       isDraw && !resolvedPlayerWon,
     playerScore:  humanScore,
     botScore:     minBotScore,
     botScores,
-    // Leaderboard snapshot: all players ranked by score (lower = better)
-    scoreboard: [
-      { name: humanPlayer?.username ?? 'You', score: humanScore, isHuman: true },
-      ...botPlayers.map((b, i) => ({ name: stageConfig.botNames[i] ?? b.username, score: botScores[i], isHuman: false })),
-    ].sort((a, b) => a.score - b.score),
-    pointsEarned: playerWon ? stageReward : 0,
+    scoreboard,
+    pointsEarned: resolvedPlayerWon ? stageReward : 0,
     stageResults: survival.stageResults,
   };
 
-  if (!playerWon) {
+  if (!resolvedPlayerWon) {
     // Human eliminated
     survival.status = 'lost';
     survival.currentRoomCode = null;
@@ -181,6 +249,7 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
     payload.tournamentOver = true;
     payload.won = false;
     payload.totalPointsEarned = survival.totalPointsEarned;
+    if (isDraw) payload.eliminatedByDraw = true;
     awardXp(io, { userId: survival.userId, baseXp: XP_REWARDS.LOSE_GAME, isBot: true, won: false }).catch(console.error);
   } else {
     // Stage cleared — credit reward
@@ -252,8 +321,9 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
           allowBots: true,
           botCount: nextBotCount,
           entryFee: 0,
+          botNames: nextStageConfig.botNames,
           ...(nextBotCount > 1
-            ? { botPersonalities: nextStageConfig.personalities, botNames: nextStageConfig.botNames }
+            ? { botPersonalities: nextStageConfig.personalities }
             : { botPersonality: nextStageConfig.personalities[0] }),
         },
         paidPlayerIds: [],
