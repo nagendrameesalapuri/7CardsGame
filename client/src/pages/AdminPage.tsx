@@ -2764,28 +2764,46 @@ function SupportSection() {
 
 // ── Notify Section ─────────────────────────────────────────────────────────────
 
+const NOTIF_CATEGORIES = [
+  { value: "system",          label: "🔔 System" },
+  { value: "tournament",      label: "⚔️ Tournament" },
+  { value: "boss_arena",      label: "👑 Boss Arena" },
+  { value: "rewards",         label: "🎁 Rewards" },
+  { value: "daily_missions",  label: "🎯 Daily Missions" },
+  { value: "survival_streak", label: "🔥 Survival Streak" },
+  { value: "multiplayer",     label: "👥 Multiplayer" },
+  { value: "events",          label: "🎉 Events" },
+] as const;
+
+type NotifTarget = "global" | "specific" | "inactive";
+
 function NotifySection() {
+  const [tab, setTab] = useState<"live" | "push">("push");
+
+  // Live (socket) state
+  const [liveTitle, setLiveTitle] = useState("");
+  const [liveMessage, setLiveMessage] = useState("");
+  const [liveType, setLiveType] = useState<"info" | "warning" | "success">("info");
+  const [liveSending, setLiveSending] = useState(false);
+  const [liveResult, setLiveResult] = useState<{ success: boolean; msg: string } | null>(null);
+
+  // Push (FCM) state
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [type, setType] = useState<"info" | "warning" | "success">("info");
+  const [category, setCategory] = useState("system");
+  const [actionUrl, setActionUrl] = useState("");
+  const [target, setTarget] = useState<NotifTarget>("global");
+  const [userIds, setUserIds] = useState("");
+  const [inactiveHours, setInactiveHours] = useState("24");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [tokenUsers, setTokenUsers] = useState<number | null>(null);
 
-  const send = async () => {
-    if (!title.trim() || !message.trim()) return;
-    setSending(true);
-    setResult(null);
-    try {
-      const res = await admin.sendNotification(title.trim(), message.trim(), type);
-      setResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
-      setTitle("");
-      setMessage("");
-    } catch (err: any) {
-      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
-    } finally {
-      setSending(false);
-    }
-  };
+  // Load FCM user count on mount
+  useEffect(() => {
+    admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
+  }, []);
 
   const typeOptions: { value: "info" | "warning" | "success"; label: string; color: string }[] = [
     { value: "info",    label: "ℹ️ Info",    color: "#60a5fa" },
@@ -2793,77 +2811,274 @@ function NotifySection() {
     { value: "success", label: "✅ Success", color: "#00ff88" },
   ];
 
+  const sendLive = async () => {
+    if (!liveTitle.trim() || !liveMessage.trim()) return;
+    setLiveSending(true);
+    setLiveResult(null);
+    try {
+      const res = await admin.sendNotification(liveTitle.trim(), liveMessage.trim(), liveType);
+      setLiveResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
+      setLiveTitle("");
+      setLiveMessage("");
+    } catch (err: any) {
+      setLiveResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setLiveSending(false);
+    }
+  };
+
+  const sendPush = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      let targetOpts: { global?: boolean; userIds?: string[]; inactiveHours?: number } = {};
+      if (target === "global") {
+        targetOpts = { global: true };
+      } else if (target === "inactive") {
+        targetOpts = { inactiveHours: parseInt(inactiveHours, 10) || 24 };
+      } else {
+        const ids = userIds.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (!ids.length) {
+          setResult({ success: false, msg: "Enter at least one User ID" });
+          setSending(false);
+          return;
+        }
+        targetOpts = { userIds: ids };
+      }
+      const res = await admin.sendPushNotification({
+        title: title.trim(),
+        message: message.trim(),
+        category,
+        type,
+        actionUrl: actionUrl.trim() || undefined,
+        ...targetOpts,
+      });
+      const d = res.data;
+      const modeLabel = d.mode === "global" ? "all users" : d.mode === "inactive" ? "inactive users" : `${d.count} user(s)`;
+      setResult({ success: true, msg: `Push sent to ${modeLabel}` });
+      setTitle(""); setMessage(""); setUserIds(""); setActionUrl("");
+    } catch (err: any) {
+      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const inputStyle = { border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" };
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-dark-text">Push Notification</h2>
-      <p className="text-xs text-dark-muted">Send a real-time notification to all currently connected users.</p>
-
-      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
-        {/* Type selector */}
-        <div>
-          <p className="text-xs text-dark-muted mb-2">Type</p>
-          <div className="flex gap-2">
-            {typeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setType(opt.value)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
-                  color: type === opt.value ? opt.color : "#6b7280",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Title */}
-        <div>
-          <p className="text-xs text-dark-muted mb-1.5">Title</p>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={80}
-            placeholder="e.g. Maintenance in 30 minutes"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
-          />
-        </div>
-
-        {/* Message */}
-        <div>
-          <p className="text-xs text-dark-muted mb-1.5">Message</p>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={300}
-            rows={3}
-            placeholder="Detailed message visible in the notification bell…"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
-          />
-          <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
-        </div>
-
-        {/* Send button */}
-        <button
-          onClick={send}
-          disabled={sending || !title.trim() || !message.trim()}
-          className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}
-        >
-          {sending ? "Sending…" : "📢 Send to All Users"}
-        </button>
-
-        {result && (
-          <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
-            {result.success ? "✓ " : "✗ "}{result.msg}
-          </p>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-dark-text">Notifications</h2>
+        {tokenUsers !== null && (
+          <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+            📱 {tokenUsers} FCM device{tokenUsers !== 1 ? "s" : ""}
+          </span>
         )}
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+        {(["push", "live"] as const).map(t => (
+          <button key={t} onClick={() => { setTab(t); setResult(null); setLiveResult(null); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: tab === t ? "rgba(99,102,241,0.25)" : "transparent",
+              color: tab === t ? "#a5b4fc" : "#6b7280",
+              border: tab === t ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
+            }}>
+            {t === "push" ? "📲 Push (FCM)" : "⚡ Live (Socket)"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "push" ? (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          {/* Target mode */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Target</p>
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { v: "global",   l: "🌐 All Users" },
+                { v: "specific", l: "👤 Specific Users" },
+                { v: "inactive", l: "💤 Inactive Users" },
+              ] as { v: NotifTarget; l: string }[]).map(({ v, l }) => (
+                <button key={v} onClick={() => setTarget(v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: target === v ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${target === v ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: target === v ? "#a5b4fc" : "#6b7280",
+                  }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conditional target inputs */}
+          {target === "specific" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">User IDs <span className="text-dark-muted/50">(one per line or comma-separated)</span></p>
+              <textarea
+                value={userIds}
+                onChange={e => setUserIds(e.target.value)}
+                rows={3}
+                placeholder="64abc123…&#10;64def456…"
+                className="w-full px-3 py-2 rounded-xl text-xs text-dark-text bg-transparent outline-none resize-none font-mono"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {target === "inactive" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">Inactive for at least (hours)</p>
+              <input
+                type="number" min={1} max={720}
+                value={inactiveHours}
+                onChange={e => setInactiveHours(e.target.value)}
+                className="w-32 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {/* Category */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Category</p>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text outline-none"
+              style={{ ...inputStyle, appearance: "none" as any }}>
+              {NOTIF_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value} style={{ background: "#1a1a2e" }}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Type */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: type === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input
+              value={title} onChange={e => setTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Maintenance in 30 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Message */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea
+              value={message} onChange={e => setMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Notification body text…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle}
+            />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
+          </div>
+
+          {/* Action URL */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Action URL <span className="text-dark-muted/50">(optional deep link)</span></p>
+            <input
+              value={actionUrl} onChange={e => setActionUrl(e.target.value)}
+              placeholder="/lobby  or  /survival"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            onClick={sendPush}
+            disabled={sending || !title.trim() || !message.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}>
+            {sending ? "Sending…" : target === "global" ? "📢 Send to All Users" : target === "inactive" ? "💤 Send to Inactive" : "📲 Send to Selected Users"}
+          </button>
+
+          {result && (
+            <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
+              {result.success ? "✓ " : "✗ "}{result.msg}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <p className="text-xs text-dark-muted">Instantly delivers an in-app toast to all currently connected users (no FCM required).</p>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setLiveType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: liveType === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${liveType === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: liveType === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input value={liveTitle} onChange={e => setLiveTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Server restart in 5 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle} />
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea value={liveMessage} onChange={e => setLiveMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Detailed message visible in the notification bell…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle} />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{liveMessage.length}/300</p>
+          </div>
+
+          <button onClick={sendLive} disabled={liveSending || !liveTitle.trim() || !liveMessage.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff" }}>
+            {liveSending ? "Sending…" : "⚡ Broadcast Live"}
+          </button>
+
+          {liveResult && (
+            <p className="text-xs text-center font-medium" style={{ color: liveResult.success ? "#00ff88" : "#ff6b6b" }}>
+              {liveResult.success ? "✓ " : "✗ "}{liveResult.msg}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

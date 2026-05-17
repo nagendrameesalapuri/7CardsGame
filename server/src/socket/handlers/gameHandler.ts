@@ -38,6 +38,7 @@ import {
 } from "../../utils/progression";
 import { getBadge } from "../../utils/badgeCache";
 import { recordEvent } from "../../utils/gameAnalytics";
+import { notifyWinStreak } from "../../services/notificationTriggers";
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -1039,6 +1040,9 @@ async function handleMatchEnd(io: Server, state: GameState) {
       baseXp,
       isBot: hasBots,
       won: isWinner,
+    }).then((prog: any) => {
+      // Notify on win-streak milestones (non-blocking)
+      if (isWinner && prog?.winStreak) notifyWinStreak(p.userId, prog.winStreak);
     }).catch(console.error);
   }
 

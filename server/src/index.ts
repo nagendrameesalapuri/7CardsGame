@@ -23,6 +23,7 @@ import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
 import survivalRoutes from './routes/survival';
 import progressionRoutes from './routes/progression';
+import notificationRoutes from './routes/notifications';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -103,6 +104,7 @@ async function bootstrap() {
   app.use('/api/survival', survivalRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/progression', progressionRoutes);
+  app.use('/api/notifications', notificationRoutes);
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
 

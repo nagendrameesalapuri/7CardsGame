@@ -4,6 +4,8 @@ import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useAuthStore } from './store/authStore';
 import { soundService } from './services/sound';
+import { useNotificationStore } from './store/notificationStore';
+import { initFCM, getPermissionState, pingFCMToken } from './services/fcm';
 
 import { HomePage } from './pages/HomePage';
 import { LobbyPage } from './pages/LobbyPage';
@@ -16,6 +18,7 @@ import { AdminPage } from './pages/AdminPage';
 import { SpectatorPage } from './pages/SpectatorPage';
 import { SurvivalTournamentPage } from './pages/SurvivalTournamentPage';
 import { ProgressionPage } from './pages/ProgressionPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 
 // Handle Google OAuth callback token — runs inside BrowserRouter so useNavigate works
 function AuthCallback() {
@@ -56,6 +59,42 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
 }
 
+// Initialises FCM once the user is authenticated
+function FCMInit() {
+  const { isAuthenticated, user } = useAuthStore();
+  const { addNotification, loadHistory, loadPrefs, setPermissionState } = useNotificationStore();
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    // Load notification history + preferences from server
+    loadHistory();
+    loadPrefs();
+
+    // Set current permission state for UI
+    setPermissionState(getPermissionState());
+
+    // Ping last-active (updates inactivity detection)
+    pingFCMToken().catch(() => {});
+
+    // Auto-init FCM if permission already granted (no re-prompt)
+    if (getPermissionState() === 'granted') {
+      initFCM((payload) => {
+        addNotification({
+          id: `fcm-${Date.now()}`,
+          title: payload.title,
+          message: payload.message,
+          type: 'info',
+          category: payload.category,
+          actionUrl: payload.actionUrl,
+          sentAt: new Date().toISOString(),
+        });
+      }).catch(() => {});
+    }
+  }, [isAuthenticated, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
 
 export function App() {
   const { loadMe, token } = useAuthStore();
@@ -79,6 +118,7 @@ export function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
+        <FCMInit />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
@@ -90,6 +130,7 @@ export function App() {
           <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
           <Route path="/survival" element={<ProtectedRoute><SurvivalTournamentPage /></ProtectedRoute>} />
           <Route path="/progression" element={<ProtectedRoute><ProgressionPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

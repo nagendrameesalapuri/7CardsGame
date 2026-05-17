@@ -23,6 +23,14 @@ import { SupportTicket } from "../models/SupportTicket";
 import { getAnalyticsSnapshot, resetAnalytics } from "../utils/gameAnalytics";
 import { PlayerProgress } from "../models/PlayerProgress";
 import { computeAndCacheBadge } from "../utils/badgeCache";
+import {
+  sendNotification,
+  sendBulkNotification,
+  sendGlobalNotification,
+  sendInactivityNotifications,
+} from "../services/fcmService";
+import { NotificationToken } from "../models/NotificationToken";
+import type { NotificationCategory } from "../models/Notification";
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -758,9 +766,10 @@ export default function createAdminRouter(io: Server) {
           $inc: { walletBalance: dr.amount },
         });
         // Record transaction
-        const desc = dr.submissionType === "voucher"
-          ? `₹${dr.amount} credited — ${dr.voucherBrand} voucher approved`
-          : `₹${dr.amount} credited — UTR ${dr.utrNumber} verified`;
+        const desc =
+          dr.submissionType === "voucher"
+            ? `₹${dr.amount} credited — ${dr.voucherBrand} voucher approved`
+            : `₹${dr.amount} credited — UTR ${dr.utrNumber} verified`;
         await Transaction.create({
           userId: dr.userId,
           type: "deposit",
@@ -778,42 +787,62 @@ export default function createAdminRouter(io: Server) {
   });
 
   // ── Voucher reward delivery ──────────────────────────────────────────────────
-  router.patch("/withdrawals/:id/deliver", async (req: Request, res: Response) => {
-    try {
-      const { deliveredVoucherNumber, deliveredVoucherPin, deliveredVoucherExpiry, adminMessage } = req.body as {
-        deliveredVoucherNumber: string;
-        deliveredVoucherPin: string;
-        deliveredVoucherExpiry: string;
-        adminMessage?: string;
-      };
-      if (!deliveredVoucherNumber?.trim() || !deliveredVoucherPin?.trim() || !deliveredVoucherExpiry?.trim()) {
-        return res.status(400).json({ error: "Voucher number, PIN and expiry are required" });
+  router.patch(
+    "/withdrawals/:id/deliver",
+    async (req: Request, res: Response) => {
+      try {
+        const {
+          deliveredVoucherNumber,
+          deliveredVoucherPin,
+          deliveredVoucherExpiry,
+          adminMessage,
+        } = req.body as {
+          deliveredVoucherNumber: string;
+          deliveredVoucherPin: string;
+          deliveredVoucherExpiry: string;
+          adminMessage?: string;
+        };
+        if (
+          !deliveredVoucherNumber?.trim() ||
+          !deliveredVoucherPin?.trim() ||
+          !deliveredVoucherExpiry?.trim()
+        ) {
+          return res
+            .status(400)
+            .json({ error: "Voucher number, PIN and expiry are required" });
+        }
+
+        const wr = await WithdrawalRequest.findById(req.params.id);
+        if (!wr) return res.status(404).json({ error: "Request not found" });
+        if (wr.redemptionType !== "voucher")
+          return res.status(400).json({ error: "Not a voucher redemption" });
+        if (wr.status === "delivered")
+          return res.status(400).json({ error: "Already delivered" });
+        if (wr.status === "rejected")
+          return res.status(400).json({ error: "Request was rejected" });
+
+        wr.status = "delivered";
+        wr.deliveredVoucherNumber = deliveredVoucherNumber.trim();
+        wr.deliveredVoucherPin = deliveredVoucherPin.trim();
+        wr.deliveredVoucherExpiry = deliveredVoucherExpiry.trim();
+        wr.adminMessage = adminMessage?.trim();
+        wr.deliveredAt = new Date();
+        await wr.save();
+
+        await Transaction.findOneAndUpdate(
+          { "metadata.withdrawalRequestId": wr.id, type: "withdrawal" },
+          {
+            status: "completed",
+            description: `Reward delivered — ${wr.voucherBrand} voucher ₹${wr.amount}`,
+          },
+        );
+
+        res.json({ success: true });
+      } catch {
+        res.status(500).json({ error: "Failed to deliver voucher" });
       }
-
-      const wr = await WithdrawalRequest.findById(req.params.id);
-      if (!wr) return res.status(404).json({ error: "Request not found" });
-      if (wr.redemptionType !== "voucher") return res.status(400).json({ error: "Not a voucher redemption" });
-      if (wr.status === "delivered") return res.status(400).json({ error: "Already delivered" });
-      if (wr.status === "rejected") return res.status(400).json({ error: "Request was rejected" });
-
-      wr.status = "delivered";
-      wr.deliveredVoucherNumber = deliveredVoucherNumber.trim();
-      wr.deliveredVoucherPin = deliveredVoucherPin.trim();
-      wr.deliveredVoucherExpiry = deliveredVoucherExpiry.trim();
-      wr.adminMessage = adminMessage?.trim();
-      wr.deliveredAt = new Date();
-      await wr.save();
-
-      await Transaction.findOneAndUpdate(
-        { "metadata.withdrawalRequestId": wr.id, type: "withdrawal" },
-        { status: "completed", description: `Reward delivered — ${wr.voucherBrand} voucher ₹${wr.amount}` },
-      );
-
-      res.json({ success: true });
-    } catch {
-      res.status(500).json({ error: "Failed to deliver voucher" });
-    }
-  });
+    },
+  );
 
   // ── AI Survival Championship (admin view) ──────────────────────────────────
   router.get("/tournaments", async (req: Request, res: Response) => {
@@ -840,20 +869,31 @@ export default function createAdminRouter(io: Server) {
         .lean();
       const userMap = Object.fromEntries(users.map((u) => [String(u._id), u]));
 
-      const [totalWon, totalLost, totalActive, totalAbandoned, totalPointsPaid] =
-        await Promise.all([
-          SurvivalTournament.countDocuments({ status: "won" }),
-          SurvivalTournament.countDocuments({ status: "lost" }),
-          SurvivalTournament.countDocuments({ status: "active" }),
-          SurvivalTournament.countDocuments({ status: "abandoned" }),
-          SurvivalTournament.aggregate([
-            { $match: { status: "won" } },
-            { $group: { _id: null, total: { $sum: "$totalPointsEarned" } } },
-          ]).then((r) => r[0]?.total ?? 0),
-        ]);
+      const [
+        totalWon,
+        totalLost,
+        totalActive,
+        totalAbandoned,
+        totalPointsPaid,
+      ] = await Promise.all([
+        SurvivalTournament.countDocuments({ status: "won" }),
+        SurvivalTournament.countDocuments({ status: "lost" }),
+        SurvivalTournament.countDocuments({ status: "active" }),
+        SurvivalTournament.countDocuments({ status: "abandoned" }),
+        SurvivalTournament.aggregate([
+          { $match: { status: "won" } },
+          { $group: { _id: null, total: { $sum: "$totalPointsEarned" } } },
+        ]).then((r) => r[0]?.total ?? 0),
+      ]);
 
       const tierCounts = await SurvivalTournament.aggregate([
-        { $group: { _id: "$tier", count: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ["$status", "won"] }, 1, 0] } } } },
+        {
+          $group: {
+            _id: "$tier",
+            count: { $sum: 1 },
+            won: { $sum: { $cond: [{ $eq: ["$status", "won"] }, 1, 0] } },
+          },
+        },
       ]);
 
       res.json({
@@ -885,60 +925,86 @@ export default function createAdminRouter(io: Server) {
         },
       });
     } catch {
-      res.status(500).json({ error: "Failed to load survival championship data" });
+      res
+        .status(500)
+        .json({ error: "Failed to load survival championship data" });
     }
   });
 
   // ── Progression leaderboard (XP / achievements) ─────────────────────────────
-  router.get("/progression/leaderboard", requireAdmin, async (req: Request, res: Response) => {
-    try {
-      const category = (req.query.category as string) ?? 'xp';
-      let sortField: Record<string, -1> = { xp: -1 };
-      if (category === 'achievements') sortField = { achievementCount: -1 };
+  router.get(
+    "/progression/leaderboard",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const category = (req.query.category as string) ?? "xp";
+        let sortField: Record<string, -1> = { xp: -1 };
+        if (category === "achievements") sortField = { achievementCount: -1 };
 
-      let records: any[];
-      if (category === 'achievements') {
-        records = await PlayerProgress.aggregate([
-          { $addFields: { achievementCount: { $size: { $ifNull: ['$achievements', []] } } } },
-          { $sort: { achievementCount: -1 } },
-          { $limit: 50 },
-          { $project: { userId: 1, level: 1, rank: 1, xp: 1, achievements: 1, achievementCount: 1 } },
-        ]);
-      } else {
-        records = await PlayerProgress.find({})
-          .sort(sortField as any)
-          .limit(50)
-          .select('userId level rank xp achievements')
+        let records: any[];
+        if (category === "achievements") {
+          records = await PlayerProgress.aggregate([
+            {
+              $addFields: {
+                achievementCount: { $size: { $ifNull: ["$achievements", []] } },
+              },
+            },
+            { $sort: { achievementCount: -1 } },
+            { $limit: 50 },
+            {
+              $project: {
+                userId: 1,
+                level: 1,
+                rank: 1,
+                xp: 1,
+                achievements: 1,
+                achievementCount: 1,
+              },
+            },
+          ]);
+        } else {
+          records = await PlayerProgress.find({})
+            .sort(sortField as any)
+            .limit(50)
+            .select("userId level rank xp achievements")
+            .lean();
+        }
+
+        const userIds = records.map((r) => r.userId);
+        const users = await User.find({ _id: { $in: userIds } })
+          .select("username avatar isGuest")
           .lean();
+        const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+        const leaderboard = records.map((r, i) => {
+          const u = userMap.get(r.userId);
+          const badge = computeAndCacheBadge(
+            r.userId,
+            (r.achievements ?? []).map((a: any) => a.id),
+          );
+          return {
+            rank: i + 1,
+            userId: r.userId,
+            username: u?.username ?? "Unknown",
+            avatar: (u as any)?.avatar ?? "avatar_1",
+            isGuest: u?.isGuest ?? false,
+            level: r.level ?? 1,
+            playerRank: r.rank ?? "bronze",
+            xp: r.xp ?? 0,
+            achievementCount: r.achievementCount ?? r.achievements?.length ?? 0,
+            achievementIds: (r.achievements ?? []).map((a: any) => a.id),
+            badge: badge ?? null,
+          };
+        });
+
+        res.json({ leaderboard, category });
+      } catch {
+        res
+          .status(500)
+          .json({ error: "Failed to fetch progression leaderboard" });
       }
-
-      const userIds = records.map((r) => r.userId);
-      const users = await User.find({ _id: { $in: userIds } }).select('username avatar isGuest').lean();
-      const userMap = new Map(users.map((u) => [String(u._id), u]));
-
-      const leaderboard = records.map((r, i) => {
-        const u = userMap.get(r.userId);
-        const badge = computeAndCacheBadge(r.userId, (r.achievements ?? []).map((a: any) => a.id));
-        return {
-          rank: i + 1,
-          userId: r.userId,
-          username: u?.username ?? 'Unknown',
-          avatar: (u as any)?.avatar ?? 'avatar_1',
-          isGuest: u?.isGuest ?? false,
-          level: r.level ?? 1,
-          playerRank: r.rank ?? 'bronze',
-          xp: r.xp ?? 0,
-          achievementCount: r.achievementCount ?? (r.achievements?.length ?? 0),
-          achievementIds: (r.achievements ?? []).map((a: any) => a.id),
-          badge: badge ?? null,
-        };
-      });
-
-      res.json({ leaderboard, category });
-    } catch {
-      res.status(500).json({ error: 'Failed to fetch progression leaderboard' });
-    }
-  });
+    },
+  );
 
   // ── Reset full leaderboard ──────────────────────────────────────────────────
   router.post("/leaderboard/reset", async (_req: Request, res: Response) => {
@@ -1043,6 +1109,64 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true, recipients: io.sockets.sockets.size });
     } catch {
       res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
+  // ── FCM push notifications (targeted) ──────────────────────────────────────
+  router.post("/push/send", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const {
+        userIds,
+        title, message,
+        category = "system",
+        type = "info",
+        actionUrl,
+        global: isGlobal,
+        inactiveHours,
+      } = req.body as {
+        userIds?: string[];
+        title: string;
+        message: string;
+        category?: NotificationCategory;
+        type?: "info" | "warning" | "success";
+        actionUrl?: string;
+        global?: boolean;
+        inactiveHours?: number;
+      };
+
+      if (!title?.trim() || !message?.trim())
+        return res.status(400).json({ error: "title and message required" });
+
+      if (isGlobal) {
+        await sendGlobalNotification({ title, message, category, type, actionUrl, skipThrottle: true });
+        res.json({ ok: true, mode: "global" });
+      } else if (inactiveHours) {
+        await sendInactivityNotifications(inactiveHours);
+        res.json({ ok: true, mode: "inactive" });
+      } else if (userIds?.length) {
+        await sendBulkNotification(userIds, { title, message, category, type, actionUrl, skipThrottle: true });
+        res.json({ ok: true, mode: "targeted", count: userIds.length });
+      } else {
+        res.status(400).json({ error: "Provide userIds, global:true, or inactiveHours" });
+      }
+    } catch {
+      res.status(500).json({ error: "Failed to send push notifications" });
+    }
+  });
+
+  router.get("/push/users", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const tokens = await NotificationToken.find().select("userId deviceType lastActiveAt").lean();
+      const userMap: Record<string, { deviceCount: number; lastActiveAt: Date; devices: string[] }> = {};
+      for (const t of tokens) {
+        if (!userMap[t.userId]) userMap[t.userId] = { deviceCount: 0, lastActiveAt: t.lastActiveAt, devices: [] };
+        userMap[t.userId].deviceCount++;
+        userMap[t.userId].devices.push(t.deviceType);
+        if (t.lastActiveAt > userMap[t.userId].lastActiveAt) userMap[t.userId].lastActiveAt = t.lastActiveAt;
+      }
+      res.json({ users: userMap, total: Object.keys(userMap).length });
+    } catch {
+      res.status(500).json({ error: "Failed to list token users" });
     }
   });
 

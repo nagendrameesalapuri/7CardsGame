@@ -15,6 +15,13 @@ import { getAdminConfig } from '../../models/AdminConfig';
 import { awardXp } from '../../utils/progressionService';
 import { XP_REWARDS } from '../../utils/progression';
 import { getBadge } from '../../utils/badgeCache';
+import {
+  notifySurvivalStageComplete,
+  notifySurvivalWon,
+  notifySurvivalLost,
+  notifyBossArenaUnlocked,
+  notifyWinStreak,
+} from '../../services/notificationTriggers';
 
 const POINTS_PER_RUPEE = 100;
 
@@ -251,6 +258,7 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
     payload.totalPointsEarned = survival.totalPointsEarned;
     if (isDraw) payload.eliminatedByDraw = true;
     awardXp(io, { userId: survival.userId, baseXp: XP_REWARDS.LOSE_GAME, isBot: true, won: false }).catch(console.error);
+    notifySurvivalLost(survival.userId, survival.currentStage, stageConfig.botNames[0] ?? 'AI');
   } else {
     // Stage cleared — credit reward
     const rupees = pointsToRupees(stageReward);
@@ -292,6 +300,7 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
         isBot: true, won: true,
         isSurvivalWin: true,
       }).catch(console.error);
+      notifySurvivalWon(survival.userId, survival.tier, survival.totalPointsEarned);
     } else {
       // Prepare next stage room (uses per-stage botCount & personalities)
       const nextStage = survival.currentStage + 1;
@@ -333,6 +342,13 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
       survival.currentStage = nextStage;
       survival.currentRoomCode = nextCode;
       await survival.save();
+
+      // Fire-and-forget notification triggers
+      if (nextStage === 5) {
+        notifyBossArenaUnlocked(survival.userId);
+      } else {
+        notifySurvivalStageComplete(survival.userId, survival.currentStage - 1, nextStage, stageReward);
+      }
 
       payload.tournamentOver = false;
       payload.nextStage = nextStage;

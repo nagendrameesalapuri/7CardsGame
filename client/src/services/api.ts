@@ -82,6 +82,44 @@ export const gamesApi = {
   history: () => api.get<{ games: any[] }>("/games/history"),
 };
 
+export type NotificationCategory =
+  | 'tournament' | 'boss_arena' | 'rewards' | 'daily_missions'
+  | 'multiplayer' | 'survival_streak' | 'events' | 'system';
+
+export interface AppNotificationRecord {
+  _id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  type: 'info' | 'warning' | 'success';
+  actionUrl?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPrefs {
+  tournament: boolean;
+  boss_arena: boolean;
+  rewards: boolean;
+  daily_missions: boolean;
+  survival_streak: boolean;
+  multiplayer: boolean;
+  events: boolean;
+  system: boolean;
+}
+
+export const notificationsApi = {
+  list: (page = 1) =>
+    api.get<{ notifications: AppNotificationRecord[]; total: number; unread: number; pages: number }>(
+      `/notifications?page=${page}`
+    ),
+  markAllRead: () => api.patch('/notifications/read', {}),
+  markRead:    (id: string) => api.patch(`/notifications/${id}/read`, {}),
+  clear:       () => api.delete('/notifications'),
+  getPrefs:    () => api.get<{ preferences: NotificationPrefs }>('/notifications/preferences'),
+  savePrefs:   (prefs: Partial<NotificationPrefs>) => api.patch('/notifications/preferences', prefs),
+};
+
 export const configApi = {
   getPublic: () =>
     api.get<{ featureFlags: any; gameConfig: any; walletConfig: any; survivalConfig: any }>(
@@ -221,6 +259,19 @@ export const admin = {
 
   sendNotification: (title: string, message: string, type: "info" | "warning" | "success") =>
     adminApi.post<{ success: boolean; recipients: number }>("/notify", { title, message, type }),
+
+  sendPushNotification: (opts: {
+    title: string;
+    message: string;
+    category?: string;
+    type?: "info" | "warning" | "success";
+    actionUrl?: string;
+    global?: boolean;
+    userIds?: string[];
+    inactiveHours?: number;
+  }) => adminApi.post<{ ok: boolean; mode: string; count?: number }>("/push/send", opts),
+
+  getPushUsers: () => adminApi.get<{ users: Record<string, { deviceCount: number; lastActiveAt: string; devices: string[] }>; total: number }>("/push/users"),
 
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),
