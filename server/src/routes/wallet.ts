@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { createWorker } from 'tesseract.js';
 import { requireAuth } from '../middleware/auth';
 import { User } from '../models/User';
 import { Transaction } from '../models/Transaction';
@@ -9,7 +10,10 @@ import { sendDepositRequestEmail } from '../services/mailer';
 
 const router = Router();
 
-const ALLOWED_VOUCHER_AMOUNTS = [50, 100];
+const ALLOWED_VOUCHER_AMOUNTS: Record<string, number[]> = {
+  Amazon:   [500, 1000],
+  default:  [50, 100],
+};
 const DAILY_VOUCHER_LIMIT = 300;
 const REDEEM_MIN = 50;
 const REDEEM_MAX = 500;
@@ -70,6 +74,94 @@ router.get('/', async (req: Request, res: Response) => {
   } catch { res.status(500).json({ error: 'Failed to load wallet' }); }
 });
 
+// ── Helpers for parsing OCR text ─────────────────────────────────────────────
+
+const MONTHS: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+function toMMYY(raw: string): string {
+  raw = raw.trim();
+  // "15 May 2027" or "May 2027"
+  const wordy = raw.match(/(\d{1,2})\s+([a-z]{3})[a-z]*\s+(\d{4})/i)
+              ?? raw.match(/([a-z]{3})[a-z]*\s+(\d{4})/i);
+  if (wordy) {
+    const mon = (wordy[2] ?? wordy[1]).toLowerCase().slice(0, 3);
+    const yr  = (wordy[3] ?? wordy[2]).slice(-2);
+    return `${MONTHS[mon] ?? '??'}/${yr}`;
+  }
+  // "16/05/2027" or "05/27"
+  const numeric = raw.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (numeric) {
+    const [, d, m, y] = numeric;
+    const mm = d.length === 4 ? m.padStart(2, '0') : m.padStart(2, '0');
+    return `${mm}/${y.slice(-2)}`;
+  }
+  return raw.slice(0, 5);
+}
+
+function parseVoucherText(text: string): { voucherNumber: string; voucherPin: string; voucherExpiry: string } {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const full  = lines.join(' ');
+
+  // ── Voucher Code: 14–19 digit number (groups of 4, may have spaces/dashes) ──
+  const codeMatch = full.match(/\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{2,7})\b/);
+  const voucherNumber = codeMatch ? codeMatch[1].replace(/[-]/g, ' ').trim() : '';
+
+  // ── PIN: line or value after "PIN" label ──────────────────────────────────
+  let voucherPin = '';
+  for (let i = 0; i < lines.length; i++) {
+    if (/\bpin\b/i.test(lines[i])) {
+      // same line: "PIN SV94DK6RJZ8QZ" or "PIN: 141637"
+      const inline = lines[i].replace(/.*pin[:\s]*/i, '').trim();
+      if (inline.length >= 3) { voucherPin = inline; break; }
+      // next line
+      if (lines[i + 1] && lines[i + 1].length >= 3) { voucherPin = lines[i + 1]; break; }
+    }
+  }
+  // Alphanumeric PIN fallback (e.g. Amazon: "SV94 DK6R JZ8Q Z")
+  if (!voucherPin) {
+    const alphaPin = full.match(/\b([A-Z0-9]{4}\s[A-Z0-9]{4}\s[A-Z0-9]{4}(?:\s[A-Z0-9]{1,4})?)\b/);
+    if (alphaPin) voucherPin = alphaPin[1];
+  }
+
+  // ── Expiry: "Valid till", "Expires on", "Expiry" labels ──────────────────
+  let voucherExpiry = '';
+  const expiryRx = /(?:valid\s*till|expires?\s*on|expiry|exp)[:\s]+([^\n,]{5,20})/i;
+  const expMatch = full.match(expiryRx);
+  if (expMatch) voucherExpiry = toMMYY(expMatch[1]);
+
+  return { voucherNumber, voucherPin, voucherExpiry };
+}
+
+// ── POST /api/wallet/voucher/extract — free Tesseract OCR ────────────────────
+router.post('/voucher/extract', async (req: Request, res: Response) => {
+  let worker: any = null;
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Sign in required' });
+
+    const { imageBase64 } = req.body as { imageBase64: string };
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return res.status(400).json({ error: 'Image required' });
+    }
+
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    worker = await createWorker('eng', 1, { logger: () => {} });
+    const { data: { text } } = await worker.recognize(imageBuffer);
+
+    const result = parseVoucherText(text);
+    res.json(result);
+  } catch (err) {
+    console.error('[Wallet] OCR extract error:', err);
+    res.status(500).json({ error: 'Could not read screenshot — please enter details manually.' });
+  } finally {
+    if (worker) await worker.terminate().catch(() => {});
+  }
+});
+
 // ── POST /api/wallet/voucher/submit — submit gift voucher for verification ────
 router.post('/voucher/submit', async (req: Request, res: Response) => {
   try {
@@ -89,9 +181,10 @@ router.post('/voucher/submit', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid voucher brand selected' });
     }
 
-    // Validate amount
-    if (!ALLOWED_VOUCHER_AMOUNTS.includes(Number(amount))) {
-      return res.status(400).json({ error: 'Voucher amount must be ₹50 or ₹100' });
+    // Validate amount (brand-specific)
+    const allowedAmts = ALLOWED_VOUCHER_AMOUNTS[voucherBrand] ?? ALLOWED_VOUCHER_AMOUNTS.default;
+    if (!allowedAmts.includes(Number(amount))) {
+      return res.status(400).json({ error: `${voucherBrand} voucher amount must be ${allowedAmts.map(a => '₹' + a).join(' or ')}` });
     }
 
     // Validate fields

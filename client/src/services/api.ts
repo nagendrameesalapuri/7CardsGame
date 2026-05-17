@@ -110,6 +110,8 @@ export const walletApi = {
       amount,
       utrNumber,
     }),
+  voucherExtract: (imageBase64: string, brand: string) =>
+    api.post<{ voucherNumber: string; voucherPin: string; voucherExpiry: string }>('/wallet/voucher/extract', { imageBase64, brand }),
   voucherSubmit: (data: {
     voucherBrand: string;
     voucherNumber: string;
@@ -205,6 +207,8 @@ export const admin = {
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>("/leaderboard"),
   resetLeaderboard: () => adminApi.post("/leaderboard/reset"),
+  getProgressionLeaderboard: (category: 'xp' | 'achievements') =>
+    adminApi.get<{ leaderboard: any[]; category: string }>(`/progression/leaderboard?category=${category}`),
 
   getSupport: (status?: string) =>
     adminApi.get<{ tickets: any[]; summary: any }>("/support", {

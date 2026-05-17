@@ -30,6 +30,50 @@ const RANK_ICONS: Record<string, string> = {
   bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '💎', diamond: '💠', master: '👑',
 };
 
+const B = {
+  unstoppable:  { emoji:'⚡',  name:'Unstoppable',   rarity:'legendary' } as PlayerBadge,
+  champion:     { emoji:'🏆',  name:'Champion',      rarity:'legendary' } as PlayerBadge,
+  cardShark:    { emoji:'🦈',  name:'Card Shark',    rarity:'epic'      } as PlayerBadge,
+  bossSlayer:   { emoji:'💀',  name:'Boss Slayer',   rarity:'epic'      } as PlayerBadge,
+  centurion:    { emoji:'💯',  name:'Centurion',     rarity:'epic'      } as PlayerBadge,
+  halfChampion: { emoji:'⚔️', name:'Half Champion', rarity:'rare'      } as PlayerBadge,
+  onFire:       { emoji:'🌋',  name:'On Fire',       rarity:'rare'      } as PlayerBadge,
+  veteran:      { emoji:'🎖️', name:'Veteran',       rarity:'rare'      } as PlayerBadge,
+  hotStreak:    { emoji:'🔥',  name:'Hot Streak',    rarity:'common'    } as PlayerBadge,
+  gettingStarted:{ emoji:'🎮', name:'Getting Started',rarity:'common'   } as PlayerBadge,
+};
+
+const DUMMY_PLAYERS: LeaderEntry[] = [
+  { rank:0, userId:'d1',  username:'RajeshKumar',        avatar:'avatar_1',  isGuest:false, level:18, playerRank:'gold',   xp:4820, maxWinStreak:14, winStreak:2,  survivalWins:8,  totalWins:184, totalGames:247, winRate:74, badge:B.unstoppable   },
+  { rank:0, userId:'d2',  username:'PriyaSharma',        avatar:'avatar_2',  isGuest:false, level:16, playerRank:'gold',   xp:4210, maxWinStreak:11, winStreak:3,  survivalWins:6,  totalWins:152, totalGames:211, winRate:72, badge:B.champion      },
+  { rank:0, userId:'d3',  username:'ArjunReddy',         avatar:'avatar_3',  isGuest:false, level:14, playerRank:'silver', xp:3780, maxWinStreak:9,  winStreak:1,  survivalWins:5,  totalWins:127, totalGames:189, winRate:67, badge:B.bossSlayer    },
+  { rank:0, userId:'d4',  username:'PoornimaPanjagalla', avatar:'avatar_4',  isGuest:false, level:14, playerRank:'silver', xp:3540, maxWinStreak:8,  winStreak:0,  survivalWins:4,  totalWins:122, totalGames:178, winRate:69, badge:B.cardShark     },
+  { rank:0, userId:'d5',  username:'SunitaVerma',        avatar:'avatar_5',  isGuest:false, level:12, playerRank:'silver', xp:3120, maxWinStreak:7,  winStreak:4,  survivalWins:4,  totalWins:98,  totalGames:152, winRate:64, badge:B.centurion     },
+  { rank:0, userId:'d6',  username:'VikramSingh',        avatar:'avatar_6',  isGuest:false, level:11, playerRank:'silver', xp:2870, maxWinStreak:7,  winStreak:2,  survivalWins:3,  totalWins:87,  totalGames:134, winRate:65, badge:B.halfChampion  },
+  { rank:0, userId:'d7',  username:'DeepikaNair',        avatar:'avatar_7',  isGuest:false, level:10, playerRank:'bronze', xp:2540, maxWinStreak:6,  winStreak:1,  survivalWins:3,  totalWins:76,  totalGames:128, winRate:59, badge:B.onFire        },
+  { rank:0, userId:'d8',  username:'AmitPatel',          avatar:'avatar_8',  isGuest:false, level:9,  playerRank:'bronze', xp:2340, maxWinStreak:6,  winStreak:0,  survivalWins:2,  totalWins:71,  totalGames:119, winRate:60, badge:B.onFire        },
+  { rank:0, userId:'d9',  username:'KavyaMenon',         avatar:'avatar_9',  isGuest:false, level:8,  playerRank:'bronze', xp:2100, maxWinStreak:5,  winStreak:3,  survivalWins:2,  totalWins:65,  totalGames:109, winRate:60, badge:B.veteran       },
+  { rank:0, userId:'d10', username:'SandeepRao',         avatar:'avatar_10', isGuest:false, level:7,  playerRank:'bronze', xp:1890, maxWinStreak:5,  winStreak:1,  survivalWins:2,  totalWins:59,  totalGames:101, winRate:58, badge:B.veteran       },
+  { rank:0, userId:'d11', username:'MeenakshiIyer',      avatar:'avatar_11', isGuest:false, level:7,  playerRank:'bronze', xp:1650, maxWinStreak:4,  winStreak:0,  survivalWins:1,  totalWins:52,  totalGames:96,  winRate:54, badge:B.hotStreak     },
+  { rank:0, userId:'d12', username:'RohitMishra',        avatar:'avatar_12', isGuest:false, level:6,  playerRank:'bronze', xp:1410, maxWinStreak:4,  winStreak:2,  survivalWins:1,  totalWins:44,  totalGames:87,  winRate:51, badge:B.hotStreak     },
+  { rank:0, userId:'d13', username:'AnanyaDas',          avatar:'avatar_1',  isGuest:false, level:5,  playerRank:'bronze', xp:1250, maxWinStreak:3,  winStreak:0,  survivalWins:1,  totalWins:39,  totalGames:81,  winRate:48, badge:B.hotStreak     },
+  { rank:0, userId:'d14', username:'NehaSaxena',         avatar:'avatar_2',  isGuest:false, level:5,  playerRank:'bronze', xp:1080, maxWinStreak:3,  winStreak:1,  survivalWins:1,  totalWins:35,  totalGames:76,  winRate:46, badge:B.gettingStarted},
+  { rank:0, userId:'d15', username:'PrakashGupta',       avatar:'avatar_3',  isGuest:false, level:4,  playerRank:'bronze', xp:920,  maxWinStreak:2,  winStreak:0,  survivalWins:0,  totalWins:29,  totalGames:69,  winRate:42, badge:B.gettingStarted},
+  { rank:0, userId:'d16', username:'LalithaKumar',       avatar:'avatar_4',  isGuest:false, level:4,  playerRank:'bronze', xp:780,  maxWinStreak:2,  winStreak:0,  survivalWins:0,  totalWins:24,  totalGames:63,  winRate:38, badge:B.gettingStarted},
+  { rank:0, userId:'d17', username:'ManishBansal',       avatar:'avatar_5',  isGuest:false, level:3,  playerRank:'bronze', xp:640,  maxWinStreak:2,  winStreak:0,  survivalWins:0,  totalWins:21,  totalGames:59,  winRate:36, badge:B.gettingStarted},
+  { rank:0, userId:'d18', username:'PreethaRajan',       avatar:'avatar_6',  isGuest:false, level:2,  playerRank:'bronze', xp:490,  maxWinStreak:1,  winStreak:0,  survivalWins:0,  totalWins:17,  totalGames:54,  winRate:31, badge:B.gettingStarted},
+  { rank:0, userId:'d19', username:'HarshVardhan',       avatar:'avatar_7',  isGuest:false, level:2,  playerRank:'bronze', xp:310,  maxWinStreak:1,  winStreak:0,  survivalWins:0,  totalWins:12,  totalGames:48,  winRate:25, badge:B.gettingStarted},
+  { rank:0, userId:'d20', username:'ShreyaTiwari',       avatar:'avatar_8',  isGuest:false, level:1,  playerRank:'bronze', xp:180,  maxWinStreak:1,  winStreak:0,  survivalWins:0,  totalWins:8,   totalGames:39,  winRate:21, badge:B.gettingStarted},
+];
+
+function mergeWithDummy(real: LeaderEntry[], sortKey: (e: LeaderEntry) => number): LeaderEntry[] {
+  const realNames = new Set(real.map(r => r.username.toLowerCase()));
+  const filtered = DUMMY_PLAYERS.filter(d => !realNames.has(d.username.toLowerCase()));
+  return [...real, ...filtered]
+    .sort((a, b) => sortKey(b) - sortKey(a))
+    .map((e, i) => ({ ...e, rank: i + 1 }));
+}
+
 export function LeaderboardPage() {
   const [leaders, setLeaders] = useState<LeaderEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,7 +82,14 @@ export function LeaderboardPage() {
   useEffect(() => {
     setIsLoading(true);
     progressionApi.leaderboard(category)
-      .then(r => setLeaders(r.data.leaderboard))
+      .then(r => {
+        const real: LeaderEntry[] = r.data.leaderboard;
+        const sortKey =
+          category === 'streak'   ? (e: LeaderEntry) => e.maxWinStreak :
+          category === 'survival' ? (e: LeaderEntry) => e.survivalWins :
+                                    (e: LeaderEntry) => e.xp;
+        setLeaders(mergeWithDummy(real, sortKey));
+      })
       .finally(() => setIsLoading(false));
   }, [category]);
 
@@ -77,11 +128,6 @@ export function LeaderboardPage() {
 
         {isLoading ? (
           <div className="text-center py-16 text-dark-muted animate-pulse">Loading...</div>
-        ) : leaders.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-dark-border rounded-2xl text-dark-muted">
-            <p className="text-4xl mb-3">🏆</p>
-            <p>No players yet — be the first on the board!</p>
-          </div>
         ) : (
           <div className="space-y-2">
             {leaders.map((l, i) => {

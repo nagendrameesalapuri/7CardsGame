@@ -32,14 +32,11 @@ export function AchievementBadge({ badge, size = 'sm', className = '' }: Achieve
         fontSize,
         padding,
         whiteSpace: 'nowrap',
-        maxWidth: size === 'xs' ? 68 : size === 'sm' ? 84 : 120,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
       }}
       title={`${badge.emoji} ${badge.name} (${badge.rarity})`}
     >
       <span style={{ fontSize: emojiSize }}>{badge.emoji}</span>
-      <span className="truncate">{badge.name}</span>
+      <span>{badge.name}</span>
     </span>
   );
 }

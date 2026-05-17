@@ -142,7 +142,7 @@ function VoucherDetails({ voucher: w }: { voucher: any }) {
 function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [brand, setBrand] = useState("");
-  const [amount, setAmount] = useState<50 | 100 | null>(null);
+  const [amount, setAmount] = useState<number | null>(null);
   const [number, setNumber] = useState("");
   const [pin, setPin] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -150,25 +150,71 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPurchaseGuide, setShowPurchaseGuide] = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState("");
+  const [extracted, setExtracted] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
-  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 3 * 1024 * 1024) { notify.error("Screenshot too large. Max 3MB."); return; }
     setScreenshotFile(file);
+    setExtractError("");
+    setExtracted(false);
+    setManualMode(false);
+    setNumber(""); setPin(""); setExpiry("");
+
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const b64 = ev.target?.result as string;
       setScreenshotPreview(b64);
       setScreenshot(b64);
+
+      // Auto-extract voucher details via AI OCR
+      setExtracting(true);
+      try {
+        const { data } = await walletApi.voucherExtract(b64, brand);
+        if (data.voucherNumber || data.voucherPin) {
+          setNumber(data.voucherNumber || "");
+          setPin(data.voucherPin || "");
+          setExpiry(data.voucherExpiry || "");
+          setExtracted(true);
+          if (!data.voucherNumber || !data.voucherPin) {
+            setExtractError("Some fields weren't detected — you can edit them below.");
+            setManualMode(true);
+          }
+        } else {
+          setExtractError("Couldn't auto-read — please enter details manually.");
+          setManualMode(true);
+        }
+      } catch {
+        setExtractError("Auto-read failed — please enter details manually below.");
+        setManualMode(true);
+      } finally {
+        setExtracting(false);
+      }
     };
     reader.readAsDataURL(file);
   };
 
+  const handleRemoveScreenshot = () => {
+    setScreenshotFile(null); setScreenshotPreview(""); setScreenshot("");
+    setNumber(""); setPin(""); setExpiry("");
+    setExtracted(false); setExtractError(""); setManualMode(false);
+  };
+
+  const BRAND_AMOUNTS: Record<string, readonly number[]> = {
+    Amazon: [500, 1000] as const,
+  };
+  const availableAmounts = (BRAND_AMOUNTS[brand] ?? [50, 100]) as readonly number[];
+
   const canNext1 = !!brand;
   const canNext2 = !!amount;
-  const canSubmit = number.trim().length >= 6 && pin.trim().length >= 3 && expiry.trim().length >= 4;
+  // Can submit if fields are filled (either via OCR or manual entry) AND screenshot is attached
+  const fieldsReady = number.trim().length >= 6 && pin.trim().length >= 3 && expiry.trim().length >= 3;
+  const canSubmit = !!screenshotPreview && fieldsReady;
 
   const handleSubmit = async () => {
     if (!brand || !amount || !canSubmit) return;
@@ -192,22 +238,26 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   const selectedBrand = BRANDS.find(b => b.name === brand);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }}
-        className="relative w-full max-w-sm rounded-3xl overflow-hidden"
-        style={{ background: "rgba(10,12,24,0.98)", border: "1px solid rgba(99,102,241,0.3)" }}>
+        className="relative w-full max-w-sm flex flex-col"
+        style={{
+          background: "rgba(10,12,24,0.99)",
+          border: "1px solid rgba(99,102,241,0.3)",
+          borderRadius: "24px 24px 0 0",
+          maxHeight: "92dvh",
+        }}>
 
-        {/* Header */}
-        <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        {/* Header — fixed */}
+        <div className="flex-shrink-0 px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-black text-white">Submit Gift Voucher</h2>
-              <p className="text-xs text-dark-muted mt-0.5">Earn wallet credits after admin verifies your voucher</p>
+              <p className="text-xs text-dark-muted mt-0.5">Credits added after admin verifies your voucher</p>
             </div>
-            <button onClick={onClose} className="text-dark-muted hover:text-white transition-colors text-xl leading-none">×</button>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-dark-muted hover:text-white hover:bg-white/10 transition-all text-xl leading-none">×</button>
           </div>
-          {/* Step indicators */}
           <div className="flex items-center gap-2 mt-4">
             {[1, 2, 3].map((s) => (
               <React.Fragment key={s}>
@@ -220,14 +270,16 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
           </div>
         </div>
 
-        <div className="p-5 space-y-4">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+
           {/* Step 1: Brand */}
           {step === 1 && (
             <>
               <p className="text-sm font-semibold text-white">Select voucher brand</p>
               <div className="grid grid-cols-3 gap-2">
                 {BRANDS.map(b => (
-                  <button key={b.name} onClick={() => setBrand(b.name)}
+                  <button key={b.name} onClick={() => { setBrand(b.name); setAmount(null); }}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all"
                     style={{
                       background: brand === b.name ? `${b.color}22` : "rgba(255,255,255,0.04)",
@@ -238,11 +290,6 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
                   </button>
                 ))}
               </div>
-              <button onClick={() => setStep(2)} disabled={!canNext1}
-                className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-40 transition-all"
-                style={{ background: canNext1 ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : undefined, color: canNext1 ? "#fff" : undefined }}>
-                Next →
-              </button>
             </>
           )}
 
@@ -254,7 +301,7 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
               </button>
               <p className="text-sm font-semibold text-white">Select voucher amount</p>
               <div className="grid grid-cols-2 gap-3">
-                {([50, 100] as const).map(a => (
+                {availableAmounts.map(a => (
                   <button key={a} onClick={() => setAmount(a)}
                     className="flex flex-col items-center gap-1 py-5 rounded-2xl transition-all"
                     style={{
@@ -268,145 +315,241 @@ function VoucherSubmitModal({ onClose, onSuccess }: { onClose: () => void; onSuc
               </div>
               <div className="rounded-xl p-3 text-xs text-dark-muted"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                Daily limit: ₹300 | Amounts: ₹50 or ₹100 only
+                Daily limit: ₹300 · Accepted: {availableAmounts.map(a => `₹${a}`).join(" or ")}
+                {brand === "Amazon" && <span className="block text-amber-400/80 mt-1">⚠️ Amazon vouchers start from ₹500</span>}
               </div>
-              <button onClick={() => setStep(3)} disabled={!canNext2}
-                className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-40 transition-all"
-                style={{ background: canNext2 ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : undefined, color: canNext2 ? "#fff" : undefined }}>
-                Next →
-              </button>
             </>
           )}
 
-          {/* Step 3: Details */}
+          {/* Step 3: Screenshot → Auto-extract → Read-only fields */}
           {step === 3 && (
             <>
               <button onClick={() => setStep(2)} className="flex items-center gap-1 text-dark-muted text-xs hover:text-white transition-colors">
                 ← ₹{amount} {selectedBrand?.icon} {brand}
               </button>
 
-              {/* ── How to Purchase Guide ── */}
-              <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.25)", background: "rgba(99,102,241,0.06)" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowPurchaseGuide(g => !g)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 transition-colors hover:bg-white/[0.03]"
-                >
+              {/* How to guide (collapsed by default) */}
+              <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.2)", background: "rgba(99,102,241,0.04)" }}>
+                <button type="button" onClick={() => setShowGuide(g => !g)}
+                  className="w-full flex items-center justify-between px-3 py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">💡</span>
                     <span className="text-xs font-black text-indigo-300">How to get a {brand} voucher?</span>
                   </div>
-                  <span className="text-indigo-400 text-xs transition-transform" style={{ transform: showPurchaseGuide ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                  <span className="text-indigo-400 text-xs" style={{ transform: showGuide ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' }}>▼</span>
                 </button>
-
-                {showPurchaseGuide && (
-                  <div className="px-3 pb-3 space-y-2">
-                    <div className="h-px" style={{ background: "rgba(99,102,241,0.2)" }} />
-                    {/* App options */}
-                    <div className="flex gap-1.5 flex-wrap pt-0.5">
+                {showGuide && (
+                  <div className="px-3 pb-3 space-y-2 border-t border-indigo-500/20">
+                    <div className="flex gap-1.5 flex-wrap pt-2">
                       {["📱 PhonePe", "💳 Paytm", "🔵 Amazon Pay"].map(a => (
                         <span key={a} className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                          style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)" }}>
-                          {a}
-                        </span>
+                          style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)" }}>{a}</span>
                       ))}
                     </div>
-                    {/* Steps */}
                     <div className="space-y-1.5">
                       {[
-                        { n: 1, icon: "📲", text: `Open PhonePe or Paytm on your phone` },
-                        { n: 2, icon: "🔍", text: `Search for "${brand} Gift Card" or tap Gift Cards section` },
-                        { n: 3, icon: "💰", text: `Select ₹${amount} denomination and proceed to pay` },
-                        { n: 4, icon: "✅", text: `Complete payment via UPI / wallet` },
-                        { n: 5, icon: "🎟️", text: `Open the voucher — you'll see Code, PIN & Expiry` },
-                        { n: 6, icon: "📸", text: `Take a screenshot of the voucher screen` },
-                        { n: 7, icon: "✍️", text: `Come back here, enter the details & upload screenshot` },
+                        { n: 1, text: `Open PhonePe or Paytm` },
+                        { n: 2, text: `Search for "${brand} Gift Card"` },
+                        { n: 3, text: `Select ₹${amount} → pay via UPI` },
+                        { n: 4, text: `Open voucher — see Code, PIN & Expiry` },
+                        { n: 5, text: `Take a screenshot & upload below` },
                       ].map(s => (
-                        <div key={s.n} className="flex items-start gap-2">
-                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0 mt-0.5"
-                            style={{ background: "rgba(99,102,241,0.25)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.35)" }}>
-                            {s.n}
-                          </div>
-                          <p className="text-[11px] leading-relaxed flex items-center gap-1.5" style={{ color: "rgba(203,213,225,0.8)" }}>
-                            <span>{s.icon}</span>
-                            <span>{s.text}</span>
-                          </p>
+                        <div key={s.n} className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0"
+                            style={{ background: "rgba(99,102,241,0.25)", color: "#a5b4fc" }}>{s.n}</div>
+                          <p className="text-[11px]" style={{ color: "rgba(203,213,225,0.8)" }}>{s.text}</p>
                         </div>
                       ))}
-                    </div>
-                    <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl mt-1"
-                      style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                      <span className="text-sm">⚡</span>
-                      <p className="text-[10px] font-semibold" style={{ color: "#4ade80" }}>
-                        Screenshot speeds up admin approval — attach it below!
-                      </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-dark-muted block mb-1">Voucher Number *</label>
-                  <input value={number} onChange={e => setNumber(e.target.value)}
-                    placeholder="e.g. 1234 5678 9012 3456"
-                    className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
+              {/* Screenshot upload — primary action */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">📸</span>
+                  <p className="text-sm font-black text-white">Upload your voucher screenshot</p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-dark-muted block mb-1">Voucher PIN *</label>
-                    <input value={pin} onChange={e => setPin(e.target.value)}
-                      placeholder="PIN"
-                      className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-dark-muted block mb-1">Expiry *</label>
-                    <input value={expiry} onChange={e => setExpiry(e.target.value)}
-                      placeholder="MM/YY"
-                      maxLength={5}
-                      className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-dark-muted block mb-1.5">📸 Upload Screenshot <span className="text-dark-muted/60">(optional, helps speed up approval)</span></label>
-                  {screenshotPreview ? (
-                    <div className="relative rounded-xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.4)" }}>
-                      <img src={screenshotPreview} alt="screenshot" className="w-full h-24 object-cover" />
-                      <button
-                        onClick={() => { setScreenshotFile(null); setScreenshotPreview(""); setScreenshot(""); }}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ background: "rgba(0,0,0,0.7)", color: "#fff" }}>×</button>
-                      <div className="absolute bottom-0 inset-x-0 px-2 py-1" style={{ background: "rgba(0,0,0,0.6)" }}>
-                        <p className="text-[10px] text-green-400 font-semibold">✓ Screenshot attached — {screenshotFile?.name}</p>
-                      </div>
+                <p className="text-xs text-dark-muted mb-3">Our AI will automatically read the voucher code, PIN, and expiry from the image.</p>
+
+                {!screenshotPreview ? (
+                  <label className="flex flex-col items-center gap-3 py-6 rounded-2xl cursor-pointer transition-all"
+                    style={{ background: "rgba(99,102,241,0.08)", border: "2px dashed rgba(99,102,241,0.4)" }}>
+                    <span className="text-4xl">📲</span>
+                    <div className="text-center">
+                      <p className="text-sm font-black text-indigo-300">Tap to upload screenshot</p>
+                      <p className="text-xs text-dark-muted mt-1">PhonePe / Paytm / Amazon Pay · JPG, PNG · Max 3MB</p>
                     </div>
-                  ) : (
-                    <label className="flex flex-col items-center gap-2 py-4 rounded-xl cursor-pointer transition-all"
-                      style={{ background: "rgba(99,102,241,0.05)", border: "1px dashed rgba(99,102,241,0.35)" }}>
-                      <span className="text-2xl">📷</span>
-                      <span className="text-xs text-indigo-300 font-semibold">Tap to upload screenshot</span>
-                      <span className="text-[10px] text-dark-muted">JPG, PNG · Max 3MB</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={handleScreenshotUpload} />
-                    </label>
-                  )}
-                </div>
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScreenshotUpload} />
+                  </label>
+                ) : (
+                  <div className="rounded-2xl overflow-hidden relative" style={{ border: "1px solid rgba(99,102,241,0.4)" }}>
+                    <img src={screenshotPreview} alt="voucher screenshot" className="w-full object-cover" style={{ maxHeight: 180 }} />
+                    <button onClick={handleRemoveScreenshot}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold z-10"
+                      style={{ background: "rgba(0,0,0,0.8)", color: "#fff" }}>×</button>
+                    <div className="absolute bottom-0 inset-x-0 px-3 py-2" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85), transparent)" }}>
+                      <p className="text-[11px] text-green-400 font-semibold">✓ {screenshotFile?.name}</p>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Extracting spinner */}
+              {extracting && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                  style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)" }}>
+                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                    className="w-5 h-5 rounded-full border-2 border-transparent flex-shrink-0"
+                    style={{ borderTopColor: '#818cf8', borderRightColor: 'rgba(129,140,248,0.3)' }} />
+                  <p className="text-sm font-semibold text-indigo-300">Reading voucher details with AI…</p>
+                </div>
+              )}
+
+              {/* Status after upload */}
+              {extractError && !extracting && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl"
+                  style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)" }}>
+                  <span className="text-sm flex-shrink-0">⚠️</span>
+                  <div>
+                    <p className="text-xs text-amber-400">{extractError}</p>
+                    <p className="text-[11px] text-amber-400/70 mt-0.5">Fields highlighted in red need to be entered manually.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Voucher detail fields — shown after screenshot upload */}
+              {screenshotPreview && !extracting && (
+                <div className="space-y-3">
+                  {extracted && !manualMode && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                      style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+                      <span className="text-sm">✅</span>
+                      <p className="text-xs font-semibold text-green-400">Auto-read from screenshot — verify below</p>
+                    </div>
+                  )}
+
+                  {/* Voucher Number */}
+                  <div>
+                    <label className="text-xs text-dark-muted block mb-1.5">
+                      Voucher Code {extracted && !manualMode ? "🔒" : "*"}
+                    </label>
+                    {extracted && !manualMode ? (
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                        <span className="text-white font-mono text-sm flex-1 tracking-wider break-all">
+                          {number || <span className="text-dark-muted italic">Not detected</span>}
+                        </span>
+                        <button onClick={() => setManualMode(true)}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 flex-shrink-0 underline">edit</button>
+                      </div>
+                    ) : (
+                      <input value={number} onChange={e => setNumber(e.target.value)}
+                        placeholder="e.g. 6014 8678 9108 5723"
+                        autoFocus={!number.trim()}
+                        className="w-full bg-dark-bg rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none transition-colors"
+                        style={{ border: `1px solid ${!number.trim() ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.4)'}` }}
+                      />
+                    )}
+                  </div>
+
+                  {/* PIN + Expiry */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-dark-muted block mb-1.5">
+                        PIN {extracted && !manualMode ? "🔒" : "*"}
+                      </label>
+                      {extracted && !manualMode ? (
+                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                          <span className="text-white font-mono text-sm flex-1 break-all">
+                            {pin || <span className="text-dark-muted italic">—</span>}
+                          </span>
+                        </div>
+                      ) : (
+                        <input value={pin} onChange={e => setPin(e.target.value)}
+                          placeholder="PIN"
+                          className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-dark-muted block mb-1.5">
+                        Expiry {extracted && !manualMode ? "🔒" : "*"}
+                      </label>
+                      {extracted && !manualMode ? (
+                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                          <span className="text-white font-mono text-sm flex-1">
+                            {expiry || <span className="text-dark-muted italic">—</span>}
+                          </span>
+                        </div>
+                      ) : (
+                        <input value={expiry} onChange={e => setExpiry(e.target.value)}
+                          placeholder="MM/YY"
+                          maxLength={7}
+                          className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text font-mono text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info box */}
               <div className="rounded-xl p-3 text-xs text-dark-muted space-y-1"
                 style={{ background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.15)" }}>
                 <p className="font-semibold text-indigo-300">After submission:</p>
-                <p>• Admin will verify your voucher details</p>
+                <p>• Admin verifies your voucher screenshot & details</p>
                 <p>• ₹{amount} ({(amount ?? 0) * 100} credits) added on approval</p>
-                <p>• Typically processed within 24 hours</p>
+                <p>• Usually processed within 24 hours</p>
               </div>
-              <button onClick={handleSubmit} disabled={loading || !canSubmit}
-                className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-40 transition-all"
-                style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff" }}>
-                {loading ? "Submitting…" : `Submit ${selectedBrand?.icon} ${brand} Voucher`}
-              </button>
             </>
+          )}
+        </div>
+
+        {/* Sticky bottom action button */}
+        <div className="flex-shrink-0 px-5 pb-6 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          {step === 1 && (
+            <button onClick={() => setStep(2)} disabled={!canNext1}
+              className="w-full py-3.5 rounded-2xl font-black text-sm disabled:opacity-40 transition-all"
+              style={{ background: canNext1 ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "rgba(255,255,255,0.08)", color: "#fff" }}>
+              Next → Select Amount
+            </button>
+          )}
+          {step === 2 && (
+            <button onClick={() => setStep(3)} disabled={!canNext2}
+              className="w-full py-3.5 rounded-2xl font-black text-sm disabled:opacity-40 transition-all"
+              style={{ background: canNext2 ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "rgba(255,255,255,0.08)", color: "#fff" }}>
+              Next → Upload Screenshot
+            </button>
+          )}
+          {step === 3 && (
+            <button onClick={handleSubmit} disabled={loading || !canSubmit}
+              className="w-full py-3.5 rounded-2xl font-black text-sm disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+              style={{ background: canSubmit ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "rgba(255,255,255,0.08)", color: "#fff" }}>
+              {loading ? (
+                <>
+                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                    className="w-4 h-4 rounded-full border-2 border-transparent"
+                    style={{ borderTopColor: '#fff', borderRightColor: 'rgba(255,255,255,0.3)' }} />
+                  Submitting…
+                </>
+              ) : !screenshotPreview ? (
+                "📸 Upload Screenshot to Continue"
+              ) : extracting ? (
+                "⏳ Reading screenshot…"
+              ) : !number.trim() ? (
+                "⬆ Enter Voucher Code above"
+              ) : !pin.trim() ? (
+                "⬆ Enter PIN above"
+              ) : !expiry.trim() ? (
+                "⬆ Enter Expiry above"
+              ) : (
+                `Submit ${selectedBrand?.icon} ${brand} Voucher`
+              )}
+            </button>
           )}
         </div>
       </motion.div>
@@ -524,12 +667,25 @@ function RedeemModal({ balance, onClose, onSuccess }: {
 
 // ── Promo Flow Banner ────────────────────────────────────────────────────────
 
-const SMALL_VOUCHERS = [
-  { brand: "AMAZON",   amount: 50,  bg: "linear-gradient(135deg,#FF9900,#e67e00)", border: "rgba(255,153,0,0.5)",  text: "#fff", offset: "translate(8px,8px)" },
-  { brand: "FLIPKART", amount: 100, bg: "linear-gradient(135deg,#2874F0,#1a5fd6)", border: "rgba(40,116,240,0.6)", text: "#fff", offset: "translate(0,0)" },
+const BANNER_BRANDS = [
+  { name: "AMAZON",   icon: "📦", amount: 500, bg: "linear-gradient(135deg,#FF9900,#e67e00)",  border: "rgba(255,153,0,0.55)" },
+  { name: "FLIPKART", icon: "🛒", amount: 100, bg: "linear-gradient(135deg,#2874F0,#1a5fd6)",  border: "rgba(40,116,240,0.6)" },
+  { name: "MYNTRA",   icon: "👗", amount: 100, bg: "linear-gradient(135deg,#FF3F6C,#d4295a)",  border: "rgba(255,63,108,0.55)" },
+  { name: "AJIO",     icon: "👔", amount: 100, bg: "linear-gradient(135deg,#FF4E50,#d43a3c)",  border: "rgba(255,78,80,0.55)" },
+  { name: "SWIGGY",   icon: "🍔", amount: 100, bg: "linear-gradient(135deg,#FC8019,#d46a10)",  border: "rgba(252,128,25,0.55)" },
+  { name: "ZOMATO",   icon: "🍕", amount: 100, bg: "linear-gradient(135deg,#E23744,#c0222f)",  border: "rgba(226,55,68,0.55)" },
 ];
 
 function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
+  const [idx, setIdx] = React.useState(0);
+
+  React.useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % BANNER_BRANDS.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  const current = BANNER_BRANDS[idx];
+
   return (
     <motion.div whileTap={{ scale: 0.985 }} onClick={onSubmit}
       className="relative rounded-3xl overflow-hidden cursor-pointer select-none"
@@ -545,8 +701,6 @@ function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
           style={{ background: "radial-gradient(circle,#6366f1,transparent)", filter: "blur(30px)" }} />
         <div className="absolute -bottom-8 -right-8 w-48 h-48 rounded-full opacity-25"
           style={{ background: "radial-gradient(circle,#a855f7,transparent)", filter: "blur(35px)" }} />
-        <div className="absolute top-1/2 left-1/2 w-24 h-24 rounded-full opacity-15"
-          style={{ background: "radial-gradient(circle,#8b5cf6,transparent)", filter: "blur(20px)", transform: "translate(-50%,-50%)" }} />
       </div>
 
       <div className="relative p-4 sm:p-5">
@@ -570,31 +724,40 @@ function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
         {/* Flow row */}
         <div className="flex items-center gap-3">
 
-          {/* Left: stacked small voucher cards */}
+          {/* Left: cycling brand voucher card */}
           <div className="flex-shrink-0 relative" style={{ width: 100, height: 72 }}>
-            {SMALL_VOUCHERS.map((v, i) => (
-              <motion.div key={v.brand}
-                animate={{ y: [0, i === 1 ? -3 : 3, 0] }}
-                transition={{ duration: 2.5 + i * 0.5, repeat: Infinity, ease: "easeInOut" }}
+            <AnimatePresence mode="wait">
+              <motion.div key={current.name}
+                initial={{ opacity: 0, scale: 0.85, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.85, y: -8 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
                 className="absolute rounded-2xl px-3 py-2 shadow-xl"
                 style={{
-                  width: 96, height: 58,
-                  background: v.bg,
-                  border: `1px solid ${v.border}`,
-                  transform: v.offset,
-                  zIndex: i + 1,
-                  boxShadow: `0 4px 20px ${v.border}`,
+                  width: 96, height: 64,
+                  background: current.bg,
+                  border: `1px solid ${current.border}`,
+                  boxShadow: `0 4px 20px ${current.border}`,
                 }}>
-                <p className="text-[8px] font-black tracking-widest opacity-80" style={{ color: v.text }}>{v.brand}</p>
-                <p className="text-xl font-black leading-none" style={{ color: v.text }}>₹{v.amount}</p>
-                <p className="text-[8px] opacity-60 font-semibold" style={{ color: v.text }}>Gift Voucher</p>
-                {/* Shine sweep */}
+                <p className="text-[8px] font-black tracking-widest opacity-80 text-white">
+                  {current.icon} {current.name}
+                </p>
+                <p className="text-xl font-black leading-none text-white">₹{current.amount}</p>
+                <p className="text-[8px] opacity-60 font-semibold text-white">Gift Voucher</p>
                 <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
                   <div className="absolute top-0 left-[-60%] w-1/2 h-full opacity-20 rotate-12"
                     style={{ background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)" }} />
                 </div>
               </motion.div>
-            ))}
+            </AnimatePresence>
+            {/* Brand dots indicator */}
+            <div className="absolute -bottom-4 left-0 right-0 flex justify-center gap-1">
+              {BANNER_BRANDS.map((_, i) => (
+                <div key={i} className="rounded-full transition-all"
+                  style={{ width: i === idx ? 10 : 4, height: 4,
+                    background: i === idx ? "rgba(139,92,246,0.9)" : "rgba(255,255,255,0.2)" }} />
+              ))}
+            </div>
           </div>
 
           {/* Center: animated flow arrow */}
@@ -628,12 +791,8 @@ function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
                 border: "1.5px solid rgba(168,85,247,0.6)",
                 boxShadow: "0 0 30px rgba(139,92,246,0.3)",
               }}>
-              {/* Gold shimmer bar */}
               <div className="absolute top-0 left-0 right-0 h-0.5 rounded-full"
                 style={{ background: "linear-gradient(90deg,transparent,rgba(253,224,71,0.8),transparent)" }} />
-              <div className="absolute top-0 right-0 w-10 h-10 rounded-full pointer-events-none opacity-30"
-                style={{ background: "radial-gradient(circle,#fde047,transparent)", transform: "translate(30%,-30%)" }} />
-
               <p className="text-[8px] font-black uppercase tracking-widest text-purple-300">REWARD</p>
               <p className="text-2xl font-black leading-none"
                 style={{ background: "linear-gradient(135deg,#fde047,#f59e0b)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
@@ -641,13 +800,9 @@ function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
               </p>
               <p className="text-[8px] text-purple-200 font-semibold mt-0.5">Any Brand</p>
               <div className="flex gap-0.5 mt-1.5 flex-wrap">
-                {["📦","🛒","👗","🎮","🍔","🍕"].map(icon => (
-                  <span key={icon} className="text-[11px]">{icon}</span>
-                ))}
+                {BANNER_BRANDS.map(b => <span key={b.name} className="text-[11px]">{b.icon}</span>)}
               </div>
             </motion.div>
-
-            {/* "UP TO" badge */}
             <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full text-[8px] font-black"
               style={{ background: "linear-gradient(135deg,#f59e0b,#ef4444)", color: "#fff", boxShadow: "0 2px 8px rgba(245,158,11,0.5)" }}>
               UP TO
@@ -658,7 +813,7 @@ function PromoFlowBanner({ onSubmit }: { onSubmit: () => void }) {
         {/* Bottom CTA */}
         <motion.div
           animate={{ opacity: [0.7, 1, 0.7] }} transition={{ duration: 2, repeat: Infinity }}
-          className="mt-4 flex items-center justify-center gap-2">
+          className="mt-6 flex items-center justify-center gap-2">
           <div className="h-px flex-1" style={{ background: "linear-gradient(90deg,transparent,rgba(99,102,241,0.4))" }} />
           <p className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: "#818cf8" }}>
             Tap to Submit a Gift Voucher

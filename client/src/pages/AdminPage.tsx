@@ -674,80 +674,256 @@ function UsersSection() {
   );
 }
 
-function LeaderboardSection() {
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const RANK_COLORS: Record<string, string> = {
+  bronze: '#cd7f32', silver: '#c0c0c0', gold: '#fbbf24',
+  platinum: '#67e8f9', diamond: '#a78bfa', master: '#f43f5e',
+};
 
-  const fetch = () => {
-    admin
-      .getLeaderboard()
-      .then((r) => {
-        setLeaderboard(r.data.leaderboard);
-        setLoading(false);
-      })
+const DUMMY_XP = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  xp: 4820, level: 18, playerRank: 'gold'     },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  xp: 4210, level: 16, playerRank: 'gold'     },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  xp: 3780, level: 14, playerRank: 'silver'   },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  xp: 3540, level: 14, playerRank: 'silver'   },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  xp: 3120, level: 12, playerRank: 'silver'   },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  xp: 2870, level: 11, playerRank: 'silver'   },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  xp: 2540, level: 10, playerRank: 'bronze'   },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  xp: 2340, level: 9,  playerRank: 'bronze'   },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  xp: 2100, level: 8,  playerRank: 'bronze'   },
+  { username: 'SandeepRao',        avatar: 'avatar_10', xp: 1890, level: 7,  playerRank: 'bronze'   },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', xp: 1650, level: 7,  playerRank: 'bronze'   },
+  { username: 'RohitMishra',       avatar: 'avatar_12', xp: 1410, level: 6,  playerRank: 'bronze'   },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  xp: 1250, level: 5,  playerRank: 'bronze'   },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  xp: 1080, level: 5,  playerRank: 'bronze'   },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  xp: 920,  level: 4,  playerRank: 'bronze'   },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  xp: 780,  level: 4,  playerRank: 'bronze'   },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  xp: 640,  level: 3,  playerRank: 'bronze'   },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  xp: 490,  level: 2,  playerRank: 'bronze'   },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  xp: 310,  level: 2,  playerRank: 'bronze'   },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  xp: 180,  level: 1,  playerRank: 'bronze'   },
+];
+
+const DUMMY_ACHIEVEMENTS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  achievementCount: 14, level: 18, playerRank: 'gold'   },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  achievementCount: 12, level: 16, playerRank: 'gold'   },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  achievementCount: 11, level: 14, playerRank: 'silver' },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  achievementCount: 10, level: 14, playerRank: 'silver' },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  achievementCount: 9,  level: 12, playerRank: 'silver' },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  achievementCount: 8,  level: 11, playerRank: 'silver' },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  achievementCount: 7,  level: 10, playerRank: 'bronze' },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  achievementCount: 7,  level: 9,  playerRank: 'bronze' },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  achievementCount: 6,  level: 8,  playerRank: 'bronze' },
+  { username: 'SandeepRao',        avatar: 'avatar_10', achievementCount: 6,  level: 7,  playerRank: 'bronze' },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', achievementCount: 5,  level: 7,  playerRank: 'bronze' },
+  { username: 'RohitMishra',       avatar: 'avatar_12', achievementCount: 5,  level: 6,  playerRank: 'bronze' },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  achievementCount: 2,  level: 3,  playerRank: 'bronze' },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  achievementCount: 2,  level: 2,  playerRank: 'bronze' },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  achievementCount: 1,  level: 2,  playerRank: 'bronze' },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  achievementCount: 1,  level: 1,  playerRank: 'bronze' },
+];
+
+const DUMMY_WINS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  gamesWon: 184, gamesPlayed: 247, winRate: 74 },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  gamesWon: 152, gamesPlayed: 211, winRate: 72 },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  gamesWon: 127, gamesPlayed: 189, winRate: 67 },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  gamesWon: 122, gamesPlayed: 178, winRate: 69 },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  gamesWon: 98,  gamesPlayed: 152, winRate: 64 },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  gamesWon: 87,  gamesPlayed: 134, winRate: 65 },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  gamesWon: 76,  gamesPlayed: 128, winRate: 59 },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  gamesWon: 71,  gamesPlayed: 119, winRate: 60 },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  gamesWon: 65,  gamesPlayed: 109, winRate: 60 },
+  { username: 'SandeepRao',        avatar: 'avatar_10', gamesWon: 59,  gamesPlayed: 101, winRate: 58 },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', gamesWon: 52,  gamesPlayed: 96,  winRate: 54 },
+  { username: 'RohitMishra',       avatar: 'avatar_12', gamesWon: 44,  gamesPlayed: 87,  winRate: 51 },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  gamesWon: 39,  gamesPlayed: 81,  winRate: 48 },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  gamesWon: 35,  gamesPlayed: 76,  winRate: 46 },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  gamesWon: 29,  gamesPlayed: 69,  winRate: 42 },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  gamesWon: 24,  gamesPlayed: 63,  winRate: 38 },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  gamesWon: 21,  gamesPlayed: 59,  winRate: 36 },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  gamesWon: 17,  gamesPlayed: 54,  winRate: 31 },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  gamesWon: 12,  gamesPlayed: 48,  winRate: 25 },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  gamesWon: 8,   gamesPlayed: 39,  winRate: 21 },
+];
+
+function LeaderboardSection() {
+  type Tab = 'wins' | 'xp' | 'achievements';
+  const [tab, setTab] = useState<Tab>('wins');
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [xpBoard, setXpBoard] = useState<any[]>([]);
+  const [achBoard, setAchBoard] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [progLoading, setProgLoading] = useState(false);
+
+  const fetchWins = () => {
+    admin.getLeaderboard()
+      .then((r) => { setLeaderboard(r.data.leaderboard); setLoading(false); })
       .catch(console.error);
   };
 
+  const fetchProg = (category: 'xp' | 'achievements', setter: (d: any[]) => void) => {
+    setProgLoading(true);
+    admin.getProgressionLeaderboard(category)
+      .then((r) => { setter(r.data.leaderboard); })
+      .catch(console.error)
+      .finally(() => setProgLoading(false));
+  };
+
+  useEffect(() => { fetchWins(); }, []);
+
   useEffect(() => {
-    fetch();
-  }, []);
+    if (tab === 'xp' && xpBoard.length === 0) fetchProg('xp', setXpBoard);
+    if (tab === 'achievements' && achBoard.length === 0) fetchProg('achievements', setAchBoard);
+  }, [tab]);
 
   const resetAll = async () => {
     if (!confirm("Reset ALL user stats? This cannot be undone.")) return;
     await admin.resetLeaderboard().catch(console.error);
-    fetch();
+    fetchWins();
   };
+
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'wins',         label: 'Game Wins',    icon: '🏆' },
+    { key: 'xp',          label: 'XP & Levels',  icon: '⭐' },
+    { key: 'achievements', label: 'Achievements', icon: '🎖️' },
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Leaderboard</h2>
-        <button
-          onClick={resetAll}
-          className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-          style={{
-            background: "rgba(255,59,92,0.12)",
-            color: "#ff3b5c",
-            border: "1px solid rgba(255,59,92,0.3)",
-          }}
-        >
-          Reset All
-        </button>
+        {tab === 'wins' && (
+          <button
+            onClick={resetAll}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ background: "rgba(255,59,92,0.12)", color: "#ff3b5c", border: "1px solid rgba(255,59,92,0.3)" }}
+          >
+            Reset All
+          </button>
+        )}
       </div>
 
-      {loading ? (
-        <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {leaderboard.slice(0, 50).map((u) => (
-            <div
-              key={String(u.id)}
-              className="p-3 rounded-xl flex items-center gap-3"
-              style={cardStyle}
-            >
-              <span className="w-8 text-center font-bold text-dark-muted text-sm">
-                #{u.rank}
-              </span>
-              <Avatar avatar={u.avatar} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-dark-text truncate">
-                  {u.username}
-                </p>
-                <p className="text-[11px] text-dark-muted">
-                  {u.gamesPlayed} played · {u.winRate}% win
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-bold text-neon-green text-sm">
-                  {u.gamesWon}W
-                </p>
-                {u.isBanned && (
-                  <p className="text-[10px] text-neon-red">BANNED</p>
-                )}
-              </div>
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={tab === t.key
+              ? { background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+              : { background: 'rgba(255,255,255,0.04)', color: '#6b7280', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Wins tab */}
+      {tab === 'wins' && (
+        loading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(leaderboard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_WINS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...leaderboard.map((u) => ({ ...u, isReal: true })),
+            ...dummyFiltered.map((d, i) => ({ ...d, id: `dummy_${i}`, rank: 0, isBanned: false, isReal: false })),
+          ]
+            .sort((a, b) => b.gamesWon - a.gamesWon)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+
+          return (
+            <div className="space-y-2">
+              {merged.slice(0, 50).map((u) => (
+                <div key={String(u.id ?? u.username)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">{u.gamesPlayed} played · {u.winRate}% win</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-neon-green text-sm">{u.gamesWon}W</p>
+                    {u.isBanned && <p className="text-[10px] text-neon-red">BANNED</p>}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()
+      )}
+
+      {/* XP & Levels tab */}
+      {tab === 'xp' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(xpBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_XP.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...xpBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_xp_${i}` })),
+          ]
+            .sort((a, b) => b.xp - a.xp)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#fbbf24' }}>{u.xp.toLocaleString()} XP</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
+      )}
+
+      {/* Achievements tab */}
+      {tab === 'achievements' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(achBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_ACHIEVEMENTS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...achBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_ach_${i}` })),
+          ]
+            .sort((a, b) => b.achievementCount - a.achievementCount)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#a78bfa' }}>{u.achievementCount} 🎖️</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );

@@ -21,6 +21,8 @@ import { DepositRequest } from "../models/DepositRequest";
 import { Transaction } from "../models/Transaction";
 import { SupportTicket } from "../models/SupportTicket";
 import { getAnalyticsSnapshot, resetAnalytics } from "../utils/gameAnalytics";
+import { PlayerProgress } from "../models/PlayerProgress";
+import { computeAndCacheBadge } from "../utils/badgeCache";
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -884,6 +886,57 @@ export default function createAdminRouter(io: Server) {
       });
     } catch {
       res.status(500).json({ error: "Failed to load survival championship data" });
+    }
+  });
+
+  // ── Progression leaderboard (XP / achievements) ─────────────────────────────
+  router.get("/progression/leaderboard", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const category = (req.query.category as string) ?? 'xp';
+      let sortField: Record<string, -1> = { xp: -1 };
+      if (category === 'achievements') sortField = { achievementCount: -1 };
+
+      let records: any[];
+      if (category === 'achievements') {
+        records = await PlayerProgress.aggregate([
+          { $addFields: { achievementCount: { $size: { $ifNull: ['$achievements', []] } } } },
+          { $sort: { achievementCount: -1 } },
+          { $limit: 50 },
+          { $project: { userId: 1, level: 1, rank: 1, xp: 1, achievements: 1, achievementCount: 1 } },
+        ]);
+      } else {
+        records = await PlayerProgress.find({})
+          .sort(sortField as any)
+          .limit(50)
+          .select('userId level rank xp achievements')
+          .lean();
+      }
+
+      const userIds = records.map((r) => r.userId);
+      const users = await User.find({ _id: { $in: userIds } }).select('username avatar isGuest').lean();
+      const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+      const leaderboard = records.map((r, i) => {
+        const u = userMap.get(r.userId);
+        const badge = computeAndCacheBadge(r.userId, (r.achievements ?? []).map((a: any) => a.id));
+        return {
+          rank: i + 1,
+          userId: r.userId,
+          username: u?.username ?? 'Unknown',
+          avatar: (u as any)?.avatar ?? 'avatar_1',
+          isGuest: u?.isGuest ?? false,
+          level: r.level ?? 1,
+          playerRank: r.rank ?? 'bronze',
+          xp: r.xp ?? 0,
+          achievementCount: r.achievementCount ?? (r.achievements?.length ?? 0),
+          achievementIds: (r.achievements ?? []).map((a: any) => a.id),
+          badge: badge ?? null,
+        };
+      });
+
+      res.json({ leaderboard, category });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch progression leaderboard' });
     }
   });
 

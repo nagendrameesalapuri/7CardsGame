@@ -29,10 +29,10 @@ function BellPanel({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-10 w-80 rounded-2xl shadow-2xl z-50 overflow-hidden"
-      style={{ background: 'rgba(8,10,20,0.98)', border: '1px solid rgba(255,255,255,0.09)' }}
+      className="absolute right-0 top-10 w-80 max-w-[calc(100vw-16px)] rounded-2xl shadow-2xl z-50 flex flex-col"
+      style={{ background: 'rgba(8,10,20,0.98)', border: '1px solid rgba(255,255,255,0.09)', maxHeight: '70vh' }}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
         <span className="text-sm font-bold text-white">Notifications</span>
         {notifications.length > 0 && (
           <button onClick={clearAll} className="text-[10px] text-dark-muted hover:text-red-400 transition-colors">
@@ -43,7 +43,7 @@ function BellPanel({ onClose }: { onClose: () => void }) {
       {notifications.length === 0 ? (
         <div className="px-4 py-8 text-center text-xs text-dark-muted">No notifications yet</div>
       ) : (
-        <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
+        <div className="overflow-y-auto divide-y divide-white/5">
           {notifications.map((n) => (
             <div key={n.id} className="px-4 py-3">
               <div className="flex items-start gap-2">
