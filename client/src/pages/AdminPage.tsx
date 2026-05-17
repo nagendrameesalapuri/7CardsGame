@@ -2777,6 +2777,201 @@ const NOTIF_CATEGORIES = [
 
 type NotifTarget = "global" | "specific" | "inactive";
 
+interface NotifTemplate {
+  label: string;
+  title: string;
+  message: string;
+  type: "info" | "warning" | "success";
+  category: string;
+  actionUrl?: string;
+  hasAmount?: boolean; // if true, show an amount input to substitute {amount}
+}
+
+const NOTIF_TEMPLATES: Record<string, NotifTemplate[]> = {
+  "🎁 Bonuses & Rewards": [
+    {
+      label: "Joining Bonus",
+      title: "🎁 Welcome Bonus Credited!",
+      message: "A joining bonus of {amount} points has been added to your account. Start playing and Master the SHOW!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Bonus",
+      title: "💰 Deposit Bonus Unlocked",
+      message: "Your deposit bonus of {amount} points is now live in your wallet. Use it in your next game!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Loyalty Reward",
+      title: "🏅 Loyalty Reward Credited",
+      message: "Thank you for being a valued player! {amount} loyalty points have been added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Referral Bonus",
+      title: "👥 Referral Bonus Earned!",
+      message: "Your referral reward of {amount} points has been credited. Keep inviting friends to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Special Cashback",
+      title: "💸 Cashback Applied",
+      message: "A cashback of {amount} points has been added to your account. Keep playing to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "💳 Deposits": [
+    {
+      label: "Deposit Approved",
+      title: "✅ Deposit Approved",
+      message: "Your deposit of ₹{amount} has been successfully approved and added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Pending",
+      title: "⏳ Deposit Under Review",
+      message: "Your deposit of ₹{amount} is being reviewed. It will be credited within 24 hours.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Rejected",
+      title: "❌ Deposit Could Not Be Processed",
+      message: "Your deposit of ₹{amount} could not be verified. Please re-submit with a clear screenshot.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Reminder",
+      title: "💳 Add Funds to Keep Playing",
+      message: "Your balance is running low. Deposit now to continue competing in the Arena of Sevens.",
+      type: "info", category: "system", actionUrl: "/wallet",
+    },
+  ],
+  "💸 Withdrawals": [
+    {
+      label: "Withdrawal Approved",
+      title: "✅ Withdrawal Approved",
+      message: "Your withdrawal of ₹{amount} has been approved and is being processed. Expect it within 24–48 hrs.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Delivered",
+      title: "🎉 Payment Sent!",
+      message: "Your withdrawal of ₹{amount} has been successfully transferred to your account.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Rejected",
+      title: "⚠️ Withdrawal Request Issue",
+      message: "Your withdrawal of ₹{amount} could not be processed. Please check your bank details and retry.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Processing",
+      title: "🔄 Withdrawal In Progress",
+      message: "Your withdrawal request of ₹{amount} is being processed. We'll notify you once complete.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "⚔️ Tournament": [
+    {
+      label: "Tournament Starting",
+      title: "⚔️ Tournament Starts Now!",
+      message: "The Arena of Sevens tournament is LIVE! Register now and compete for the top spot.",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Ending Soon",
+      title: "⏰ Tournament Ends in 1 Hour",
+      message: "Last chance to enter! The current tournament closes soon. Join now before seats fill up.",
+      type: "warning", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "New Tournament Open",
+      title: "🏆 New Tournament is Open",
+      message: "A new ranked tournament has started. Entry is open — prove your skills and claim glory!",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Results",
+      title: "🏅 Tournament Results Are In",
+      message: "The latest tournament has ended. Check the leaderboard to see the final rankings!",
+      type: "success", category: "tournament", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Special Prize Pool",
+      title: "💎 Special Prize Pool — {amount} Points",
+      message: "This weekend's tournament has a prize pool of {amount} points! Register now to compete.",
+      type: "success", category: "tournament", actionUrl: "/survival", hasAmount: true,
+    },
+  ],
+  "👑 Boss Arena": [
+    {
+      label: "Boss Arena Unlocked",
+      title: "👑 Boss Arena is OPEN",
+      message: "You've unlocked the Boss Arena! The ultimate challenge awaits — enter if you dare.",
+      type: "success", category: "boss_arena", actionUrl: "/survival",
+    },
+    {
+      label: "Boss Arena Event",
+      title: "🔥 Boss Arena Special Event",
+      message: "A limited Boss Arena event is live! Defeat the champion and claim massive rewards.",
+      type: "warning", category: "boss_arena", actionUrl: "/survival",
+    },
+  ],
+  "🔥 Streaks & Live": [
+    {
+      label: "Win Streak Alert",
+      title: "🔥 You're on a Hot Streak!",
+      message: "Your current win streak is live on the leaderboard. Keep it up and dominate the Arena!",
+      type: "success", category: "survival_streak", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Streak at Risk",
+      title: "⚠️ Your Streak is at Risk",
+      message: "You haven't played today! Log in now to keep your survival streak alive.",
+      type: "warning", category: "survival_streak", actionUrl: "/survival",
+    },
+    {
+      label: "Live Game Alert",
+      title: "🎮 Game is Live — Join Now!",
+      message: "A live multiplayer game is waiting for you. Jump in and show your skills!",
+      type: "info", category: "multiplayer", actionUrl: "/lobby",
+    },
+    {
+      label: "Come Back",
+      title: "👋 We Miss You!",
+      message: "It's been a while since your last game. Return to the Arena and continue your climb!",
+      type: "info", category: "survival_streak", actionUrl: "/lobby",
+    },
+  ],
+  "🎉 Events & System": [
+    {
+      label: "Special Event Live",
+      title: "🎉 Special Event is LIVE",
+      message: "A limited-time event has started in Arena of Sevens. Play now to earn double rewards!",
+      type: "success", category: "events", actionUrl: "/lobby",
+    },
+    {
+      label: "Maintenance Notice",
+      title: "🔧 Scheduled Maintenance",
+      message: "The server will undergo maintenance in 30 minutes. Please complete your current games.",
+      type: "warning", category: "system",
+    },
+    {
+      label: "App Update",
+      title: "🆕 New Update Available",
+      message: "Arena of Sevens has been updated with new features! Refresh the app to get the latest.",
+      type: "info", category: "system",
+    },
+    {
+      label: "Weekend Offer",
+      title: "🎊 Weekend Special Offer",
+      message: "This weekend only — play 3 games and get {amount} bonus points! Offer ends Sunday.",
+      type: "success", category: "events", actionUrl: "/lobby", hasAmount: true,
+    },
+  ],
+};
+
 function NotifySection() {
   const [tab, setTab] = useState<"live" | "push">("push");
 
@@ -2800,10 +2995,34 @@ function NotifySection() {
   const [result, setResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [tokenUsers, setTokenUsers] = useState<number | null>(null);
 
+  // Template picker state
+  const [templateGroup, setTemplateGroup] = useState<string | null>(null);
+  const [amountValue, setAmountValue] = useState("");
+  const [activeTemplate, setActiveTemplate] = useState<NotifTemplate | null>(null);
+
   // Load FCM user count on mount
   useEffect(() => {
     admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
   }, []);
+
+  const applyTemplate = (tpl: NotifTemplate) => {
+    setActiveTemplate(tpl);
+    setAmountValue("");
+    setType(tpl.type);
+    setCategory(tpl.category);
+    setActionUrl(tpl.actionUrl ?? "");
+    if (!tpl.hasAmount) {
+      setTitle(tpl.title);
+      setMessage(tpl.message);
+    }
+    // If has amount, wait until user fills amount
+  };
+
+  const applyAmountToTemplate = (amt: string) => {
+    if (!activeTemplate) return;
+    setTitle(activeTemplate.title.replace("{amount}", amt));
+    setMessage(activeTemplate.message.replace("{amount}", amt));
+  };
 
   const typeOptions: { value: "info" | "warning" | "success"; label: string; color: string }[] = [
     { value: "info",    label: "ℹ️ Info",    color: "#60a5fa" },
@@ -2858,6 +3077,7 @@ function NotifySection() {
       const modeLabel = d.mode === "global" ? "all users" : d.mode === "inactive" ? "inactive users" : `${d.count} user(s)`;
       setResult({ success: true, msg: `Push sent to ${modeLabel}` });
       setTitle(""); setMessage(""); setUserIds(""); setActionUrl("");
+      setActiveTemplate(null); setAmountValue(""); setTemplateGroup(null);
     } catch (err: any) {
       setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
     } finally {
@@ -2896,6 +3116,82 @@ function NotifySection() {
 
       {tab === "push" ? (
         <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+
+          {/* ── Template Picker ── */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Quick Templates</p>
+            {/* Group tabs */}
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {Object.keys(NOTIF_TEMPLATES).map(group => (
+                <button
+                  key={group}
+                  onClick={() => setTemplateGroup(templateGroup === group ? null : group)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all"
+                  style={{
+                    background: templateGroup === group ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${templateGroup === group ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: templateGroup === group ? "#a5b4fc" : "#64748b",
+                  }}>
+                  {group}
+                </button>
+              ))}
+            </div>
+
+            {/* Template cards */}
+            {templateGroup && (
+              <div className="flex flex-col gap-2 mb-1">
+                {(NOTIF_TEMPLATES[templateGroup] ?? []).map((tpl) => {
+                  const isActive = activeTemplate?.label === tpl.label && activeTemplate?.title === tpl.title;
+                  return (
+                    <button
+                      key={tpl.label}
+                      onClick={() => applyTemplate(tpl)}
+                      className="w-full text-left rounded-xl px-3 py-2.5 transition-all"
+                      style={{
+                        background: isActive ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${isActive ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                      }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold" style={{ color: isActive ? "#a5b4fc" : "#cbd5e1" }}>
+                          {tpl.label}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{
+                          background: tpl.type === "success" ? "rgba(0,255,136,0.1)" : tpl.type === "warning" ? "rgba(251,191,36,0.1)" : "rgba(96,165,250,0.1)",
+                          color: tpl.type === "success" ? "#00ff88" : tpl.type === "warning" ? "#fbbf24" : "#60a5fa",
+                        }}>
+                          {tpl.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: "#64748b" }}>
+                        {tpl.title}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Amount input when template needs it */}
+            {activeTemplate?.hasAmount && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={amountValue}
+                  onChange={e => {
+                    setAmountValue(e.target.value);
+                    applyAmountToTemplate(e.target.value);
+                  }}
+                  placeholder="Enter amount (e.g. 30 or ₹500)"
+                  className="flex-1 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                  style={{ border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.07)" }}
+                />
+                <span className="text-[11px] text-dark-muted shrink-0">fills {"{amount}"}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
           {/* Target mode */}
           <div>
             <p className="text-xs text-dark-muted mb-2">Target</p>

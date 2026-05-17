@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'pwa-icon.svg'],
       manifest: {
         name: 'Arena of Sevens',
@@ -23,19 +26,8 @@ export default defineConfig({
           { src: 'pwa-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,mp3,ogg,woff2}'],
-        navigateFallback: 'index.html',
-        // Import Firebase push handler into the Workbox SW so there is only
-        // ONE active service worker — push events are handled here directly.
-        importScripts: ['firebase-messaging-sw.js'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.onrender\.com\//,
-            handler: 'NetworkFirst',
-            options: { cacheName: 'api-cache', networkTimeoutSeconds: 10 },
-          },
-        ],
       },
       devOptions: { enabled: false },
     }),
