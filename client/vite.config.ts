@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'pwa-icon.svg'],
       manifest: {
-        name: '7 Cards Show',
-        short_name: '7 Cards',
-        description: 'The ultimate Indian multiplayer card game — play online with friends!',
+        name: 'Arena of Sevens',
+        short_name: 'Arena 7s',
+        description: 'Arena of Sevens — Master the SHOW. Strategic AI card tournament experience.',
         theme_color: '#0d1117',
         background_color: '#0d1117',
         display: 'standalone',

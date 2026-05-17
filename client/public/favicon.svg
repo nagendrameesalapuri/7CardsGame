@@ -1,5 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="18" fill="#0d1117"/>
-  <rect x="10" y="10" width="80" height="80" rx="12" fill="#161b22" stroke="#00ff88" stroke-width="3"/>
-  <text x="50" y="62" font-size="50" text-anchor="middle" fill="#00ff88">🃏</text>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c14"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="seven" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <linearGradient id="border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="100" height="100" rx="18" fill="url(#bg)"/>
+
+  <!-- Glow border -->
+  <rect x="2" y="2" width="96" height="96" rx="17" fill="none" stroke="url(#border)" stroke-width="2.5" opacity="0.8"/>
+
+  <!-- Card shape -->
+  <rect x="18" y="14" width="64" height="72" rx="8" fill="#1e1b4b" stroke="rgba(99,102,241,0.45)" stroke-width="1.5"/>
+
+  <!-- Crown -->
+  <g transform="translate(33,9)" fill="#f59e0b" opacity="0.9">
+    <polygon points="17,0 0,10 5,10 5,16 29,16 29,10 34,10"/>
+  </g>
+
+  <!-- The 7 -->
+  <text x="50" y="74"
+    font-size="54"
+    font-family="Georgia, serif"
+    font-weight="bold"
+    text-anchor="middle"
+    fill="url(#seven)">7</text>
+
+  <!-- Bottom dot accent -->
+  <circle cx="50" cy="92" r="2.5" fill="#6366f1" opacity="0.6"/>
 </svg>
