@@ -29,7 +29,7 @@ export default function createAdminRouter(io: Server) {
 
   // ── Admin login ─────────────────────────────────────────────────────────────
   router.post("/login", (req: Request, res: Response) => {
-    const { password } = req.body as { password: string };
+    const password = (req.body as { password: string }).password?.trim();
     const secret = process.env.ADMIN_SECRET;
 
     if (!secret) {

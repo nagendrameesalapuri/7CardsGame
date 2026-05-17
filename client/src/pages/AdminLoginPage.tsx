@@ -16,11 +16,12 @@ export function AdminLoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) return;
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) return;
     setLoading(true);
     setError('');
     try {
-      const res = await admin.login(password);
+      const res = await admin.login(trimmedPassword);
       localStorage.setItem('adminToken', res.data.token);
       navigate('/admin', { replace: true });
     } catch (err: any) {
