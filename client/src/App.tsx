@@ -43,6 +43,41 @@ function AuthCallback() {
   );
 }
 
+function MigrationNotice() {
+  if (window.location.hostname !== '7cardsgames.netlify.app') return null;
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.97)', backdropFilter: 'blur(20px)' }}>
+      <div className="w-full max-w-sm text-center rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: '1px solid rgba(251,191,36,0.35)' }}>
+        <div className="pt-10 pb-6 px-8"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.12) 0%, transparent 65%)' }}>
+          <div className="text-6xl mb-4">🎴</div>
+          <h2 className="text-2xl font-black text-white mb-2">We've Moved!</h2>
+          <p className="text-sm" style={{ color: '#8b949e' }}>
+            This URL is no longer active. Our game has a new home — please update your bookmarks.
+          </p>
+        </div>
+        <div className="px-8 pb-2">
+          <div className="rounded-2xl px-4 py-3 mb-4"
+            style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.22)' }}>
+            <p className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#8b949e' }}>New URL</p>
+            <p className="font-black text-base" style={{ color: '#fbbf24' }}>arenaofsevens.netlify.app</p>
+          </div>
+          <a href="https://arenaofsevens.netlify.app"
+            className="block w-full py-4 rounded-2xl font-black text-base mb-3"
+            style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0d1117' }}>
+            Go to Arena of Sevens →
+          </a>
+          <p className="text-[11px] pb-6" style={{ color: '#4b5563' }}>
+            This site is no longer supported and will not receive updates.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuthStore();
   if (isLoading && !user) {
@@ -77,6 +112,7 @@ export function App() {
 
   return (
     <ThemeProvider>
+      <MigrationNotice />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />
