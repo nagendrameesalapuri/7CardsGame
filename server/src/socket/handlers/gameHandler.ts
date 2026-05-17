@@ -298,10 +298,18 @@ export async function startRoomGame(
 
   const botNamesConfig: string[] = (room.config as any).botNames ?? [];
   const botPersonalitiesConfig: BotPersonality[] = (room.config as any).botPersonalities ?? [];
+  const singleBotPersonality: string = (room.config as any).botPersonality ?? '';
+
+  const PERSONALITY_NAMES: Record<string, string> = {
+    safe: 'Safe Bot', aggressive: 'Aggressive Bot', bluff: 'Bluff Bot', smart: 'Smart AI', boss: 'Boss AI',
+  };
 
   const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => ({
     userId: `bot_${uuidv4().slice(0, 6)}`,
-    username: botNamesConfig[i] ?? `Bot ${i + 1}`,
+    username: botNamesConfig[i]
+      ?? (botPersonalitiesConfig[i] ? PERSONALITY_NAMES[botPersonalitiesConfig[i]] : undefined)
+      ?? (i === 0 && singleBotPersonality ? PERSONALITY_NAMES[singleBotPersonality] : undefined)
+      ?? `Bot ${i + 1}`,
     avatar: `bot_${i + 1}`,
     isBot: true,
   }));
