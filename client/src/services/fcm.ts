@@ -49,18 +49,11 @@ function initFirebase(): FirebaseApp | null {
 }
 
 // Returns the active Workbox SW registration (registered by vite-plugin-pwa).
-// We do NOT register a second SW — that would conflict with the Workbox SW.
+// The SW handles push events via a raw listener — no Firebase SDK needed there.
 async function getActiveSW(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    // Send Firebase config so the SW can initialise Firebase for background push.
-    // firebase-messaging-sw.js is importScripts'd into the Workbox SW.
-    const target = reg.active;
-    if (target) {
-      target.postMessage({ type: 'FCM_CONFIG', config: FIREBASE_CONFIG });
-    }
-    return reg;
+    return await navigator.serviceWorker.ready;
   } catch (err) {
     console.warn('[FCM] Could not reach active SW:', err);
     return null;
