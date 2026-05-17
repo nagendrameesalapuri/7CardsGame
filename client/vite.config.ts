@@ -26,6 +26,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,mp3,ogg,woff2}'],
         navigateFallback: 'index.html',
+        // Import Firebase push handler into the Workbox SW so there is only
+        // ONE active service worker — push events are handled here directly.
+        importScripts: ['firebase-messaging-sw.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.onrender\.com\//,

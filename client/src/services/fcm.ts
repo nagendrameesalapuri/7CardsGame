@@ -48,21 +48,21 @@ function initFirebase(): FirebaseApp | null {
   }
 }
 
-async function registerSW(): Promise<ServiceWorkerRegistration | null> {
+// Returns the active Workbox SW registration (registered by vite-plugin-pwa).
+// We do NOT register a second SW — that would conflict with the Workbox SW.
+async function getActiveSW(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-      scope: '/',
-    });
-    await navigator.serviceWorker.ready;
-    // Send Firebase config to SW so it can init Firebase for background push
-    const target = reg.active ?? reg.installing ?? reg.waiting;
+    const reg = await navigator.serviceWorker.ready;
+    // Send Firebase config so the SW can initialise Firebase for background push.
+    // firebase-messaging-sw.js is importScripts'd into the Workbox SW.
+    const target = reg.active;
     if (target) {
       target.postMessage({ type: 'FCM_CONFIG', config: FIREBASE_CONFIG });
     }
     return reg;
   } catch (err) {
-    console.warn('[FCM] SW registration failed:', err);
+    console.warn('[FCM] Could not reach active SW:', err);
     return null;
   }
 }
@@ -83,7 +83,7 @@ export async function initFCM(
 
     messaging = getMessaging(app);
 
-    const swReg = await registerSW();
+    const swReg = await getActiveSW();
 
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
