@@ -54,6 +54,12 @@ async function registerSW(): Promise<ServiceWorkerRegistration | null> {
     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
       scope: '/',
     });
+    await navigator.serviceWorker.ready;
+    // Send Firebase config to SW so it can init Firebase for background push
+    const target = reg.active ?? reg.installing ?? reg.waiting;
+    if (target) {
+      target.postMessage({ type: 'FCM_CONFIG', config: FIREBASE_CONFIG });
+    }
     return reg;
   } catch (err) {
     console.warn('[FCM] SW registration failed:', err);
