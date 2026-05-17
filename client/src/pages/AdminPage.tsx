@@ -3000,10 +3000,23 @@ function NotifySection() {
   const [amountValue, setAmountValue] = useState("");
   const [activeTemplate, setActiveTemplate] = useState<NotifTemplate | null>(null);
 
+  // Health state
+  const [health, setHealth] = useState<{ envVarsSet: boolean; tokenCount: number; hint: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
   // Load FCM user count on mount
   useEffect(() => {
     admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
   }, []);
+
+  const checkHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const r = await admin.getPushHealth();
+      setHealth(r.data);
+    } catch { setHealth(null); }
+    finally { setHealthLoading(false); }
+  };
 
   const applyTemplate = (tpl: NotifTemplate) => {
     setActiveTemplate(tpl);
@@ -3116,6 +3129,40 @@ function NotifySection() {
 
       {tab === "push" ? (
         <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+
+          {/* ── Firebase Health Check ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={checkHealth} disabled={healthLoading}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>
+              {healthLoading ? "Checking…" : "🔍 Check Firebase"}
+            </button>
+            {health && (
+              <span className="text-[11px] px-2.5 py-1 rounded-full font-medium flex-1"
+                style={{
+                  background: health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.1)" : "rgba(251,191,36,0.1)",
+                  color:      health.envVarsSet && health.tokenCount > 0 ? "#00ff88"              : "#fbbf24",
+                  border:     `1px solid ${health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.2)" : "rgba(251,191,36,0.2)"}`,
+                }}>
+                {health.envVarsSet ? "✓ Firebase OK" : "✗ Firebase not configured"} · {health.tokenCount} token{health.tokenCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {health && (
+              <p className="w-full text-[10px] text-dark-muted/70 -mt-2">{health.hint}</p>
+            )}
+          </div>
+
+          {health && !health.envVarsSet && (
+            <div className="rounded-xl p-3 text-xs space-y-1"
+              style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", color: "#fbbf24" }}>
+              <p className="font-bold">Add these to Render env vars:</p>
+              <p className="font-mono">FIREBASE_PROJECT_ID</p>
+              <p className="font-mono">FIREBASE_CLIENT_EMAIL</p>
+              <p className="font-mono">FIREBASE_PRIVATE_KEY</p>
+            </div>
+          )}
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
 
           {/* ── Template Picker ── */}
           <div>

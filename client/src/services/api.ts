@@ -272,6 +272,7 @@ export const admin = {
   }) => adminApi.post<{ ok: boolean; mode: string; count?: number }>("/push/send", opts),
 
   getPushUsers: () => adminApi.get<{ users: Record<string, { deviceCount: number; lastActiveAt: string; devices: string[] }>; total: number }>("/push/users"),
+  getPushHealth: () => adminApi.get<{ envVarsSet: boolean; projectId: string | null; tokenCount: number; hint: string }>("/push/health"),
 
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),

@@ -1154,6 +1154,24 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
+  router.get("/push/health", requireAdmin, async (_req: Request, res: Response) => {
+    const projectId   = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey  = process.env.FIREBASE_PRIVATE_KEY;
+    const envOk = !!(projectId && clientEmail && privateKey);
+    const tokenCount = await NotificationToken.countDocuments();
+    res.json({
+      envVarsSet: envOk,
+      projectId:  projectId ?? null,
+      tokenCount,
+      hint: !envOk
+        ? 'Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY to Render env vars'
+        : tokenCount === 0
+        ? 'No FCM tokens registered yet — users must open the app and allow notifications first'
+        : 'Firebase looks configured. If push still fails check Render logs for [FCM] errors',
+    });
+  });
+
   router.get("/push/users", requireAdmin, async (_req: Request, res: Response) => {
     try {
       const tokens = await NotificationToken.find().select("userId deviceType lastActiveAt").lean();

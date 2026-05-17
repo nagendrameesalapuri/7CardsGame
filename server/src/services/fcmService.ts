@@ -8,6 +8,7 @@
 import { NotificationToken }     from '../models/NotificationToken';
 import { Notification }           from '../models/Notification';
 import { NotificationPreference } from '../models/NotificationPreference';
+import { User }                   from '../models/User';
 import type { NotificationCategory } from '../models/Notification';
 
 // ── Cooldown map: minimum gap between notifications per user per category ──────
@@ -117,44 +118,52 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
 
     await updateLastSent(userId, category);
 
-    // FCM push
+    // FCM push (best-effort — failure never prevents in-app notification)
     const messaging = getMessaging();
-    if (!messaging) return;
+    if (!messaging) {
+      console.warn('[FCM] Skipping push for user', userId, '— Firebase Admin not initialised');
+      return;
+    }
 
     const tokens = await NotificationToken.find({ userId }).select('fcmToken').lean();
     if (!tokens.length) return;
 
     const fcmTokens = tokens.map(t => t.fcmToken);
+
+    // All data values MUST be strings for FCM V1 API
+    const dataPayload: Record<string, string> = {
+      notificationId: stored._id.toString(),
+      category,
+      actionUrl:      actionUrl ?? '/',
+      type,
+      ...(data ?? {}),
+    };
+
     const payload = {
       notification: { title, body: message },
-      data: {
-        notificationId: stored._id.toString(),
-        category,
-        actionUrl: actionUrl ?? '/',
-        type,
-        ...data,
-      },
+      data: dataPayload,
       webpush: {
         notification: {
           title,
-          body: message,
-          icon: '/pwa-icon.svg',
-          badge: '/pwa-icon.svg',
-          tag: category,
+          body:     message,
+          icon:     '/pwa-icon.svg',
+          badge:    '/pwa-icon.svg',
+          tag:      category,
           renotify: true,
-          data: { actionUrl: actionUrl ?? '/' },
         },
+        data: dataPayload, // accessible in SW via payload.data
         fcmOptions: { link: actionUrl ?? '/' },
       },
     };
 
     // Send to each token; collect invalid ones for cleanup
     const invalidTokens: string[] = [];
+    let fcmSent = false;
     await Promise.allSettled(
       fcmTokens.map(async (token) => {
         try {
           await (messaging as any).send({ ...payload, token });
-          await Notification.findByIdAndUpdate(stored._id, { sentViaFCM: true });
+          fcmSent = true;
         } catch (err: any) {
           const code = err?.errorInfo?.code ?? err?.code ?? '';
           if (
@@ -162,13 +171,20 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
             code === 'messaging/registration-token-not-registered'
           ) {
             invalidTokens.push(token);
+          } else {
+            console.error('[FCM] Send error for user', userId, ':', code || err?.message || err);
           }
         }
       })
     );
 
+    if (fcmSent) {
+      await Notification.findByIdAndUpdate(stored._id, { sentViaFCM: true });
+    }
+
     // Prune stale tokens
     if (invalidTokens.length) {
+      console.log('[FCM] Pruning', invalidTokens.length, 'stale token(s) for user', userId);
       await NotificationToken.deleteMany({ fcmToken: { $in: invalidTokens } });
     }
   } catch (err) {
@@ -185,13 +201,16 @@ export async function sendBulkNotification(
 }
 
 // ── Send to all users (global broadcast) ──────────────────────────────────────
+// Targets every user in the database so in-app notifications always appear,
+// even for users who have not yet registered an FCM token.
 export async function sendGlobalNotification(
   opts: Omit<SendNotificationOpts, 'userId'>
 ): Promise<void> {
   try {
-    const tokens = await NotificationToken.find().select('userId').lean();
-    const uniqueUserIds = [...new Set(tokens.map(t => t.userId))];
-    await sendBulkNotification(uniqueUserIds, opts);
+    const users = await User.find({}, '_id').lean();
+    const userIds = users.map((u: any) => String(u._id));
+    console.log('[FCM] sendGlobalNotification → targeting', userIds.length, 'users');
+    await sendBulkNotification(userIds, opts);
   } catch (err) {
     console.error('[FCM] sendGlobalNotification error:', err);
   }
