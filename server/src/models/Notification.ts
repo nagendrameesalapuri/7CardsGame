@@ -19,6 +19,7 @@ export interface INotification extends Document {
   actionUrl?: string;
   read: boolean;
   sentViaFCM: boolean;
+  broadcastId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,8 +36,9 @@ const NotificationSchema = new Schema<INotification>(
     },
     type:       { type: String, enum: ['info', 'warning', 'success'], default: 'info' },
     actionUrl:  { type: String },
-    read:       { type: Boolean, default: false },
-    sentViaFCM: { type: Boolean, default: false },
+    read:        { type: Boolean, default: false },
+    sentViaFCM:  { type: Boolean, default: false },
+    broadcastId: { type: String, index: true },
   },
   { timestamps: true }
 );

@@ -273,6 +273,23 @@ export const admin = {
 
   getPushUsers: () => adminApi.get<{ users: Record<string, { deviceCount: number; lastActiveAt: string; devices: string[] }>; total: number }>("/push/users"),
   getPushHealth: () => adminApi.get<{ envVarsSet: boolean; projectId: string | null; tokenCount: number; hint: string }>("/push/health"),
+  getPushBroadcasts: (page = 1) => adminApi.get<{
+    broadcasts: Array<{
+      _id: string;
+      title: string;
+      message: string;
+      category: string;
+      type: string;
+      targetType: 'global' | 'targeted' | 'inactive';
+      intendedCount: number;
+      deliveredCount: number;
+      readCount: number;
+      createdAt: string;
+    }>;
+    total: number;
+    page: number;
+    pages: number;
+  }>(`/push/broadcasts?page=${page}`),
 
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),

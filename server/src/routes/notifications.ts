@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { NotificationToken }     from '../models/NotificationToken';
-import { Notification }           from '../models/Notification';
-import { NotificationPreference } from '../models/NotificationPreference';
+import { NotificationToken }      from '../models/NotificationToken';
+import { Notification }            from '../models/Notification';
+import { NotificationPreference }  from '../models/NotificationPreference';
+import { NotificationBroadcast }   from '../models/NotificationBroadcast';
 import {
   sendNotification,
   sendBulkNotification,
@@ -119,6 +120,23 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 // PATCH /api/notifications/read  — mark all as read
 router.patch('/read', requireAuth, async (req: Request, res: Response) => {
   try {
+    // Collect unread notifications with broadcastIds before marking read
+    const unreadWithBroadcast = await Notification.find(
+      { userId: req.user!.id, read: false, broadcastId: { $exists: true } },
+      'broadcastId'
+    ).lean();
+
+    // Increment readCount per broadcast
+    const broadcastCounts: Record<string, number> = {};
+    for (const n of unreadWithBroadcast) {
+      if (n.broadcastId) broadcastCounts[n.broadcastId] = (broadcastCounts[n.broadcastId] || 0) + 1;
+    }
+    await Promise.allSettled(
+      Object.entries(broadcastCounts).map(([id, count]) =>
+        NotificationBroadcast.findByIdAndUpdate(id, { $inc: { readCount: count } })
+      )
+    );
+
     await Notification.updateMany({ userId: req.user!.id, read: false }, { read: true });
     res.json({ ok: true });
   } catch {
@@ -129,7 +147,17 @@ router.patch('/read', requireAuth, async (req: Request, res: Response) => {
 // PATCH /api/notifications/:id/read  — mark single as read
 router.patch('/:id/read', requireAuth, async (req: Request, res: Response) => {
   try {
+    // Find unread first so we can update readCount before marking read
+    const notif = await Notification.findOne(
+      { _id: req.params.id, userId: req.user!.id, read: false }
+    ).lean();
+
     await Notification.updateOne({ _id: req.params.id, userId: req.user!.id }, { read: true });
+
+    if (notif?.broadcastId) {
+      await NotificationBroadcast.findByIdAndUpdate(notif.broadcastId, { $inc: { readCount: 1 } });
+    }
+
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Failed to mark read' });

@@ -68,8 +68,9 @@ export async function initFCM(
   if (!isConfigured()) return null;
 
   try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return null;
+    // Do NOT call requestPermission() here — on iOS it must only be called
+    // from a direct user-gesture handler. Check the state directly instead.
+    if (!('Notification' in window) || Notification.permission !== 'granted') return null;
 
     const app = initFirebase();
     if (!app) return null;

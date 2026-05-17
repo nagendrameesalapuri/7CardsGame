@@ -29,7 +29,8 @@ import {
   sendGlobalNotification,
   sendInactivityNotifications,
 } from "../services/fcmService";
-import { NotificationToken } from "../models/NotificationToken";
+import { NotificationToken }      from "../models/NotificationToken";
+import { NotificationBroadcast }  from "../models/NotificationBroadcast";
 import type { NotificationCategory } from "../models/Notification";
 
 export default function createAdminRouter(io: Server) {
@@ -1138,14 +1139,33 @@ export default function createAdminRouter(io: Server) {
         return res.status(400).json({ error: "title and message required" });
 
       if (isGlobal) {
-        await sendGlobalNotification({ title, message, category, type, actionUrl, skipThrottle: true });
-        res.json({ ok: true, mode: "global" });
+        // Create broadcast record first so deliveredCount can be incremented
+        const broadcast = await NotificationBroadcast.create({
+          title, message, category, type, actionUrl,
+          targetType: 'global', intendedCount: 0,
+        });
+        const { intendedCount } = await sendGlobalNotification({
+          title, message, category, type, actionUrl, skipThrottle: true,
+          broadcastId: String(broadcast._id),
+        });
+        await NotificationBroadcast.findByIdAndUpdate(broadcast._id, { intendedCount });
+        res.json({ ok: true, mode: "global", broadcastId: String(broadcast._id) });
+
       } else if (inactiveHours) {
         await sendInactivityNotifications(inactiveHours);
         res.json({ ok: true, mode: "inactive" });
+
       } else if (userIds?.length) {
-        await sendBulkNotification(userIds, { title, message, category, type, actionUrl, skipThrottle: true });
-        res.json({ ok: true, mode: "targeted", count: userIds.length });
+        const broadcast = await NotificationBroadcast.create({
+          title, message, category, type, actionUrl,
+          targetType: 'targeted', intendedCount: userIds.length,
+        });
+        await sendBulkNotification(userIds, {
+          title, message, category, type, actionUrl, skipThrottle: true,
+          broadcastId: String(broadcast._id),
+        });
+        res.json({ ok: true, mode: "targeted", count: userIds.length, broadcastId: String(broadcast._id) });
+
       } else {
         res.status(400).json({ error: "Provide userIds, global:true, or inactiveHours" });
       }
@@ -1170,6 +1190,24 @@ export default function createAdminRouter(io: Server) {
         ? 'No FCM tokens registered yet — users must open the app and allow notifications first'
         : 'Firebase looks configured. If push still fails check Render logs for [FCM] errors',
     });
+  });
+
+  router.get("/push/broadcasts", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page  = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+      const limit = 20;
+      const [broadcasts, total] = await Promise.all([
+        NotificationBroadcast.find()
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        NotificationBroadcast.countDocuments(),
+      ]);
+      res.json({ broadcasts, total, page, pages: Math.ceil(total / limit) });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch broadcasts" });
+    }
   });
 
   router.get("/push/users", requireAdmin, async (_req: Request, res: Response) => {

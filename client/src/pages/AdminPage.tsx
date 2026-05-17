@@ -2972,8 +2972,21 @@ const NOTIF_TEMPLATES: Record<string, NotifTemplate[]> = {
   ],
 };
 
+type BroadcastRecord = {
+  _id: string;
+  title: string;
+  message: string;
+  category: string;
+  type: string;
+  targetType: 'global' | 'targeted' | 'inactive';
+  intendedCount: number;
+  deliveredCount: number;
+  readCount: number;
+  createdAt: string;
+};
+
 function NotifySection() {
-  const [tab, setTab] = useState<"live" | "push">("push");
+  const [tab, setTab] = useState<"push" | "live" | "history">("push");
 
   // Live (socket) state
   const [liveTitle, setLiveTitle] = useState("");
@@ -2981,6 +2994,12 @@ function NotifySection() {
   const [liveType, setLiveType] = useState<"info" | "warning" | "success">("info");
   const [liveSending, setLiveSending] = useState(false);
   const [liveResult, setLiveResult] = useState<{ success: boolean; msg: string } | null>(null);
+
+  // Broadcast history state
+  const [broadcasts, setBroadcasts] = useState<BroadcastRecord[]>([]);
+  const [broadcastsLoading, setBroadcastsLoading] = useState(false);
+  const [broadcastPage, setBroadcastPage] = useState(1);
+  const [broadcastPages, setBroadcastPages] = useState(1);
 
   // Push (FCM) state
   const [title, setTitle] = useState("");
@@ -3008,6 +3027,21 @@ function NotifySection() {
   useEffect(() => {
     admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
   }, []);
+
+  const loadBroadcasts = useCallback(async (page = 1) => {
+    setBroadcastsLoading(true);
+    try {
+      const r = await admin.getPushBroadcasts(page);
+      setBroadcasts(r.data.broadcasts);
+      setBroadcastPages(r.data.pages);
+      setBroadcastPage(page);
+    } catch { /* silent */ }
+    finally { setBroadcastsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") loadBroadcasts(1);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkHealth = async () => {
     setHealthLoading(true);
@@ -3091,6 +3125,8 @@ function NotifySection() {
       setResult({ success: true, msg: `Push sent to ${modeLabel}` });
       setTitle(""); setMessage(""); setUserIds(""); setActionUrl("");
       setActiveTemplate(null); setAmountValue(""); setTemplateGroup(null);
+      // Refresh history if it was already loaded
+      if (broadcasts.length > 0) loadBroadcasts(1);
     } catch (err: any) {
       setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
     } finally {
@@ -3114,15 +3150,19 @@ function NotifySection() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
-        {(["push", "live"] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); setResult(null); setLiveResult(null); }}
+        {([
+          { id: "push",    label: "📲 Push (FCM)" },
+          { id: "live",    label: "⚡ Live (Socket)" },
+          { id: "history", label: "📊 History" },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setResult(null); setLiveResult(null); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
             style={{
-              background: tab === t ? "rgba(99,102,241,0.25)" : "transparent",
-              color: tab === t ? "#a5b4fc" : "#6b7280",
-              border: tab === t ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
+              background: tab === t.id ? "rgba(99,102,241,0.25)" : "transparent",
+              color: tab === t.id ? "#a5b4fc" : "#6b7280",
+              border: tab === t.id ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
             }}>
-            {t === "push" ? "📲 Push (FCM)" : "⚡ Live (Socket)"}
+            {t.label}
           </button>
         ))}
       </div>
@@ -3419,6 +3459,123 @@ function NotifySection() {
             <p className="text-xs text-center font-medium" style={{ color: liveResult.success ? "#00ff88" : "#ff6b6b" }}>
               {liveResult.success ? "✓ " : "✗ "}{liveResult.msg}
             </p>
+          )}
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-dark-text">Broadcast History</p>
+            <button onClick={() => loadBroadcasts(broadcastPage)}
+              className="text-[11px] px-3 py-1 rounded-lg font-medium transition-all"
+              style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+              {broadcastsLoading ? "Loading…" : "↻ Refresh"}
+            </button>
+          </div>
+
+          {broadcastsLoading && broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6 animate-pulse">Loading broadcasts…</p>
+          ) : broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6">No broadcasts sent yet</p>
+          ) : (
+            <div className="space-y-3">
+              {broadcasts.map(b => {
+                const deliverPct = b.intendedCount > 0
+                  ? Math.round((b.deliveredCount / b.intendedCount) * 100) : 0;
+                const readPct = b.intendedCount > 0
+                  ? Math.round((b.readCount / b.intendedCount) * 100) : 0;
+                const targetLabel = b.targetType === 'global' ? '🌍 Global'
+                  : b.targetType === 'targeted' ? '🎯 Targeted' : '⏰ Inactive';
+                const typeColor = b.type === 'success' ? '#00ff88'
+                  : b.type === 'warning' ? '#fbbf24' : '#60a5fa';
+                return (
+                  <div key={b._id} className="rounded-xl p-4 space-y-3"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {/* Header row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-dark-text truncate">{b.title}</p>
+                        <p className="text-[11px] text-dark-muted mt-0.5 line-clamp-2">{b.message}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                          style={{ background: `${typeColor}22`, color: typeColor }}>
+                          {b.type}
+                        </span>
+                        <span className="text-[10px] text-dark-muted">{targetLabel}</span>
+                      </div>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Intended", value: b.intendedCount, color: "#94a3b8", pct: null },
+                        { label: "Delivered", value: b.deliveredCount, color: "#60a5fa", pct: deliverPct },
+                        { label: "Read", value: b.readCount, color: "#00ff88", pct: readPct },
+                      ].map(stat => (
+                        <div key={stat.label} className="rounded-lg p-2.5 text-center"
+                          style={{ background: `${stat.color}11`, border: `1px solid ${stat.color}22` }}>
+                          <p className="text-lg font-bold" style={{ color: stat.color }}>{stat.value}</p>
+                          <p className="text-[10px] font-medium" style={{ color: `${stat.color}bb` }}>
+                            {stat.label}
+                          </p>
+                          {stat.pct !== null && (
+                            <p className="text-[10px]" style={{ color: `${stat.color}88` }}>
+                              {stat.pct}%
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Progress bars */}
+                    <div className="space-y-1.5">
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#60a5fa99" }}>Delivery rate</span>
+                          <span style={{ color: "#60a5fa" }}>{deliverPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${deliverPct}%`, background: "linear-gradient(90deg, #3b82f6, #60a5fa)" }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#00ff8899" }}>Read rate</span>
+                          <span style={{ color: "#00ff88" }}>{readPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${readPct}%`, background: "linear-gradient(90deg, #00cc6a, #00ff88)" }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <p className="text-[10px] text-dark-muted/60">
+                      {new Date(b.createdAt).toLocaleString()} · {b.category}
+                    </p>
+                  </div>
+                );
+              })}
+
+              {/* Pagination */}
+              {broadcastPages > 1 && (
+                <div className="flex justify-center gap-2 pt-1">
+                  <button disabled={broadcastPage <= 1} onClick={() => loadBroadcasts(broadcastPage - 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>← Prev</button>
+                  <span className="text-xs text-dark-muted self-center">
+                    {broadcastPage} / {broadcastPages}
+                  </span>
+                  <button disabled={broadcastPage >= broadcastPages} onClick={() => loadBroadcasts(broadcastPage + 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>Next →</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

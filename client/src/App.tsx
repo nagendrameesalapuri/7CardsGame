@@ -59,17 +59,33 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
 }
 
-// ── Notification permission prompt banner ─────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function isIOS() {
+  return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+}
+function isInstalledPWA() {
+  return (
+    (window.navigator as any).standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches
+  );
+}
+
+// ── Notification permission / install prompt ──────────────────────────────────
 function NotificationPrompt({ onDone }: { onDone: () => void }) {
   const [hiding, setHiding] = useState(false);
+  const ios         = isIOS();
+  const installedPWA = isInstalledPWA();
+  // On iOS, push only works from an installed PWA (Add to Home Screen)
+  const needsInstall = ios && !installedPWA;
 
-  const dismiss = () => {
+  const dismiss = (permanent = false) => {
     setHiding(true);
-    localStorage.setItem('notif_prompt_dismissed', '1');
+    if (permanent) localStorage.setItem('notif_prompt_dismissed', '1');
     setTimeout(onDone, 300);
   };
 
   const allow = async () => {
+    // requestPermission MUST be called directly from a tap handler on iOS
     const result = await requestPermission();
     localStorage.setItem('notif_prompt_dismissed', '1');
     setHiding(true);
@@ -77,26 +93,63 @@ function NotificationPrompt({ onDone }: { onDone: () => void }) {
     return result;
   };
 
+  const bannerStyle: React.CSSProperties = {
+    position: 'fixed',
+    bottom: 24,
+    left: '50%',
+    transform: hiding ? 'translateX(-50%) translateY(120%)' : 'translateX(-50%) translateY(0)',
+    transition: 'transform 0.3s ease',
+    zIndex: 9999,
+    width: 'min(92vw, 420px)',
+    background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+    border: `1px solid ${needsInstall ? 'rgba(251,191,36,0.4)' : 'rgba(99,102,241,0.35)'}`,
+    borderRadius: 16,
+    padding: '16px 18px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+  };
+
+  if (needsInstall) {
+    // iOS not installed — show step-by-step install guide
+    return (
+      <div style={bannerStyle}>
+        <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>📲</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
+            Add to Home Screen for Notifications
+          </p>
+          <p style={{ margin: '4px 0 10px', fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+            iOS requires the app to be installed before push notifications can be enabled.
+          </p>
+          <ol style={{ margin: '0 0 12px 0', paddingLeft: 18, fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
+            <li>Tap the <strong style={{ color: '#60a5fa' }}>Share</strong> button in Safari</li>
+            <li>Tap <strong style={{ color: '#60a5fa' }}>Add to Home Screen</strong></li>
+            <li>Open the app from your Home Screen</li>
+          </ol>
+          <button
+            onClick={() => dismiss(false)}
+            style={{
+              width: '100%',
+              padding: '8px 0',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'transparent',
+              color: '#64748b',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        left: '50%',
-        transform: hiding ? 'translateX(-50%) translateY(120%)' : 'translateX(-50%) translateY(0)',
-        transition: 'transform 0.3s ease',
-        zIndex: 9999,
-        width: 'min(92vw, 420px)',
-        background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-        border: '1px solid rgba(99,102,241,0.35)',
-        borderRadius: 16,
-        padding: '16px 18px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 12,
-      }}
-    >
+    <div style={bannerStyle}>
       <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>🔔</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
@@ -123,7 +176,7 @@ function NotificationPrompt({ onDone }: { onDone: () => void }) {
             Allow Notifications
           </button>
           <button
-            onClick={dismiss}
+            onClick={() => dismiss(true)}
             style={{
               padding: '8px 14px',
               borderRadius: 10,

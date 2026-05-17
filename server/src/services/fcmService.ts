@@ -5,10 +5,11 @@
  * without a Firebase project) so the server starts without crashing.
  */
 
-import { NotificationToken }     from '../models/NotificationToken';
-import { Notification }           from '../models/Notification';
-import { NotificationPreference } from '../models/NotificationPreference';
-import { User }                   from '../models/User';
+import { NotificationToken }      from '../models/NotificationToken';
+import { Notification }            from '../models/Notification';
+import { NotificationPreference }  from '../models/NotificationPreference';
+import { NotificationBroadcast }   from '../models/NotificationBroadcast';
+import { User }                    from '../models/User';
 import type { NotificationCategory } from '../models/Notification';
 
 // ── Cooldown map: minimum gap between notifications per user per category ──────
@@ -101,10 +102,12 @@ export interface SendNotificationOpts {
   skipThrottle?: boolean;
   /** Data payload passed through to the SW / app */
   data?: Record<string, string>;
+  /** Links this notification to a broadcast record for delivery tracking */
+  broadcastId?: string;
 }
 
 export async function sendNotification(opts: SendNotificationOpts): Promise<void> {
-  const { userId, title, message, category, type = 'info', actionUrl, skipThrottle, data } = opts;
+  const { userId, title, message, category, type = 'info', actionUrl, skipThrottle, data, broadcastId } = opts;
 
   try {
     // Throttle
@@ -114,6 +117,7 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
     const stored = await Notification.create({
       userId, title, message, category, type, actionUrl,
       read: false, sentViaFCM: false,
+      ...(broadcastId ? { broadcastId } : {}),
     });
 
     await updateLastSent(userId, category);
@@ -180,6 +184,9 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
 
     if (fcmSent) {
       await Notification.findByIdAndUpdate(stored._id, { sentViaFCM: true });
+      if (broadcastId) {
+        await NotificationBroadcast.findByIdAndUpdate(broadcastId, { $inc: { deliveredCount: 1 } });
+      }
     }
 
     // Prune stale tokens
@@ -196,8 +203,9 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
 export async function sendBulkNotification(
   userIds: string[],
   opts: Omit<SendNotificationOpts, 'userId'>
-): Promise<void> {
+): Promise<{ intendedCount: number }> {
   await Promise.allSettled(userIds.map(uid => sendNotification({ ...opts, userId: uid })));
+  return { intendedCount: userIds.length };
 }
 
 // ── Send to all users (global broadcast) ──────────────────────────────────────
@@ -205,14 +213,16 @@ export async function sendBulkNotification(
 // even for users who have not yet registered an FCM token.
 export async function sendGlobalNotification(
   opts: Omit<SendNotificationOpts, 'userId'>
-): Promise<void> {
+): Promise<{ intendedCount: number }> {
   try {
     const users = await User.find({}, '_id').lean();
     const userIds = users.map((u: any) => String(u._id));
     console.log('[FCM] sendGlobalNotification → targeting', userIds.length, 'users');
     await sendBulkNotification(userIds, opts);
+    return { intendedCount: userIds.length };
   } catch (err) {
     console.error('[FCM] sendGlobalNotification error:', err);
+    return { intendedCount: 0 };
   }
 }
 
