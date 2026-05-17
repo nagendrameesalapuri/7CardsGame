@@ -304,15 +304,18 @@ export async function startRoomGame(
     safe: 'Safe Bot', aggressive: 'Aggressive Bot', bluff: 'Bluff Bot', smart: 'Smart AI', boss: 'Boss AI',
   };
 
-  const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => ({
-    userId: `bot_${uuidv4().slice(0, 6)}`,
-    username: botNamesConfig[i]
-      ?? (botPersonalitiesConfig[i] ? PERSONALITY_NAMES[botPersonalitiesConfig[i]] : undefined)
-      ?? (i === 0 && singleBotPersonality ? PERSONALITY_NAMES[singleBotPersonality] : undefined)
-      ?? `Bot ${i + 1}`,
-    avatar: `bot_${i + 1}`,
-    isBot: true,
-  }));
+  const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => {
+    const personality = botPersonalitiesConfig[i] ?? (i === 0 && singleBotPersonality ? singleBotPersonality : 'smart');
+    return {
+      userId: `bot_${uuidv4().slice(0, 6)}`,
+      username: botNamesConfig[i]
+        ?? (botPersonalitiesConfig[i] ? PERSONALITY_NAMES[botPersonalitiesConfig[i]] : undefined)
+        ?? (i === 0 && singleBotPersonality ? PERSONALITY_NAMES[singleBotPersonality] : undefined)
+        ?? `Bot ${i + 1}`,
+      avatar: `bot_${personality}`,
+      isBot: true,
+    };
+  });
 
   const allPlayers = [
     ...room.players.map((p) => ({
@@ -435,12 +438,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const botPlayers = Array.from(
         { length: room.config.botCount },
-        (_, i) => ({
-          userId: `bot_${uuidv4().slice(0, 6)}`,
-          username: roomBotNames[i] ?? `Bot ${i + 1}`,
-          avatar: `bot_${i + 1}`,
-          isBot: true,
-        }),
+        (_, i) => {
+          const p = roomBotPersonalities[i] ?? 'smart';
+          return {
+            userId: `bot_${uuidv4().slice(0, 6)}`,
+            username: roomBotNames[i] ?? `Bot ${i + 1}`,
+            avatar: `bot_${p}`,
+            isBot: true,
+          };
+        },
       );
 
       const allPlayers = [

@@ -223,6 +223,138 @@ function RankRing({ pct, color, icon, label, level }: { pct: number; color: stri
   );
 }
 
+// ── Multiplayer premium banner ────────────────────────────────────────────────
+function MultiplayerBanner({ minPlayers = 2, maxPlayers = 6 }: { minPlayers?: number; maxPlayers?: number }) {
+  const LP = [
+    { cy: 48,  emoji: '🎭', ring: '#6366f1' },
+    { cy: 88,  emoji: '🦁', ring: '#06b6d4' },
+    { cy: 128, emoji: '🐯', ring: '#a855f7' },
+  ];
+  const RP = [
+    { cy: 60,  emoji: '🦊', ring: '#10b981' },
+    { cy: 116, emoji: '🐺', ring: '#f59e0b' },
+  ];
+  const CX = 270, CY = 88, LX = 68, RX = 472;
+
+  return (
+    <svg viewBox="0 0 540 172" style={{ width: '100%', height: 'auto', display: 'block' }}>
+      <style>{`
+        @keyframes mp-up{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+        @keyframes mp-dn{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+        @keyframes mp-dash{to{stroke-dashoffset:-20}}
+        .mp-u1{animation:mp-up 3s ease-in-out infinite}
+        .mp-u2{animation:mp-dn 3.4s ease-in-out infinite}
+        .mp-u3{animation:mp-up 2.8s ease-in-out infinite 0.5s}
+        .mp-u4{animation:mp-dn 3.1s ease-in-out infinite 0.2s}
+        .mp-u5{animation:mp-up 3.6s ease-in-out infinite 0.8s}
+        .mp-ds{stroke-dasharray:6 4;animation:mp-dash 1.1s linear infinite}
+      `}</style>
+      <defs>
+        <radialGradient id="mp-cg" cx="50%" cy="50%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.2"/>
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+        </radialGradient>
+        {[...LP,...RP].map((p,i)=>(
+          <radialGradient key={i} id={`mp-pg${i}`} cx="38%" cy="32%">
+            <stop offset="0%" stopColor={p.ring} stopOpacity="0.45"/>
+            <stop offset="100%" stopColor={p.ring} stopOpacity="0.08"/>
+          </radialGradient>
+        ))}
+        <radialGradient id="mp-hub" cx="50%" cy="50%">
+          <stop offset="0%" stopColor="#1e1b4b" stopOpacity="1"/>
+          <stop offset="100%" stopColor="#080520" stopOpacity="1"/>
+        </radialGradient>
+      </defs>
+
+      {/* ambient glow */}
+      <circle cx={CX} cy={CY} r="95" fill="url(#mp-cg)"/>
+
+      {/* connection lines LEFT */}
+      {LP.map((p,i)=>(
+        <line key={`l${i}`} className="mp-ds"
+          x1={LX+20} y1={p.cy} x2={CX-42} y2={CY}
+          stroke={p.ring} strokeWidth="1.3" strokeOpacity="0.5"/>
+      ))}
+      {/* connection lines RIGHT */}
+      {RP.map((p,i)=>(
+        <line key={`r${i}`} className="mp-ds"
+          x1={RX-20} y1={p.cy} x2={CX+42} y2={CY}
+          stroke={p.ring} strokeWidth="1.3" strokeOpacity="0.5"/>
+      ))}
+
+      {/* center pulse ring — SMIL */}
+      <circle cx={CX} cy={CY} fill="none" stroke="#6366f1" strokeWidth="2">
+        <animate attributeName="r" values="44;51;44" dur="2.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0.18;0.55;0.18" dur="2.5s" repeatCount="indefinite"/>
+      </circle>
+      {/* center outer ring */}
+      <circle cx={CX} cy={CY} r="40" fill="url(#mp-hub)" stroke="#6366f1" strokeWidth="1.3" strokeOpacity="0.7"/>
+      {/* decorative inner ring */}
+      <circle cx={CX} cy={CY} r="32" fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="0.8"/>
+      {/* suit symbols */}
+      <text x={CX-13} y={CY+2}  fontSize="13" fill="#818cf8" style={{userSelect:'none'}}>♠♥</text>
+      <text x={CX-13} y={CY+17} fontSize="13" fill="#f87171" style={{userSelect:'none'}}>♦♣</text>
+      {/* ARENA micro-label */}
+      <text x={CX} y={CY-17} textAnchor="middle" fontSize="7.5" fill="#a5b4fc" fontWeight="900"
+        letterSpacing="0.22em" style={{userSelect:'none'}}>ARENA</text>
+      {/* 2-5 players badge */}
+      <rect x={CX-34} y={CY+23} width="68" height="13" rx="6.5"
+        fill="rgba(6,182,212,0.1)" stroke="#06b6d4" strokeWidth="0.8" strokeOpacity="0.55"/>
+      <text x={CX} y={CY+32} textAnchor="middle" fontSize="7" fill="#67e8f9" fontWeight="700"
+        style={{userSelect:'none'}}>{minPlayers}–{maxPlayers} PLAYERS</text>
+
+      {/* left player nodes */}
+      {LP.map((p,i)=>(
+        <g key={`lp${i}`} className={`mp-u${i+1}`}>
+          <circle cx={LX} cy={p.cy} r="24" fill="none" stroke={p.ring} strokeWidth="1.5" strokeOpacity="0.28"/>
+          <circle cx={LX} cy={p.cy} r="19" fill={`url(#mp-pg${i})`}/>
+          <circle cx={LX} cy={p.cy} r="19" fill="rgba(4,2,16,0.55)"/>
+          <text x={LX} y={p.cy+7} textAnchor="middle" fontSize="18" style={{userSelect:'none'}}>{p.emoji}</text>
+          <text x={LX} y={p.cy-27} textAnchor="middle" fontSize="7" fill={p.ring} fontWeight="800"
+            style={{userSelect:'none'}}>P{i+1}</text>
+        </g>
+      ))}
+
+      {/* right player nodes */}
+      {RP.map((p,i)=>(
+        <g key={`rp${i}`} className={`mp-u${i+4}`}>
+          <circle cx={RX} cy={p.cy} r="24" fill="none" stroke={p.ring} strokeWidth="1.5" strokeOpacity="0.28"/>
+          <circle cx={RX} cy={p.cy} r="19" fill={`url(#mp-pg${i+3})`}/>
+          <circle cx={RX} cy={p.cy} r="19" fill="rgba(4,2,16,0.55)"/>
+          <text x={RX} y={p.cy+7} textAnchor="middle" fontSize="18" style={{userSelect:'none'}}>{p.emoji}</text>
+          <text x={RX} y={p.cy-27} textAnchor="middle" fontSize="7" fill={p.ring} fontWeight="800"
+            style={{userSelect:'none'}}>P{i+4}</text>
+        </g>
+      ))}
+
+      {/* title row */}
+      <text x={CX} y="13" textAnchor="middle" fontSize="13" fontWeight="900" fill="white"
+        letterSpacing="0.07em" style={{userSelect:'none'}}>MULTIPLAYER</text>
+      <text x={CX} y="27" textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.55)"
+        style={{userSelect:'none'}}>Play with friends in real time</text>
+      {/* online dot */}
+      <circle cx={CX+64} cy="9" r="3.5" fill="#22c55e">
+        <animate attributeName="opacity" values="1;0.3;1" dur="1.4s" repeatCount="indefinite"/>
+      </circle>
+      <text x={CX+70} y="13" fontSize="8" fill="#4ade80" fontWeight="600" style={{userSelect:'none'}}>Online</text>
+
+      {/* bottom stat chips */}
+      {([
+        { x: 107, text: '🌐 Real-time',       col: '#06b6d4' },
+        { x: 270, text: '⚡ Private & Public', col: '#818cf8' },
+        { x: 433, text: '🏆 Custom Rules',     col: '#10b981' },
+      ] as {x:number;text:string;col:string}[]).map(s=>(
+        <g key={s.text}>
+          <rect x={s.x-53} y="153" width="106" height="14" rx="7"
+            fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"/>
+          <text x={s.x} y="163" textAnchor="middle" fontSize="7.5" fill={s.col} fontWeight="600"
+            style={{userSelect:'none'}}>{s.text}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 // ── Shimmer overlay (for premium cards) ──────────────────────────────────────
 function Shimmer() {
   return (
@@ -644,63 +776,61 @@ export function LobbyPage() {
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
               className="relative overflow-hidden rounded-2xl"
               style={{
-                background: 'linear-gradient(145deg,rgba(3,18,14,0.97),rgba(4,22,17,0.95))',
-                border: '1px solid rgba(16,185,129,0.28)',
-                boxShadow: '0 4px 40px rgba(16,185,129,0.08)',
+                background: 'linear-gradient(150deg,rgba(8,5,28,0.99) 0%,rgba(4,2,18,0.97) 60%,rgba(6,3,22,0.98) 100%)',
+                border: '1px solid rgba(99,102,241,0.32)',
+                boxShadow: '0 12px 48px rgba(99,102,241,0.14), 0 4px 16px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset, 0 -1px 0 rgba(99,102,241,0.12) inset',
               }}
             >
-              <div className="absolute -top-10 -left-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.15),transparent 70%)', filter: 'blur(24px)' }} />
-              <div className="absolute -bottom-8 right-1/4 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(6,182,212,0.1),transparent 70%)', filter: 'blur(20px)' }} />
+              {/* corner glows */}
+              <div className="absolute -top-12 -left-8 w-44 h-44 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.18),transparent 70%)', filter: 'blur(28px)' }} />
+              <div className="absolute -bottom-10 right-1/4 w-36 h-36 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle,rgba(6,182,212,0.12),transparent 70%)', filter: 'blur(22px)' }} />
+              <div className="absolute -top-8 right-0 w-32 h-32 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.1),transparent 70%)', filter: 'blur(20px)' }} />
 
-              <div className="relative px-5 py-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.22),rgba(6,182,212,0.15))', border: '1px solid rgba(16,185,129,0.3)' }}>
-                    👥
-                  </div>
-                  <div>
-                    <p className="text-base font-black text-white leading-tight">Multiplayer</p>
-                    <p className="text-xs text-dark-muted">Play with friends in real time</p>
-                  </div>
-                  {/* Live player count decoration */}
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <motion.div className="w-2 h-2 rounded-full bg-emerald-400"
-                      animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1.4 }} />
-                    <span className="text-[10px] text-emerald-400 font-semibold">Online</span>
-                  </div>
-                </div>
+              {/* premium banner */}
+              <div className="relative pt-2 px-2">
+                <MultiplayerBanner minPlayers={adminConfig.gameConfig.minPlayers} maxPlayers={adminConfig.gameConfig.maxPlayers} />
+              </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <motion.button
-                    whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setShowCreate(true)}
-                    className="flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl font-black text-sm transition-all relative overflow-hidden"
-                    style={{
-                      background: 'linear-gradient(135deg,#10b981,#059669)',
-                      color: '#fff',
-                      boxShadow: '0 6px 24px rgba(16,185,129,0.35)',
-                    }}
-                  >
-                    <span className="text-2xl">➕</span>
-                    <span>Create Room</span>
-                    <span className="text-[9px] font-normal opacity-70">Set your own rules</span>
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setShowJoin(true)}
-                    className="flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl font-black text-sm transition-all"
-                    style={{
-                      background: 'rgba(16,185,129,0.08)',
-                      color: '#6ee7b7',
-                      border: '1px solid rgba(16,185,129,0.3)',
-                      boxShadow: '0 4px 16px rgba(16,185,129,0.06)',
-                    }}
-                  >
-                    <span className="text-2xl">🔑</span>
-                    <span>Join with Code</span>
-                    <span className="text-[9px] font-normal opacity-60">Enter room code</span>
-                  </motion.button>
-                </div>
+              {/* action buttons */}
+              <div className="relative px-4 pb-4 grid grid-cols-2 gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowCreate(true)}
+                  className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-xl font-black text-sm relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg,#10b981,#059669)',
+                    color: '#fff',
+                    boxShadow: '0 6px 20px rgba(16,185,129,0.38), 0 1px 0 rgba(255,255,255,0.12) inset',
+                  }}
+                >
+                  <Shimmer />
+                  <span className="text-lg">➕</span>
+                  <div className="text-left">
+                    <div className="text-xs font-black leading-tight">Create Room</div>
+                    <div className="text-[9px] font-normal opacity-70 leading-tight">Set your own rules</div>
+                  </div>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowJoin(true)}
+                  className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-xl font-black text-sm relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(99,102,241,0.08))',
+                    color: '#a5b4fc',
+                    border: '1px solid rgba(99,102,241,0.35)',
+                    boxShadow: '0 4px 16px rgba(99,102,241,0.1)',
+                  }}
+                >
+                  <Shimmer />
+                  <span className="text-lg">🔑</span>
+                  <div className="text-left">
+                    <div className="text-xs font-black leading-tight">Join with Code</div>
+                    <div className="text-[9px] font-normal opacity-60 leading-tight">Enter room code</div>
+                  </div>
+                </motion.button>
               </div>
             </motion.div>
 

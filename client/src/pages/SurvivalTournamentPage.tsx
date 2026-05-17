@@ -44,193 +44,284 @@ const TIER_DISPLAY = [
 // ── Battle Illustration ───────────────────────────────────────────────────────
 
 function BattleIllustration() {
+  // AI personality data for the banner
+  const AIS = [
+    { x: 418, y: 148, r: 22, emoji: '🛡️', color: '#22c55e', label: 'Iron Fist',   fs: 14 },
+    { x: 468, y: 142, r: 22, emoji: '🔥', color: '#f59e0b', label: 'Blaze',        fs: 14 },
+    { x: 518, y: 148, r: 22, emoji: '🌀', color: '#a855f7', label: 'Phantom',      fs: 14 },
+    { x: 432, y: 105, r: 26, emoji: '🧠', color: '#3b82f6', label: 'Smart AI',     fs: 16 },
+    { x: 504, y: 105, r: 26, emoji: '⚡', color: '#f59e0b', label: 'Aggressive',   fs: 16 },
+  ];
+
   return (
     <div className="relative rounded-2xl overflow-hidden w-full"
-      style={{ background: 'linear-gradient(135deg,#06080f 0%,#0d1022 50%,#090610 100%)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <svg viewBox="0 0 600 210" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ display: 'block' }}>
+      style={{ background: 'linear-gradient(160deg,#04060e 0%,#0a0d1f 55%,#060410 100%)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <svg viewBox="0 0 600 230" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ display: 'block' }}>
         <defs>
-          <radialGradient id="sv-hg" cx="28%" cy="55%" r="38%">
-            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.22"/>
+          {/* Atmospheric glows */}
+          <radialGradient id="bi-lg" cx="20%" cy="55%" r="45%">
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.2"/>
             <stop offset="100%" stopColor="#fbbf24" stopOpacity="0"/>
           </radialGradient>
-          <radialGradient id="sv-rg" cx="72%" cy="55%" r="38%">
+          <radialGradient id="bi-rg" cx="80%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.22"/>
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
           </radialGradient>
-          <radialGradient id="sv-cg" cx="50%" cy="50%" r="30%">
-            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.38"/>
-            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0"/>
+          <radialGradient id="bi-cg" cx="50%" cy="45%" r="28%">
+            <stop offset="0%" stopColor="#6d28d9" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#6d28d9" stopOpacity="0"/>
           </radialGradient>
-          <linearGradient id="sv-vs" x1="0" y1="0" x2="1" y2="1">
+          <radialGradient id="bi-boss" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.45"/>
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="bi-human" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#fbbf24" stopOpacity="0"/>
+          </radialGradient>
+          {/* VS gradient */}
+          <linearGradient id="bi-vs" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#fbbf24"/>
             <stop offset="50%" stopColor="#ffffff"/>
             <stop offset="100%" stopColor="#ef4444"/>
           </linearGradient>
-          <filter id="sv-glow">
-            <feGaussianBlur stdDeviation="3.5" result="b"/>
+          {/* Trophy gradient */}
+          <linearGradient id="bi-trophy" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fbbf24"/>
+            <stop offset="100%" stopColor="#d97706"/>
+          </linearGradient>
+          {/* Filters */}
+          <filter id="bi-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          <filter id="sv-bloom">
-            <feGaussianBlur stdDeviation="7" result="b"/>
+          <filter id="bi-softglow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="bi-bloom" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="12" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
           <style>{`
-            @keyframes sv-pulse{0%,100%{opacity:.65}50%{opacity:1}}
-            @keyframes sv-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-            @keyframes sv-float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-            @keyframes sv-blink{0%,88%,100%{opacity:1}93%{opacity:.1}}
-            @keyframes sv-spark{0%,100%{opacity:0;transform:scale(0)}40%,60%{opacity:1;transform:scale(1)}}
-            .svp{animation:sv-pulse 2s ease-in-out infinite}
-            .svf{animation:sv-float 3s ease-in-out infinite}
-            .svf2{animation:sv-float2 2.6s ease-in-out infinite .6s}
-            .svf3{animation:sv-float2 3.4s ease-in-out infinite 1.1s}
-            .svbl{animation:sv-blink 4s ease-in-out infinite}
-            .svs1{animation:sv-spark 2s ease-in-out infinite}
-            .svs2{animation:sv-spark 2s ease-in-out infinite .4s}
-            .svs3{animation:sv-spark 2s ease-in-out infinite .8s}
-            .svs4{animation:sv-spark 2s ease-in-out infinite 1.2s}
-            .svs5{animation:sv-spark 2s ease-in-out infinite 1.6s}
+            @keyframes bi-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+            @keyframes bi-float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+            @keyframes bi-pulse{0%,100%{opacity:.6}50%{opacity:1}}
+            @keyframes bi-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+            @keyframes bi-spark{0%,100%{opacity:0;transform:scale(0)}45%,55%{opacity:1;transform:scale(1)}}
+            @keyframes bi-blink{0%,85%,100%{opacity:1}92%{opacity:0.1}}
+            @keyframes bi-hb{0%,100%{transform:scale(1)}20%{transform:scale(1.06)}40%{transform:scale(1)}}
+            .bif{animation:bi-float 3.2s ease-in-out infinite}
+            .bif2{animation:bi-float2 2.8s ease-in-out infinite .6s}
+            .bif3{animation:bi-float2 3.6s ease-in-out infinite 1.2s}
+            .bip{animation:bi-pulse 2s ease-in-out infinite}
+            .bihb{animation:bi-hb 1.4s ease-in-out infinite}
+            .bibl{animation:bi-blink 3s ease-in-out infinite}
+            .bis1{animation:bi-spark 2.2s ease-in-out infinite}
+            .bis2{animation:bi-spark 2.2s ease-in-out infinite .4s}
+            .bis3{animation:bi-spark 2.2s ease-in-out infinite .8s}
+            .bis4{animation:bi-spark 2.2s ease-in-out infinite 1.2s}
+            .bis5{animation:bi-spark 2.2s ease-in-out infinite 1.6s}
           `}</style>
         </defs>
-        <rect width="600" height="210" fill="url(#sv-hg)"/>
-        <rect width="600" height="210" fill="url(#sv-rg)"/>
-        <rect width="600" height="210" fill="url(#sv-cg)"/>
-        <g opacity="0.035" stroke="#fff" strokeWidth="0.5">
-          {[0,1,2,3,4,5,6,7,8,9,10].map(i=><line key={`h${i}`} x1="0" y1={i*21} x2="600" y2={i*21}/>)}
-          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map(i=><line key={`v${i}`} x1={i*21} y1="0" x2={i*21} y2="210"/>)}
+
+        {/* ── Atmosphere ── */}
+        <rect width="600" height="230" fill="url(#bi-lg)"/>
+        <rect width="600" height="230" fill="url(#bi-rg)"/>
+        <rect width="600" height="230" fill="url(#bi-cg)"/>
+
+        {/* Subtle grid lines */}
+        <g opacity="0.03" stroke="#fff" strokeWidth="0.5">
+          {[0,1,2,3,4,5,6,7,8,9,10].map(i=><line key={`h${i}`} x1="0" y1={i*23} x2="600" y2={i*23}/>)}
+          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map(i=><line key={`v${i}`} x1={i*21} y1="0" x2={i*21} y2="230"/>)}
         </g>
-        <g className="svf">
-          <circle cx="148" cy="92" r="68" fill="none" stroke="#fbbf24" strokeWidth="0.6" opacity="0.18"/>
-          <circle cx="148" cy="60" r="26" fill="#13111e" stroke="#fbbf24" strokeWidth="2.2" filter="url(#sv-glow)"/>
-          <path d="M122 53 Q148 38 174 53" fill="#fbbf24" opacity="0.55"/>
-          <ellipse cx="140" cy="58" rx="4.5" ry="5" fill="#fbbf24"/>
-          <ellipse cx="156" cy="58" rx="4.5" ry="5" fill="#fbbf24"/>
-          <circle cx="140" cy="58" r="2" fill="#09090f"/>
-          <circle cx="156" cy="58" r="2" fill="#09090f"/>
-          <circle cx="141" cy="57" r="1" fill="#fff" opacity="0.6"/>
-          <circle cx="157" cy="57" r="1" fill="#fff" opacity="0.6"/>
-          <path d="M140 70 Q148 77 156 70" stroke="#fbbf24" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          <rect x="131" y="90" width="34" height="40" rx="7" fill="#13111e" stroke="#fbbf24" strokeWidth="1.8"/>
-          <line x1="148" y1="90" x2="148" y2="130" stroke="#fbbf24" strokeWidth="0.5" opacity="0.3"/>
-          <path d="M138 90 L148 102 L158 90" stroke="#fbbf24" strokeWidth="1" fill="none" opacity="0.4"/>
-          <path d="M131 102 Q112 97 96 112" stroke="#fbbf24" strokeWidth="5.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M165 102 Q184 97 198 112" stroke="#fbbf24" strokeWidth="5.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <text x="148" y="147" textAnchor="middle" fill="#fbbf24" fontSize="8.5" fontWeight="900" letterSpacing="3" opacity="0.75">HUMAN</text>
+
+        {/* Arena floor glow line */}
+        <rect x="0" y="180" width="600" height="1" fill="none" opacity="0"/>
+        <line x1="50" y1="182" x2="550" y2="182" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
+
+        {/* ══════════════════════════════════════════
+            HUMAN CHAMPION — LEFT
+        ══════════════════════════════════════════ */}
+        <g className="bif">
+          {/* Outer aura ring */}
+          <circle cx="110" cy="100" r="72" fill="url(#bi-human)" opacity="0.5"/>
+          <circle cx="110" cy="100" r="62" fill="none" stroke="#fbbf24" strokeWidth="0.5" opacity="0.12" className="bip"/>
+
+          {/* Champion ring (spinning dashes) */}
+          <circle cx="110" cy="100" r="52" fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="6 4" opacity="0.3" className="bip"/>
+
+          {/* Shield body */}
+          <path d="M110 52 L140 68 L140 100 Q140 122 110 134 Q80 122 80 100 L80 68 Z"
+            fill="#0d1117" stroke="#fbbf24" strokeWidth="2" filter="url(#bi-glow)"/>
+          {/* Shield inner border */}
+          <path d="M110 60 L133 74 L133 100 Q133 117 110 126 Q87 117 87 100 L87 74 Z"
+            fill="none" stroke="#fbbf24" strokeWidth="0.6" opacity="0.35"/>
+
+          {/* Sword on shield */}
+          <line x1="110" y1="72" x2="110" y2="118" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" filter="url(#bi-glow)"/>
+          <line x1="98" y1="87" x2="122" y2="87" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" filter="url(#bi-glow)"/>
+          <circle cx="110" cy="72" r="4" fill="#fbbf24" filter="url(#bi-glow)"/>
+
+          {/* Star badge */}
+          <text x="110" y="147" textAnchor="middle" fill="#fbbf24" fontSize="9" fontWeight="900" letterSpacing="4" opacity="0.8">YOU</text>
+          <text x="110" y="157" textAnchor="middle" fill="#fbbf24" fontSize="7" fontWeight="700" letterSpacing="2" opacity="0.5">CHAMPION</text>
         </g>
-        <g className="svf">
-          <g transform="translate(76,86) rotate(-22,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
-            <text x="14" y="26" textAnchor="middle" fill="#09090f" fontSize="14" fontWeight="900">7</text>
+
+        {/* Card fan (human) */}
+        <g className="bif">
+          <g transform="translate(54,118) rotate(-20,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
+            <text x="12" y="22" textAnchor="middle" fill="#09090f" fontSize="12" fontWeight="900">7</text>
           </g>
-          <g transform="translate(98,80) rotate(-8,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
-            <text x="14" y="26" textAnchor="middle" fill="#dc2626" fontSize="14" fontWeight="900">♥</text>
+          <g transform="translate(74,112) rotate(-7,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
+            <text x="12" y="22" textAnchor="middle" fill="#dc2626" fontSize="12" fontWeight="900">♥</text>
           </g>
-          <g transform="translate(118,78) rotate(5,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
-            <text x="14" y="26" textAnchor="middle" fill="#09090f" fontSize="14" fontWeight="900">K</text>
+          <g transform="translate(93,112) rotate(6,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
+            <text x="12" y="22" textAnchor="middle" fill="#09090f" fontSize="12" fontWeight="900">K</text>
           </g>
-          <g transform="translate(137,82) rotate(18,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
-            <text x="14" y="26" textAnchor="middle" fill="#1f2937" fontSize="14" fontWeight="900">♠</text>
-          </g>
-        </g>
-        <g className="svf2">
-          <circle cx="452" cy="92" r="68" fill="none" stroke="#ef4444" strokeWidth="0.6" opacity="0.18"/>
-          <line x1="452" y1="30" x2="452" y2="44" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
-          <circle cx="452" cy="26" r="5" fill="#ef4444" className="svp" filter="url(#sv-glow)"/>
-          <line x1="434" y1="38" x2="425" y2="29" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-          <line x1="470" y1="38" x2="479" y2="29" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-          <circle cx="425" cy="29" r="3" fill="#ef4444" opacity="0.7" className="svp"/>
-          <circle cx="479" cy="29" r="3" fill="#ef4444" opacity="0.7" className="svp"/>
-          <rect x="422" y="44" width="60" height="50" rx="9" fill="#13060f" stroke="#ef4444" strokeWidth="2.5" filter="url(#sv-glow)"/>
-          <rect x="427" y="49" width="50" height="40" rx="6" fill="none" stroke="#ef4444" strokeWidth="0.5" opacity="0.25"/>
-          <rect x="430" y="53" width="16" height="12" rx="3" fill="#09090f" stroke="#ef4444" strokeWidth="1" opacity="0.8"/>
-          <rect x="454" y="53" width="16" height="12" rx="3" fill="#09090f" stroke="#ef4444" strokeWidth="1" opacity="0.8"/>
-          <rect x="432" y="55" width="12" height="8" rx="2" fill="#ef4444" className="svbl"/>
-          <rect x="456" y="55" width="12" height="8" rx="2" fill="#ef4444" className="svbl"/>
-          <rect x="432" y="55" width="12" height="8" rx="2" fill="#ff1111" opacity="0.5" filter="url(#sv-bloom)"/>
-          <rect x="456" y="55" width="12" height="8" rx="2" fill="#ff1111" opacity="0.5" filter="url(#sv-bloom)"/>
-          <rect x="436" y="56" width="4" height="3" rx="1" fill="#fff" opacity="0.9"/>
-          <rect x="460" y="56" width="4" height="3" rx="1" fill="#fff" opacity="0.9"/>
-          {[0,1,2,3,4,5,6,7,8].map(i=>(
-            <rect key={i} x={430+i*4.5} y="74" width="3.2" height="6" rx="1" fill="#00ff88" opacity={i%3===1?0.9:0.35} className="svp"/>
-          ))}
-          <rect x="418" y="97" width="68" height="42" rx="9" fill="#13060f" stroke="#ef4444" strokeWidth="2"/>
-          <line x1="428" y1="107" x2="476" y2="107" stroke="#ef4444" strokeWidth="0.8" opacity="0.5"/>
-          <line x1="428" y1="115" x2="476" y2="115" stroke="#3b82f6" strokeWidth="0.8" opacity="0.5"/>
-          <line x1="428" y1="123" x2="476" y2="123" stroke="#22c55e" strokeWidth="0.8" opacity="0.4"/>
-          <circle cx="476" cy="107" r="3" fill="#ef4444" className="svs1"/>
-          <circle cx="428" cy="115" r="3" fill="#3b82f6" className="svs3"/>
-          <circle cx="476" cy="123" r="3" fill="#22c55e" className="svs5"/>
-          <rect x="440" y="110" width="24" height="12" rx="3" fill="#1a0a10" stroke="#ef4444" strokeWidth="0.5" opacity="0.5"/>
-          <path d="M418 109 Q398 103 382 116" stroke="#ef4444" strokeWidth="5.5" fill="none" strokeLinecap="round"/>
-          <path d="M486 109 Q506 103 520 116" stroke="#ef4444" strokeWidth="5.5" fill="none" strokeLinecap="round"/>
-          <text x="452" y="154" textAnchor="middle" fill="#ef4444" fontSize="8.5" fontWeight="900" letterSpacing="5" opacity="0.75">AI BOT</text>
-        </g>
-        <g className="svf2">
-          <g transform="translate(336,86) rotate(-19,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#ef4444" fontSize="14" fontWeight="900">A</text>
-          </g>
-          <g transform="translate(356,80) rotate(-6,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#060c1a" stroke="#3b82f6" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#60a5fa" fontSize="14" fontWeight="900">♠</text>
-          </g>
-          <g transform="translate(374,78) rotate(7,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#ef4444" fontSize="14" fontWeight="900">K</text>
-          </g>
-          <g transform="translate(392,84) rotate(20,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#110614" stroke="#a855f7" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#c084fc" fontSize="14" fontWeight="900">Q</text>
+          <g transform="translate(112,116) rotate(19,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
+            <text x="12" y="22" textAnchor="middle" fill="#1e293b" fontSize="12" fontWeight="900">♠</text>
           </g>
         </g>
-        <circle cx="300" cy="95" r="48" fill="none" stroke="#7c3aed" strokeWidth="0.6" opacity="0.25" className="svp"/>
-        <circle cx="300" cy="95" r="32" fill="none" stroke="#a855f7" strokeWidth="0.7" opacity="0.3" className="svp"/>
-        <path d="M225 82 L255 100 L240 100 L268 118" stroke="#fbbf24" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" filter="url(#sv-glow)"/>
-        <path d="M375 82 L345 100 L360 100 L332 118" stroke="#ef4444" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" filter="url(#sv-glow)"/>
-        <text x="300" y="90" textAnchor="middle" fill="#7c3aed" fontSize="40" fontWeight="900" fontFamily="Arial Black,Arial" opacity="0.35" filter="url(#sv-bloom)">VS</text>
-        <text x="300" y="90" textAnchor="middle" fill="url(#sv-vs)" fontSize="40" fontWeight="900" fontFamily="Arial Black,Arial" letterSpacing="-2">VS</text>
-        <text x="300" y="106" textAnchor="middle" fill="#a855f7" fontSize="7.5" fontWeight="800" letterSpacing="5.5" opacity="0.8">BATTLE</text>
-        <g className="svf3" transform="translate(265,48) rotate(-38,9,13)">
-          <rect width="20" height="28" rx="2.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="0.8" opacity="0.75"/>
-          <text x="10" y="18" textAnchor="middle" fill="#09090f" fontSize="11" fontWeight="900">7</text>
+
+        {/* Human spark particles */}
+        <circle cx="72"  cy="68" r="2.5" fill="#fbbf24" className="bis1"/>
+        <circle cx="55"  cy="90" r="2"   fill="#fbbf24" className="bis3"/>
+        <circle cx="150" cy="70" r="2.5" fill="#fbbf24" className="bis5"/>
+        <circle cx="160" cy="108"r="2"   fill="#fbbf24" className="bis2"/>
+
+        {/* ══════════════════════════════════════════
+            CENTER — VS + CHAMPIONSHIP
+        ══════════════════════════════════════════ */}
+
+        {/* Orbit rings */}
+        <circle cx="295" cy="98" r="50" fill="none" stroke="#6d28d9" strokeWidth="0.5" strokeDasharray="4 5" opacity="0.3" className="bip"/>
+        <circle cx="295" cy="98" r="35" fill="none" stroke="#7c3aed" strokeWidth="0.5" opacity="0.2" className="bip"/>
+
+        {/* Trophy shape */}
+        <g filter="url(#bi-glow)" opacity="0.9">
+          {/* Cup body */}
+          <path d="M283 62 L307 62 L307 88 Q307 96 295 98 Q283 96 283 88 Z" fill="url(#bi-trophy)"/>
+          {/* Cup handles */}
+          <path d="M283 66 Q272 66 272 76 Q272 86 283 86" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M307 66 Q318 66 318 76 Q318 86 307 86" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round"/>
+          {/* Stem */}
+          <rect x="291" y="98" width="8" height="10" fill="#fbbf24"/>
+          {/* Base */}
+          <rect x="284" y="108" width="22" height="4" rx="2" fill="#fbbf24"/>
+          {/* Star on cup */}
+          <text x="295" y="84" textAnchor="middle" fontSize="12" fill="#0d1117" fontWeight="900">★</text>
         </g>
-        <g className="svf" transform="translate(312,44) rotate(24,9,13)">
-          <rect width="20" height="28" rx="2.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.2" opacity="0.7"/>
-          <text x="10" y="18" textAnchor="middle" fill="#ef4444" fontSize="11" fontWeight="900">A</text>
-        </g>
-        <g className="svf2" transform="translate(252,132) rotate(58,8,11)">
-          <rect width="18" height="25" rx="2" fill="#fff" opacity="0.6"/>
-          <text x="9" y="16" textAnchor="middle" fill="#dc2626" fontSize="10" fontWeight="900">♥</text>
-        </g>
-        <g className="svf3" transform="translate(325,132) rotate(-42,8,11)">
-          <rect width="18" height="25" rx="2" fill="#060c1a" stroke="#60a5fa" strokeWidth="1" opacity="0.65"/>
-          <text x="9" y="16" textAnchor="middle" fill="#60a5fa" fontSize="10" fontWeight="900">♠</text>
-        </g>
-        <circle cx="242" cy="88" r="3.5" fill="#fbbf24" className="svs1"/>
-        <circle cx="262" cy="72" r="2.5" fill="#fbbf24" className="svs2"/>
-        <circle cx="358" cy="88" r="3.5" fill="#ef4444" className="svs3"/>
-        <circle cx="338" cy="72" r="2.5" fill="#ef4444" className="svs4"/>
-        <circle cx="300" cy="46" r="3" fill="#a855f7" className="svs5"/>
-        <circle cx="283" cy="118" r="2.5" fill="#60a5fa" className="svs2"/>
-        <circle cx="317" cy="118" r="2.5" fill="#22c55e" className="svs4"/>
-        <circle cx="248" cy="110" r="2" fill="#fbbf24" className="svs3"/>
-        <circle cx="352" cy="110" r="2" fill="#ef4444" className="svs1"/>
-        <circle cx="274" cy="56" r="2" fill="#fff" className="svs4"/>
-        <circle cx="326" cy="56" r="2" fill="#fff" className="svs2"/>
-        <circle cx="289" cy="138" r="1.5" fill="#fbbf24" className="svs5"/>
-        <circle cx="311" cy="138" r="1.5" fill="#ef4444" className="svs1"/>
-        <text x="300" y="188" textAnchor="middle" fill="rgba(255,255,255,0.22)" fontSize="7" letterSpacing="4" fontWeight="700">
-          5 STAGES · ONE SHOT · BECOME CHAMPION
-        </text>
-        {[1,2,3,4,5].map((n,i)=>(
-          <g key={n} transform={`translate(${221+i*40},200)`}>
-            <circle r="8" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1"/>
-            <text textAnchor="middle" y="4" fill="rgba(255,255,255,0.22)" fontSize="7" fontWeight="800">{n}</text>
+
+        {/* VS text */}
+        <text x="295" y="136" textAnchor="middle" fill="#6d28d9" fontSize="28" fontWeight="900" fontFamily="Arial Black,Arial" opacity="0.4" filter="url(#bi-bloom)">VS</text>
+        <text x="295" y="136" textAnchor="middle" fill="url(#bi-vs)" fontSize="28" fontWeight="900" fontFamily="Arial Black,Arial" letterSpacing="-1">VS</text>
+
+        {/* "1 vs 5" badge */}
+        <rect x="270" y="143" width="50" height="14" rx="7" fill="rgba(109,40,217,0.25)" stroke="rgba(109,40,217,0.5)" strokeWidth="1"/>
+        <text x="295" y="153" textAnchor="middle" fill="#a78bfa" fontSize="7" fontWeight="800" letterSpacing="2">1 vs 5 AI</text>
+
+        {/* Energy bolts (left→right) */}
+        <path d="M175 92 L220 105 L205 105 L248 118" stroke="#fbbf24" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.6" filter="url(#bi-glow)"/>
+        <path d="M415 92 L370 105 L385 105 L342 118" stroke="#ef4444" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.6" filter="url(#bi-glow)"/>
+
+        {/* Center sparks */}
+        <circle cx="260" cy="80" r="3" fill="#a855f7" className="bis2"/>
+        <circle cx="330" cy="80" r="3" fill="#a855f7" className="bis4"/>
+        <circle cx="275" cy="120" r="2" fill="#60a5fa" className="bis1"/>
+        <circle cx="315" cy="120" r="2" fill="#f59e0b" className="bis3"/>
+
+        {/* ══════════════════════════════════════════
+            5 AI PERSONALITIES — RIGHT PYRAMID
+            Row 1 (small): Iron Fist · Blaze · Phantom
+            Row 2 (medium): Smart AI · Aggressive AI
+            Row 3 (BOSS): Apex Trinity
+        ══════════════════════════════════════════ */}
+
+        {/* Row 1 — small AI cards */}
+        {AIS.map((ai, i) => (
+          <g key={i} className={i % 2 === 0 ? 'bif3' : 'bif2'}>
+            {/* Glow halo */}
+            <circle cx={ai.x} cy={ai.y} r={ai.r + 6} fill="none" stroke={ai.color} strokeWidth="1" opacity="0.2" className="bip"/>
+            {/* Circle body */}
+            <circle cx={ai.x} cy={ai.y} r={ai.r} fill="#0d1117" stroke={ai.color} strokeWidth="1.8" filter="url(#bi-glow)"
+              style={{ filter: `drop-shadow(0 0 6px ${ai.color}60)` }}/>
+            {/* Emoji */}
+            <text x={ai.x} y={ai.y + 6} textAnchor="middle" fontSize={ai.fs}>{ai.emoji}</text>
+            {/* Name label */}
+            <text x={ai.x} y={ai.y + ai.r + 10} textAnchor="middle" fill={ai.color} fontSize="6.5" fontWeight="800" opacity="0.85">
+              {ai.label.split(' ')[0].toUpperCase()}
+            </text>
           </g>
         ))}
+
+        {/* Connector lines between AIs */}
+        <line x1="418" y1="127" x2="432" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="468" y1="122" x2="468" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="518" y1="127" x2="504" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="432" y1="79"  x2="468" y2="62"  stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="504" y1="79"  x2="468" y2="62"  stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+
+        {/* ── BOSS AI — Apex Trinity (top center of pyramid) ── */}
+        <g className="bif">
+          {/* Boss outer bloom */}
+          <circle cx="468" cy="55" r="50" fill="url(#bi-boss)" opacity="0.6"/>
+          {/* Boss orbit ring */}
+          <circle cx="468" cy="55" r="40" fill="none" stroke="#ef4444" strokeWidth="0.8" strokeDasharray="5 4" opacity="0.35" className="bip"/>
+          <circle cx="468" cy="55" r="32" fill="none" stroke="#ef4444" strokeWidth="0.5" opacity="0.2" className="bip"/>
+          {/* Boss circle body */}
+          <circle cx="468" cy="55" r="28" fill="#130509" stroke="#ef4444" strokeWidth="2.5"
+            style={{ filter: 'drop-shadow(0 0 14px rgba(239,68,68,0.8))' }}/>
+          {/* Inner ring */}
+          <circle cx="468" cy="55" r="22" fill="none" stroke="#ef4444" strokeWidth="0.6" opacity="0.4"/>
+          {/* Skull emoji */}
+          <text x="468" y="64" textAnchor="middle" fontSize="26" className="bihb">💀</text>
+          {/* BOSS label */}
+          <rect x="449" y="85" width="38" height="13" rx="6.5" fill="rgba(239,68,68,0.2)" stroke="rgba(239,68,68,0.5)" strokeWidth="1"/>
+          <text x="468" y="95" textAnchor="middle" fill="#ef4444" fontSize="7.5" fontWeight="900" letterSpacing="3">BOSS</text>
+          {/* Apex Trinity sub-label */}
+          <text x="468" y="108" textAnchor="middle" fill="#ef4444" fontSize="6" fontWeight="700" letterSpacing="1" opacity="0.6">APEX TRINITY</text>
+        </g>
+
+        {/* Boss spark particles */}
+        <circle cx="438" cy="30" r="3" fill="#ef4444" className="bis1"/>
+        <circle cx="499" cy="28" r="2" fill="#ef4444" className="bis3"/>
+        <circle cx="428" cy="52" r="2" fill="#ef4444" className="bis5"/>
+        <circle cx="508" cy="48" r="2" fill="#ef4444" className="bis2"/>
+        <circle cx="455" cy="18" r="2.5" fill="#ff6b6b" className="bis4"/>
+        <circle cx="482" cy="15" r="2"   fill="#ff6b6b" className="bis1"/>
+
+        {/* ── Bottom strip ── */}
+        <line x1="30" y1="195" x2="570" y2="195" stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
+
+        {/* Stage progression dots */}
+        {[
+          { n:1, label:'WARMUP',    color:'#22c55e' },
+          { n:2, label:'TACTICAL',  color:'#f59e0b' },
+          { n:3, label:'MIND',      color:'#a855f7' },
+          { n:4, label:'CLASH',     color:'#3b82f6' },
+          { n:5, label:'FINALE',    color:'#ef4444' },
+        ].map((s,i)=>(
+          <g key={s.n} transform={`translate(${160+i*71},208)`}>
+            <circle r="9" fill={`${s.color}18`} stroke={s.color} strokeWidth="1.2" opacity="0.7"/>
+            <text y="4" textAnchor="middle" fill={s.color} fontSize="8" fontWeight="900">{s.n}</text>
+            <text y="18" textAnchor="middle" fill={s.color} fontSize="5.5" fontWeight="700" letterSpacing="1" opacity="0.6">{s.label}</text>
+          </g>
+        ))}
+
+        {/* Connecting arrows between stage dots */}
+        {[0,1,2,3].map(i=>(
+          <line key={i} x1={173+i*71} y1="208" x2={224+i*71} y2="208" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 2"/>
+        ))}
+
+        {/* Tagline */}
+        <text x="295" y="172" textAnchor="middle" fill="rgba(255,255,255,0.18)" fontSize="7" letterSpacing="5" fontWeight="700">
+          5 STAGES · ONE LIFE · BECOME CHAMPION
+        </text>
       </svg>
     </div>
   );

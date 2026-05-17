@@ -130,7 +130,9 @@ export interface RoomConfig {
   allowBots: boolean;
   botCount: number;
   entryFee: number; // 0 = free game, >0 = cash game
-  botPersonality?: string; // 'safe' | 'aggressive' | 'bluff' | 'smart' | 'boss'
+  botPersonality?:   string;   // single-bot personality
+  botPersonalities?: string[]; // per-bot personalities for multi-bot stages
+  botNames?:         string[]; // display names per bot
 }
 
 // ---- Wallet types ----

@@ -74,7 +74,7 @@ export const usersApi = {
   leaderboard: () => api.get<{ leaderboard: any[] }>("/users/leaderboard"),
   profile: (id: string) =>
     api.get<{ user: any; recentGames: any[] }>(`/users/${id}/profile`),
-  updateMe: (data: { username?: string; avatar?: string }) =>
+  updateMe: (data: { username?: string; avatar?: string; selectedBadgeId?: string | null }) =>
     api.patch("/users/me", data),
 };
 

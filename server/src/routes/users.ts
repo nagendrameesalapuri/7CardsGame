@@ -76,8 +76,12 @@ router.get('/:id/profile', async (req: Request, res: Response) => {
 // Update own profile
 router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { username, avatar } = req.body as { username?: string; avatar?: string };
-    const updates: Record<string, string> = {};
+    const { username, avatar, selectedBadgeId } = req.body as {
+      username?: string;
+      avatar?: string;
+      selectedBadgeId?: string | null;
+    };
+    const updates: Record<string, unknown> = {};
 
     if (username) {
       if (username.length < 2 || username.length > 20) {
@@ -87,6 +91,10 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     }
 
     if (avatar) updates.avatar = avatar;
+
+    if (selectedBadgeId !== undefined) {
+      updates.selectedBadgeId = selectedBadgeId ?? null;
+    }
 
     const user = await User.findByIdAndUpdate(req.user!.id, updates, { new: true })
       .select('-guestToken');

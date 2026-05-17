@@ -65,8 +65,14 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (user) {
-      const saved = localStorage.getItem(`profileBadge_${user.id}`);
-      if (saved) setSelectedBadgeId(saved);
+      // Load from server field; fall back to legacy localStorage entry and migrate it
+      const serverBadge = (user as any).selectedBadgeId as string | null | undefined;
+      if (serverBadge) {
+        setSelectedBadgeId(serverBadge);
+      } else {
+        const legacy = localStorage.getItem(`profileBadge_${user.id}`);
+        if (legacy) setSelectedBadgeId(legacy);
+      }
     }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -99,9 +105,9 @@ export function ProfilePage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await usersApi.updateMe({ username, avatar: selectedAvatar });
-      if (selectedBadgeId) localStorage.setItem(`profileBadge_${user.id}`, selectedBadgeId);
-      else localStorage.removeItem(`profileBadge_${user.id}`);
+      await usersApi.updateMe({ username, avatar: selectedAvatar, selectedBadgeId: selectedBadgeId ?? null });
+      // Clean up legacy localStorage entry
+      localStorage.removeItem(`profileBadge_${user.id}`);
       await loadMe();
       setEditMode(false);
       notify.success('Profile updated!');
