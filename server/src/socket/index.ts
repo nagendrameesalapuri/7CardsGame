@@ -98,6 +98,14 @@ export function initSocketIO(io: Server) {
       }
     }
 
+    socket.on('game:resume_request', () => {
+      if (isSpectator) return;
+      const actives = getAllActiveGamesByUserId(uid);
+      if (actives.length > 0) {
+        socket.emit('game:can_resume', { roomCodes: actives.map(a => a.roomCode) });
+      }
+    });
+
     // Reconnection: restore game state
     socket.on('game:reconnect', async (roomCode: string) => {
       const game = getActiveGame(roomCode);

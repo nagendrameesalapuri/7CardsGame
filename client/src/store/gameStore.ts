@@ -196,11 +196,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Auto-rejoin game room when socket reconnects (handles mobile background → foreground)
     const handleConnect = () => {
       const { game } = get();
-      if (game) socketGame.reconnect(game.roomId);
+      if (game) {
+        socketGame.reconnect(game.roomId);
+      } else {
+        getSocket().emit('game:resume_request');
+      }
     };
     const s = getSocket();
     s.on('connect', handleConnect);
     unsubs.push(() => s.off('connect', handleConnect));
+
+    if (s.connected) {
+      s.emit('game:resume_request');
+    }
 
     unsubs.push(on('game:can_resume', ({ roomCodes, roomCode }: { roomCodes?: string[]; roomCode?: string }) => {
       // Support both old (single roomCode) and new (roomCodes array) payload
