@@ -458,6 +458,9 @@ function FCMInit() {
   return showPrompt ? <NotificationPrompt onDone={handlePromptDone} /> : null;
 }
 
+// Detect admin subdomain (admin.yourdomain.com) — auto-route to admin panel
+const IS_ADMIN_SUBDOMAIN = window.location.hostname.startsWith('admin.');
+
 export function App() {
   const { loadMe, token } = useAuthStore();
 
@@ -483,20 +486,31 @@ export function App() {
         <FCMInit />
         <AnnouncementBanner />
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/lobby" element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
-          <Route path="/game" element={<ProtectedRoute><GamePage /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
-          <Route path="/survival" element={<ProtectedRoute><SurvivalTournamentPage /></ProtectedRoute>} />
-          <Route path="/progression" element={<ProtectedRoute><ProgressionPage /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-          <Route path="/admin/login" element={<AdminLoginPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* On admin subdomain: only admin routes; everything else → /admin */}
+          {IS_ADMIN_SUBDOMAIN ? (
+            <>
+              <Route path="/admin/login" element={<AdminLoginPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/admin" replace />} />
+            </>
+          ) : (
+            <>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/lobby" element={<ProtectedRoute><LobbyPage /></ProtectedRoute>} />
+              <Route path="/game" element={<ProtectedRoute><GamePage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+              <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+              <Route path="/leaderboard" element={<LeaderboardPage />} />
+              <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
+              <Route path="/survival" element={<ProtectedRoute><SurvivalTournamentPage /></ProtectedRoute>} />
+              <Route path="/progression" element={<ProtectedRoute><ProgressionPage /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+              <Route path="/admin/login" element={<AdminLoginPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
+          )}
         </Routes>
 
         <Toaster position="top-center" containerStyle={{ zIndex: 9999 }} toastOptions={{ style: { background: 'transparent', boxShadow: 'none', padding: 0 } }} />

@@ -52,7 +52,7 @@ export default function createAdminRouter(io: Server) {
     }
 
     const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET!, {
-      expiresIn: "8h",
+      expiresIn: "30d",
     });
     res.json({ token });
   });
