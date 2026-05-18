@@ -200,6 +200,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     s.on('connect', handleConnect);
     unsubs.push(() => s.off('connect', handleConnect));
 
+    // Force a state resync when the app returns to foreground — catches "zombie" connections
+    // where the socket stays green but stops receiving updates (common on mobile when screen locks)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const { game } = get();
+        if (game) socketGame.reconnect(game.roomId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    unsubs.push(() => document.removeEventListener('visibilitychange', handleVisibility));
+
     unsubs.push(on('game:can_resume', ({ roomCode }: { roomCode: string }) => {
       set({ resumeRoomCode: roomCode });
     }));
@@ -303,6 +314,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (msg === 'No active game' && get().game) return;
       // Use stable ID so duplicate errors replace the existing toast instead of stacking
       notify.error(msg, { id: `game-err-${msg.replace(/\s+/g, '-').toLowerCase()}`, duration: 3000 });
+
+      // Immediately correct stale client state so the UI stops allowing further actions
+      if (msg === "It's not your turn") {
+        // Server has moved on — disable our turn immediately rather than waiting for next game:state
+        set({ isMyTurn: false, canShow: false });
+      }
+      if (msg === 'Already drew this turn') {
+        // Force hasDrawnThisTurn so the deck button becomes disabled right away
+        set(state => state.game
+          ? { game: { ...state.game, hasDrawnThisTurn: true } }
+          : {});
+      }
     }));
 
     unsubs.push(on('chat:received', (msg) => {
