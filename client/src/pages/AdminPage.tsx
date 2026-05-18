@@ -39,6 +39,7 @@ type Section =
   | "tournaments"
   | "support"
   | "notify"
+  | "announcements"
   | "survivalconfig"
   | "analytics"
   | "aiguide";
@@ -173,20 +174,18 @@ function NumberInput({
 
 function OverviewSection() {
   const [stats, setStats] = useState<any>(null);
+  const [rooms, setRooms] = useState<any[]>([]);
+
+  const fetchAll = useCallback(() => {
+    admin.getStats().then((r) => setStats(r.data)).catch(console.error);
+    admin.getRooms().then((r) => setRooms(r.data.rooms ?? [])).catch(console.error);
+  }, []);
 
   useEffect(() => {
-    admin
-      .getStats()
-      .then((r) => setStats(r.data))
-      .catch(console.error);
-    const t = setInterval(() => {
-      admin
-        .getStats()
-        .then((r) => setStats(r.data))
-        .catch(console.error);
-    }, 10000);
+    fetchAll();
+    const t = setInterval(fetchAll, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [fetchAll]);
 
   if (!stats)
     return (
@@ -194,7 +193,7 @@ function OverviewSection() {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h2 className="text-lg font-bold text-white">Platform Overview</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard icon="👥" label="Total Users" value={stats.totalUsers} />
@@ -223,6 +222,79 @@ function OverviewSection() {
           color="#fbbf24"
         />
       </div>
+
+      {/* ── Active Rooms inline panel ── */}
+      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+        <div className="flex items-center justify-between px-4 pt-4 pb-3"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-base">🏠</span>
+            <span className="text-sm font-bold text-white">Active Rooms</span>
+            {rooms.length > 0 && (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(168,85,247,0.18)", color: "#c084fc" }}>
+                {rooms.length}
+              </span>
+            )}
+          </div>
+          <button onClick={fetchAll} className="text-[11px] text-dark-muted hover:text-neon-green transition-colors px-2 py-1 rounded">
+            ↺ Refresh
+          </button>
+        </div>
+
+        {rooms.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-dark-muted">No active rooms right now</div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            {rooms.map((room) => (
+              <div key={room.code} className="px-4 py-3 flex items-center gap-3">
+                {/* Status dot */}
+                <div className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                    boxShadow: room.status === "playing" ? "0 0 6px #22c55e" : "0 0 6px #fbbf24" }} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-dark-text truncate">{room.name || room.code}</span>
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{
+                        background: room.status === "playing" ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)",
+                        color: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                      }}>
+                      {room.status === "playing" ? "LIVE" : "WAITING"}
+                    </span>
+                    {(room.config?.isPrivate ?? room.isPrivate) && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#6b7280" }}>🔒 Private</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-dark-muted mt-0.5">
+                    {room.code} · {room.playerCount}/{room.maxPlayers} players
+                    {room.status === "playing" && ` · Round ${room.roundNumber ?? "?"}/${room.roundCount ?? "?"}`}
+                    {room.spectatorCount > 0 && ` · 👁 ${room.spectatorCount}`}
+                    {(room.config?.entryFee ?? 0) > 0 && ` · 💰 ₹${room.config?.entryFee}`}
+                  </p>
+                </div>
+
+                {/* Player avatars / count */}
+                <div className="flex items-center flex-shrink-0 text-[11px] text-dark-muted gap-1">
+                  {(room.players ?? []).slice(0, 4).map((p: any, i: number) => (
+                    <div key={p.userId ?? i}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
+                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", marginLeft: i > 0 ? -6 : 0, zIndex: 4 - i }}
+                      title={p.username}>
+                      {p.isBot ? "🤖" : "👤"}
+                    </div>
+                  ))}
+                  {(room.players ?? []).length > 4 && (
+                    <span className="ml-1">+{(room.players ?? []).length - 4}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl p-4 text-sm text-dark-muted" style={cardStyle}>
         Auto-refreshes every 10 seconds. Changes made here are applied
         instantly.
@@ -4403,6 +4475,277 @@ function AiGuideSection() {
   );
 }
 
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+interface AnnouncementRecord {
+  _id: string;
+  message: string;
+  type: "banner" | "marquee" | "popup";
+  active: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+function AnnouncementsSection() {
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [type, setType] = useState<"banner" | "marquee" | "popup">("banner");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await admin.getAnnouncements();
+      setAnnouncements(r.data.announcements);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!message.trim()) { setError("Message is required"); return; }
+    setError(null);
+    setAdding(true);
+    try {
+      await admin.createAnnouncement({ message: message.trim(), type });
+      setMessage("");
+      await load();
+    } catch {
+      setError("Failed to add announcement");
+    } finally { setAdding(false); }
+  };
+
+  const handleToggle = async (id: string, active: boolean) => {
+    try {
+      await admin.updateAnnouncement(id, { active: !active });
+      setAnnouncements(prev => prev.map(a => a._id === id ? { ...a, active: !active } : a));
+    } catch { /* silent */ }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await admin.deleteAnnouncement(id);
+      setAnnouncements(prev => prev.filter(a => a._id !== id));
+    } catch { /* silent */ }
+  };
+
+  const TYPE_LABELS: Record<string, string> = {
+    banner: "Banner",
+    marquee: "Marquee",
+    popup: "Popup",
+  };
+
+  const TYPE_COLORS: Record<string, string> = {
+    banner: "#60a5fa",
+    marquee: "#fbbf24",
+    popup: "#a78bfa",
+  };
+
+  const TYPE_ICONS: Record<string, string> = { banner: "🔔", marquee: "📡", popup: "💬" };
+  const TYPE_DESC: Record<string, string> = {
+    banner: "Pinned bar at the top of every page",
+    marquee: "Animated scrolling ticker strip",
+    popup: "Floating card — players must dismiss",
+  };
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.4)", boxShadow: "0 0 20px rgba(99,102,241,0.2)" }}>
+          📣
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-white">Announcements</h2>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(148,163,184,0.6)" }}>Broadcast messages to all players in real-time</p>
+        </div>
+      </div>
+
+      {/* Type cards — select visually */}
+      <div className="grid grid-cols-3 gap-3">
+        {(["banner","marquee","popup"] as const).map(t => (
+          <button key={t} onClick={() => setType(t)}
+            className="rounded-2xl p-4 text-left transition-all"
+            style={{
+              background: type === t
+                ? `linear-gradient(135deg,${TYPE_COLORS[t]}22,${TYPE_COLORS[t]}10)`
+                : "rgba(255,255,255,0.03)",
+              border: `1.5px solid ${type === t ? TYPE_COLORS[t] + "60" : "rgba(255,255,255,0.07)"}`,
+              boxShadow: type === t ? `0 0 20px ${TYPE_COLORS[t]}18` : "none",
+              transform: type === t ? "translateY(-1px)" : "none",
+            }}>
+            <div className="text-xl mb-2">{TYPE_ICONS[t]}</div>
+            <p className="text-sm font-black mb-1" style={{ color: type === t ? TYPE_COLORS[t] : "#e2e8f0" }}>
+              {TYPE_LABELS[t]}
+            </p>
+            <p className="text-[10px] leading-snug" style={{ color: "rgba(148,163,184,0.55)" }}>
+              {TYPE_DESC[t]}
+            </p>
+          </button>
+        ))}
+      </div>
+
+      {/* Compose area */}
+      <div className="rounded-2xl overflow-hidden"
+        style={{ background: "rgba(12,14,22,0.97)", border: "1px solid rgba(255,255,255,0.07)" }}>
+        {/* Top accent */}
+        <div style={{ height: 3, background: `linear-gradient(90deg,${TYPE_COLORS[type]},${TYPE_COLORS[type]}80,transparent)` }} />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{TYPE_ICONS[type]}</span>
+            <p className="text-sm font-bold text-white">Compose {TYPE_LABELS[type]}</p>
+          </div>
+
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder={`Write your ${TYPE_LABELS[type].toLowerCase()} message here…`}
+            rows={4}
+            maxLength={500}
+            className="w-full rounded-xl px-4 py-3 text-sm resize-none outline-none text-dark-text placeholder-dark-muted"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${message ? TYPE_COLORS[type] + "40" : "rgba(255,255,255,0.08)"}`,
+              transition: "border-color 0.2s",
+            }}
+          />
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{ color: "rgba(148,163,184,0.4)" }}>
+              {message.length}/500 characters
+            </p>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !message.trim()}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all disabled:opacity-40"
+              style={{
+                background: `linear-gradient(135deg,${TYPE_COLORS[type]}30,${TYPE_COLORS[type]}18)`,
+                border: `1px solid ${TYPE_COLORS[type]}50`,
+                color: TYPE_COLORS[type],
+                boxShadow: !adding && message.trim() ? `0 0 16px ${TYPE_COLORS[type]}20` : "none",
+              }}
+            >
+              {adding ? "Publishing…" : "＋ Publish Announcement"}
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-widest" style={{ color: "rgba(148,163,184,0.45)" }}>
+            Published ({announcements.length})
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="rounded-2xl p-8 text-center text-sm text-dark-muted animate-pulse" style={cardStyle}>Loading…</div>
+        ) : announcements.length === 0 ? (
+          <div className="rounded-2xl p-10 text-center" style={cardStyle}>
+            <p className="text-3xl mb-3">📭</p>
+            <p className="text-sm font-semibold text-dark-muted">No announcements published yet</p>
+            <p className="text-xs text-dark-muted mt-1">Compose one above and hit Publish</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {announcements.map(ann => (
+              <motion.div
+                key={ann._id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: ann.active ? 1 : 0.55, y: 0 }}
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: ann.active
+                    ? `linear-gradient(135deg,${TYPE_COLORS[ann.type]}10,rgba(12,14,22,0.97))`
+                    : "rgba(12,14,22,0.7)",
+                  border: `1px solid ${ann.active ? TYPE_COLORS[ann.type] + "35" : "rgba(255,255,255,0.06)"}`,
+                }}>
+                {/* Left accent */}
+                <div style={{ display: "flex" }}>
+                  <div style={{ width: 4, flexShrink: 0, background: ann.active ? TYPE_COLORS[ann.type] : "rgba(255,255,255,0.08)" }} />
+                  <div className="flex-1 p-5">
+                    <div className="flex items-start gap-4">
+                      {/* Icon circle */}
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                        style={{
+                          background: `${TYPE_COLORS[ann.type]}18`,
+                          border: `1px solid ${TYPE_COLORS[ann.type]}35`,
+                        }}>
+                        {TYPE_ICONS[ann.type]}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        {/* Badge + status */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                            style={{ background: `${TYPE_COLORS[ann.type]}20`, color: TYPE_COLORS[ann.type], border: `1px solid ${TYPE_COLORS[ann.type]}35` }}>
+                            {TYPE_LABELS[ann.type]}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                            style={{ background: ann.active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)", color: ann.active ? "#22c55e" : "#6b7280" }}>
+                            {ann.active ? "● Live" : "○ Paused"}
+                          </span>
+                        </div>
+
+                        {/* Message */}
+                        <p className="text-base font-semibold text-white break-words leading-relaxed">
+                          {ann.message}
+                        </p>
+
+                        <p className="text-[11px] mt-2" style={{ color: "rgba(148,163,184,0.4)" }}>
+                          Published {new Date(ann.createdAt).toLocaleDateString()} at {new Date(ann.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        {/* Toggle */}
+                        <button
+                          onClick={() => handleToggle(ann._id, ann.active)}
+                          className="relative flex-shrink-0"
+                          style={{ width: 48, height: 26, borderRadius: 13,
+                            background: ann.active ? "#22c55e" : "rgba(255,255,255,0.1)",
+                            border: `1px solid ${ann.active ? "#16a34a" : "rgba(255,255,255,0.1)"}`,
+                            transition: "background 0.2s", cursor: "pointer" }}
+                          title={ann.active ? "Pause" : "Activate"}
+                        >
+                          <motion.span layout
+                            className="absolute top-[3px] w-5 h-5 bg-white rounded-full shadow-md"
+                            animate={{ x: ann.active ? 24 : 3 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDelete(ann._id)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.7)", fontSize: 16 }}
+                          title="Delete"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -4436,6 +4779,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
       { key: "support",       icon: "🎧", label: "Support" },
       { key: "notify",        icon: "📢", label: "Notify Players" },
+      { key: "announcements", icon: "📣", label: "Announcements" },
     ],
   },
   {
@@ -4663,6 +5007,7 @@ export function AdminPage() {
               {section === "gameconfig" && <GameConfigSection config={config} onSave={saveConfig} />}
               {section === "walletconfig" && <WalletConfigSection config={config} onSave={saveConfig} />}
               {section === "notify" && <NotifySection />}
+              {section === "announcements" && <AnnouncementsSection />}
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
               {section === "analytics" && <AnalyticsSection />}
               {section === "aiguide" && <AiGuideSection />}

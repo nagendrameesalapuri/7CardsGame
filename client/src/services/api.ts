@@ -297,6 +297,17 @@ export const admin = {
 
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),
+
+  getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
+  createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>
+    adminApi.post<{ announcement: any }>("/announcements", data),
+  updateAnnouncement: (id: string, data: { active?: boolean; message?: string; type?: string }) =>
+    adminApi.patch<{ announcement: any }>(`/announcements/${id}`, data),
+  deleteAnnouncement: (id: string) => adminApi.delete(`/announcements/${id}`),
+};
+
+export const announcementsApi = {
+  getActive: () => api.get<{ announcements: any[] }>("/announcements"),
 };
 
 export const progressionApi = {

@@ -32,6 +32,7 @@ import {
 import { NotificationToken }      from "../models/NotificationToken";
 import { NotificationBroadcast }  from "../models/NotificationBroadcast";
 import type { NotificationCategory } from "../models/Notification";
+import { Announcement }           from "../models/Announcement";
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -256,9 +257,11 @@ export default function createAdminRouter(io: Server) {
       const inMemory = getAllActiveRoomInfos();
       const inMemoryCodes = new Set(inMemory.map((r) => r.roomCode));
 
-      // Waiting rooms (not yet in memory)
-      const waitingRooms = await Room.find({
-        status: "waiting",
+      // Fetch ALL active rooms from DB not already covered by in-memory state.
+      // Include both "waiting" AND "playing" so orphaned rooms (e.g. after a
+      // server restart that cleared in-memory games) are still visible.
+      const dbRooms = await Room.find({
+        status: { $in: ["waiting", "playing"] },
         code: { $nin: [...inMemoryCodes] },
       }).lean();
 
@@ -273,11 +276,12 @@ export default function createAdminRouter(io: Server) {
           roundCount: r.roundCount,
           spectatorCount: spectatorCounts.get(r.roomCode) ?? 0,
           players: r.players,
+          config: null,
         })),
-        ...waitingRooms.map((r) => ({
+        ...dbRooms.map((r) => ({
           code: r.code,
           name: r.name,
-          status: "waiting",
+          status: r.status,
           playerCount: r.players.length,
           maxPlayers: r.config.maxPlayers,
           roundNumber: 0,
@@ -288,6 +292,7 @@ export default function createAdminRouter(io: Server) {
             userId: p.userId,
             isBot: p.isBot,
           })),
+          config: r.config,
         })),
       ];
 
@@ -1223,6 +1228,59 @@ export default function createAdminRouter(io: Server) {
       res.json({ users: userMap, total: Object.keys(userMap).length });
     } catch {
       res.status(500).json({ error: "Failed to list token users" });
+    }
+  });
+
+  // ── Announcements ───────────────────────────────────────────────────────────
+  router.get("/announcements", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const list = await Announcement.find().sort({ createdAt: -1 }).limit(50).lean();
+      res.json({ announcements: list });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch announcements" });
+    }
+  });
+
+  router.post("/announcements", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { message, type = "banner", expiresAt } = req.body as {
+        message: string;
+        type?: "banner" | "marquee" | "popup";
+        expiresAt?: string;
+      };
+      if (!message?.trim()) return res.status(400).json({ error: "message required" });
+      const ann = await Announcement.create({
+        message: message.trim(),
+        type,
+        active: true,
+        ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+      });
+      res.json({ announcement: ann });
+    } catch {
+      res.status(500).json({ error: "Failed to create announcement" });
+    }
+  });
+
+  router.patch("/announcements/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const update: any = {};
+      if (req.body.active !== undefined) update.active = req.body.active;
+      if (req.body.message !== undefined) update.message = String(req.body.message).trim();
+      if (req.body.type !== undefined) update.type = req.body.type;
+      const ann = await Announcement.findByIdAndUpdate(req.params.id, update, { new: true });
+      if (!ann) return res.status(404).json({ error: "Not found" });
+      res.json({ announcement: ann });
+    } catch {
+      res.status(500).json({ error: "Failed to update announcement" });
+    }
+  });
+
+  router.delete("/announcements/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      await Announcement.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: "Failed to delete announcement" });
     }
   });
 

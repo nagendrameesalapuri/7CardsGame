@@ -130,7 +130,10 @@ export async function sendNotification(opts: SendNotificationOpts): Promise<void
     }
 
     const tokens = await NotificationToken.find({ userId }).select('fcmToken').lean();
-    if (!tokens.length) return;
+    if (!tokens.length) {
+      console.log(`[FCM] No FCM tokens for user ${userId} — push skipped (in-app only)`);
+      return;
+    }
 
     const fcmTokens = tokens.map(t => t.fcmToken);
 

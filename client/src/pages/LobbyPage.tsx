@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
@@ -376,6 +376,7 @@ export function LobbyPage() {
   const { room, game, subscribeToEvents, createRoom, resumeRoomCode, clearResume, joinRoom, resumeGame } = useGameStore();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -462,6 +463,13 @@ export function LobbyPage() {
       });
     }
     const unsubProg = subscribeProgression();
+
+    // Auto-join from notification deep link: /lobby?join=ROOMCODE
+    const joinCode = searchParams.get('join');
+    if (joinCode) {
+      setSearchParams({}, { replace: true }); // clear the param from URL
+      setTimeout(() => joinRoom(joinCode.toUpperCase()), 500); // slight delay for socket to be ready
+    }
 
     return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
   }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps

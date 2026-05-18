@@ -11,6 +11,7 @@ import passport from 'passport';
 import rateLimit from 'express-rate-limit';
 
 import { connectDatabase } from './config/database';
+import { Announcement } from './models/Announcement';
 import { configurePassport } from './config/passport';
 import { initSocketIO } from './socket';
 
@@ -107,6 +108,20 @@ async function bootstrap() {
   app.use('/api/notifications', notificationRoutes);
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
+
+  // Public: active announcements (no auth required)
+  app.get('/api/announcements', async (_req, res) => {
+    try {
+      const now = new Date();
+      const list = await Announcement.find({
+        active: true,
+        $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }, { expiresAt: { $gt: now } }],
+      }).sort({ createdAt: -1 }).limit(5).lean();
+      res.json({ announcements: list });
+    } catch {
+      res.status(500).json({ error: 'Failed to load announcements' });
+    }
+  });
 
   // ── Socket.IO ────────────────────────────────────────────────────────────────
   const io = new Server(httpServer, {

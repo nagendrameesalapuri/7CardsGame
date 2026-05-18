@@ -129,14 +129,19 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         : [];
       if (invitedIds.length > 0) {
         const modeLabel = room.config.entryFee > 0 ? `Wager ₹${room.config.entryFee}` : 'Free Play';
+        console.log(`[Room] Sending invites for room ${room.code} to ${invitedIds.length} user(s):`, invitedIds);
         sendBulkNotification(invitedIds, {
           title: `🎮 ${username} invited you to play!`,
           message: `Join "${room.name}" · ${modeLabel} · Code: ${room.code}`,
           category: 'multiplayer',
           type: 'info',
-          actionUrl: '/lobby',
+          actionUrl: `/lobby?join=${room.code}`,
           skipThrottle: true,
-        }).catch(() => {});
+        }).then(() => {
+          console.log(`[Room] Invites sent for room ${room.code}`);
+        }).catch((err) => {
+          console.error(`[Room] Invite notification error for room ${room.code}:`, err);
+        });
       }
     } catch (err) {
       console.error('[Room] Create error:', err);

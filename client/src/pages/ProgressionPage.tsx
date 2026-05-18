@@ -185,19 +185,21 @@ function AchievementsSection({ progress, allDefs }: { progress: any; allDefs: an
 
 // ── Lucky Spin Wheel ─────────────────────────────────────────────────────────
 
+// Segments mirror the server's LUCKY_OUTCOMES (miss/20/40/100/200/400/1500)
+// repeated proportionally so the visual wheel matches real probabilities.
 const WHEEL_SEGMENTS = [
-  { label: 'MISS',    emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
-  { label: '+50 pts', emoji: '✨', pts: 50,   xp: 5,   color: '#1e40af', textColor: '#93c5fd' },
-  { label: '+100',    emoji: '⚡', pts: 100,  xp: 10,  color: '#065f46', textColor: '#6ee7b7' },
-  { label: 'MISS',    emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
-  { label: '+250',    emoji: '💫', pts: 250,  xp: 25,  color: '#78350f', textColor: '#fcd34d' },
-  { label: '+50 pts', emoji: '✨', pts: 50,   xp: 5,   color: '#1e40af', textColor: '#93c5fd' },
-  { label: '+500',    emoji: '🌟', pts: 500,  xp: 50,  color: '#92400e', textColor: '#fbbf24' },
-  { label: '+100',    emoji: '⚡', pts: 100,  xp: 10,  color: '#065f46', textColor: '#6ee7b7' },
-  { label: 'MISS',    emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
-  { label: '+250',    emoji: '💫', pts: 250,  xp: 25,  color: '#78350f', textColor: '#fcd34d' },
-  { label: 'JACKPOT', emoji: '🏆', pts: 1000, xp: 100, color: '#7c2d12', textColor: '#fb923c' },
-  { label: 'MEGA 5K', emoji: '🎉', pts: 5000, xp: 500, color: '#4c1d95', textColor: '#c084fc' },
+  { label: 'MISS',      emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
+  { label: '+20 pts',   emoji: '⭐', pts: 20,   xp: 10,  color: '#1e3a5f', textColor: '#93c5fd' },
+  { label: '+40 pts',   emoji: '💫', pts: 40,   xp: 15,  color: '#1e40af', textColor: '#bfdbfe' },
+  { label: 'MISS',      emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
+  { label: '+20 pts',   emoji: '⭐', pts: 20,   xp: 10,  color: '#1e3a5f', textColor: '#93c5fd' },
+  { label: '+100 pts',  emoji: '✨', pts: 100,  xp: 25,  color: '#065f46', textColor: '#6ee7b7' },
+  { label: 'MISS',      emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
+  { label: '+40 pts',   emoji: '💫', pts: 40,   xp: 15,  color: '#1e40af', textColor: '#bfdbfe' },
+  { label: '+200 pts',  emoji: '🌟', pts: 200,  xp: 50,  color: '#78350f', textColor: '#fcd34d' },
+  { label: 'MISS',      emoji: '💨', pts: 0,    xp: 0,   color: '#374151', textColor: '#9ca3af' },
+  { label: 'JACKPOT!',  emoji: '🎰', pts: 400,  xp: 100, color: '#7c2d12', textColor: '#fb923c' },
+  { label: 'MEGA!',     emoji: '💥', pts: 1500, xp: 500, color: '#4c1d95', textColor: '#c084fc' },
 ];
 
 const SEG_COUNT = WHEEL_SEGMENTS.length;
@@ -301,13 +303,13 @@ function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result
   const canSpin = progress.canSpin;
 
   function segIndexForOutcome(pts: number): number {
-    if (pts >= 5000) return 11;
-    if (pts >= 1000) return 10;
-    if (pts >= 500)  return 6;
-    if (pts >= 250)  return 4;
-    if (pts >= 100)  return 2;
-    if (pts >= 50)   return 1;
-    return 0; // miss
+    if (pts >= 1500) return 11; // MEGA!
+    if (pts >= 400)  return 10; // JACKPOT!
+    if (pts >= 200)  return 8;  // +200 pts
+    if (pts >= 100)  return 5;  // +100 pts
+    if (pts >= 40)   return 2;  // +40 pts
+    if (pts >= 20)   return 1;  // +20 pts
+    return 0;                    // MISS
   }
 
   const handleSpin = async () => {
@@ -349,7 +351,7 @@ function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result
     }
   };
 
-  const isBig = result && result.points >= 500;
+  const isBig = result && result.points >= 400;
 
   return (
     <div className="rounded-2xl p-5 space-y-4"

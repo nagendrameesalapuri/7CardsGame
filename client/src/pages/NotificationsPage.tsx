@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useGameStore } from '../store/gameStore';
 import { Layout } from '../components/layout/Layout';
 import { useNotificationStore } from '../store/notificationStore';
 import { useAuthStore } from '../store/authStore';
@@ -159,30 +160,62 @@ function ToggleSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean) =>
 
 function NotificationItem({ n }: { n: AppNotificationRecord }) {
   const navigate = useNavigate();
+  const { joinRoom } = useGameStore();
+
+  // Extract room code from actionUrl like /lobby?join=XQAMSF
+  const joinCode = (() => {
+    if (n.category !== 'multiplayer' || !n.actionUrl) return null;
+    try {
+      const url = new URL(n.actionUrl, window.location.origin);
+      return url.searchParams.get('join');
+    } catch { return null; }
+  })();
+
+  const handleJoin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate('/lobby');
+    setTimeout(() => joinRoom(joinCode!), 600);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-      className="flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors hover:bg-white/[0.02] rounded-xl"
-      onClick={() => n.actionUrl && navigate(n.actionUrl)}
+      className="flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-white/[0.02] rounded-xl"
     >
       <div
-        className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-base mt-0.5"
+        className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-base mt-0.5 cursor-pointer"
         style={{
           background: `${TYPE_COLOR[n.type] ?? '#60a5fa'}15`,
           border: `1px solid ${TYPE_COLOR[n.type] ?? '#60a5fa'}30`,
         }}
+        onClick={() => n.actionUrl && navigate(n.actionUrl)}
       >
         {CATEGORY_ICON[n.category] ?? '🔔'}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0" onClick={() => !joinCode && n.actionUrl && navigate(n.actionUrl)}>
         <div className="flex items-start justify-between gap-2">
-          <p className="text-xs font-bold text-white leading-snug">{n.title}</p>
+          <p className="text-xs font-bold text-white leading-snug cursor-pointer">{n.title}</p>
           {!n.read && (
             <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5" style={{ background: '#6366f1' }} />
           )}
         </div>
         <p className="text-[11px] text-dark-muted mt-0.5 leading-relaxed">{n.message}</p>
-        <p className="text-[10px] text-dark-muted/50 mt-1">{timeAgo(n.createdAt)}</p>
+        <div className="flex items-center justify-between mt-1.5">
+          <p className="text-[10px] text-dark-muted/50">{timeAgo(n.createdAt)}</p>
+          {joinCode && (
+            <button
+              onClick={handleJoin}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-black transition-all active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                color: '#fff',
+                boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
+              }}
+            >
+              🎮 Join Room
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   );
