@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../ui/Modal';
+import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
-import { walletApi } from '../../services/api';
+import { walletApi, usersApi } from '../../services/api';
 import { PublicAdminConfig } from '../../types';
+
+// Use shared Avatar component for consistent avatar rendering
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -33,6 +36,14 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
   const [entryFeeText, setEntryFeeText] = useState('');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
+  // Invite players state
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState('');
+  const [inviteResults, setInviteResults] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [invitedUsers, setInvitedUsers] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isCashGame      = form.entryFee > 0;
   const prizePool       = form.entryFee * form.maxPlayers;
   const isGuest         = user?.isGuest ?? true;
@@ -45,9 +56,48 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
     walletApi.get().then(r => setWalletBalance(r.data.balance)).catch(() => {});
   }, [isOpen, isGuest]);
 
+  // Reset invite state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setInviteOpen(false);
+      setInviteSearch('');
+      setInviteResults([]);
+      setInvitedUsers([]);
+    }
+  }, [isOpen]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (!inviteOpen) return;
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    setInviteLoading(true);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const r = await usersApi.search(inviteSearch);
+        // Filter out already-invited users
+        setInviteResults(r.data.users.filter(u => !invitedUsers.some(i => i.id === u.id)));
+      } catch { /* silent */ }
+      finally { setInviteLoading(false); }
+    }, 300);
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
+  }, [inviteSearch, inviteOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleInvite = (u: { id: string; username: string; avatar: string }) => {
+    setInvitedUsers(prev => {
+      if (prev.some(x => x.id === u.id)) return prev.filter(x => x.id !== u.id);
+      return [...prev, u];
+    });
+    setInviteResults(prev => prev.filter(x => x.id !== u.id));
+  };
+
   const handleCreate = () => {
     if (!canCreate) return;
-    createRoom({ ...form, name: form.name.trim(), entryFee: isGuest ? 0 : form.entryFee });
+    createRoom({
+      ...form,
+      name: form.name.trim(),
+      entryFee: isGuest ? 0 : form.entryFee,
+      invitedUserIds: invitedUsers.map(u => u.id),
+    });
     onClose();
   };
 
@@ -234,6 +284,74 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             <p className="text-xs text-dark-muted">Free Play — casual game, no wager required.</p>
           ) : null}
         </div>
+
+        {/* ── Invite Players ──────────────────────────────────────────────── */}
+        {!isGuest && (
+          <div className="rounded-xl border border-dark-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setInviteOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-dark-text hover:bg-white/5 transition-colors"
+            >
+              <span className="flex items-center gap-2 font-semibold">
+                👥 Invite Players
+                {invitedUsers.length > 0 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+                    {invitedUsers.length} selected
+                  </span>
+                )}
+              </span>
+              <span className="text-dark-muted text-xs">{inviteOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {inviteOpen && (
+              <div className="border-t border-dark-border bg-dark-bg/60 p-3 space-y-3">
+                {/* Selected users */}
+                {invitedUsers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {invitedUsers.map(u => (
+                      <span key={u.id} className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold"
+                        style={{ background: 'rgba(99,102,241,0.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+                        <Avatar avatar={u.avatar} username={u.username} size="xs" />
+                        {u.username}
+                        <button onClick={() => toggleInvite(u)} className="text-dark-muted hover:text-red-400 transition-colors ml-0.5">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search input */}
+                <input
+                  value={inviteSearch}
+                  onChange={e => setInviteSearch(e.target.value)}
+                  placeholder="Search players by username…"
+                  className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-blue transition-colors"
+                />
+
+                {/* Search results */}
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {inviteLoading ? (
+                    <p className="text-xs text-dark-muted text-center py-3 animate-pulse">Searching…</p>
+                  ) : inviteResults.length === 0 ? (
+                    <p className="text-xs text-dark-muted text-center py-3">
+                      {inviteSearch ? 'No players found' : 'Start typing to search'}
+                    </p>
+                  ) : (
+                    inviteResults.map(u => (
+                      <button key={u.id} type="button" onClick={() => toggleInvite(u)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition-colors">
+                        <Avatar avatar={u.avatar} username={u.username} size="sm" />
+                        <span className="text-sm text-dark-text font-medium flex-1">{u.username}</span>
+                        <span className="text-xs text-neon-blue font-semibold">+ Invite</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3 pt-1">
           <Button variant="ghost" onClick={onClose} fullWidth>Cancel</Button>

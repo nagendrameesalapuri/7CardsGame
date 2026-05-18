@@ -76,6 +76,10 @@ export const usersApi = {
     api.get<{ user: any; recentGames: any[] }>(`/users/${id}/profile`),
   updateMe: (data: { username?: string; avatar?: string; selectedBadgeId?: string | null }) =>
     api.patch("/users/me", data),
+  search: (q: string) =>
+    api.get<{ users: Array<{ id: string; username: string; avatar: string }> }>(
+      `/users/search?q=${encodeURIComponent(q)}&limit=30`
+    ),
 };
 
 export const gamesApi = {

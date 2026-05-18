@@ -3,6 +3,7 @@ import { Room, IRoom } from '../../models/Room';
 import { User } from '../../models/User';
 import { Transaction } from '../../models/Transaction';
 import { ClientGameState, Room as RoomType } from '../../../../shared/src/types';
+import { sendBulkNotification } from '../../services/fcmService';
 
 /** Generate a random 6-character uppercase room code. */
 function generateRoomCode(): string {
@@ -46,6 +47,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     botCount?: number;
     entryFee?: number;
     botPersonality?: string;
+    invitedUserIds?: string[];
   }) => {
     try {
       const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
@@ -120,6 +122,22 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       io.to(room.code).emit('room:updated', dto);
       // Notify all clients in lobby so they can refresh the public room list
       if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
+
+      // Send invitations to selected users
+      const invitedIds = Array.isArray(data.invitedUserIds)
+        ? data.invitedUserIds.filter(id => id && id !== userId).slice(0, 20)
+        : [];
+      if (invitedIds.length > 0) {
+        const modeLabel = room.config.entryFee > 0 ? `Wager ₹${room.config.entryFee}` : 'Free Play';
+        sendBulkNotification(invitedIds, {
+          title: `🎮 ${username} invited you to play!`,
+          message: `Join "${room.name}" · ${modeLabel} · Code: ${room.code}`,
+          category: 'multiplayer',
+          type: 'info',
+          actionUrl: '/lobby',
+          skipThrottle: true,
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error('[Room] Create error:', err);
       socket.emit('room:error', 'Failed to create room');

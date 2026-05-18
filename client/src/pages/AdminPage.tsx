@@ -3167,7 +3167,7 @@ function NotifySection() {
         ))}
       </div>
 
-      {tab === "push" ? (
+      {tab === "push" && (
         <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
 
           {/* ── Firebase Health Check ── */}
@@ -3410,7 +3410,9 @@ function NotifySection() {
             </p>
           )}
         </div>
-      ) : (
+      )}
+
+      {tab === "live" && (
         <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
           <p className="text-xs text-dark-muted">Instantly delivers an in-app toast to all currently connected users (no FCM required).</p>
 

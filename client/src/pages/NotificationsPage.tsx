@@ -53,37 +53,77 @@ function timeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
-function PermissionBanner({
+function PermissionStatusCard({
   permission,
   onEnable,
 }: {
   permission: NotificationPermission | 'unsupported' | null;
   onEnable: () => void;
 }) {
-  if (permission === 'granted' || permission === 'unsupported') return null;
+  if (permission === null) return null;
+
+  const states: Record<string, { icon: string; label: string; desc: string; bg: string; border: string; badgeColor: string; badgeBg: string }> = {
+    granted: {
+      icon: '🔔',
+      label: 'Notifications Enabled',
+      desc: 'You will receive push notifications even when the app is closed.',
+      bg: 'linear-gradient(135deg,rgba(0,255,136,0.08),rgba(16,185,129,0.05))',
+      border: 'rgba(0,255,136,0.25)',
+      badgeColor: '#00ff88',
+      badgeBg: 'rgba(0,255,136,0.12)',
+    },
+    denied: {
+      icon: '🔕',
+      label: 'Notifications Blocked',
+      desc: 'Click the 🔒 lock in your browser address bar → Notifications → Allow → Refresh.',
+      bg: 'linear-gradient(135deg,rgba(239,68,68,0.08),rgba(220,38,38,0.05))',
+      border: 'rgba(239,68,68,0.3)',
+      badgeColor: '#ff6b6b',
+      badgeBg: 'rgba(239,68,68,0.12)',
+    },
+    default: {
+      icon: '🔔',
+      label: 'Notifications Not Enabled',
+      desc: 'Enable to get alerts for tournaments, rewards, and game events.',
+      bg: 'linear-gradient(135deg,rgba(99,102,241,0.1),rgba(168,85,247,0.07))',
+      border: 'rgba(99,102,241,0.35)',
+      badgeColor: '#a5b4fc',
+      badgeBg: 'rgba(99,102,241,0.15)',
+    },
+    unsupported: {
+      icon: '🚫',
+      label: 'Notifications Unsupported',
+      desc: 'Your browser does not support push notifications.',
+      bg: 'rgba(255,255,255,0.03)',
+      border: 'rgba(255,255,255,0.08)',
+      badgeColor: '#64748b',
+      badgeBg: 'rgba(255,255,255,0.06)',
+    },
+  };
+
+  const s = states[permission] ?? states.default;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl px-5 py-4 mb-5 flex items-center gap-4"
-      style={{
-        background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(168,85,247,0.1))',
-        border: '1px solid rgba(99,102,241,0.35)',
-      }}
+      initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl px-4 py-4 mb-4 flex items-center gap-3"
+      style={{ background: s.bg, border: `1px solid ${s.border}` }}
     >
-      <span className="text-3xl flex-shrink-0">🔔</span>
+      <span className="text-2xl flex-shrink-0">{s.icon}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-black text-white">Enable Push Notifications</p>
-        <p className="text-xs text-dark-muted mt-0.5">
-          {permission === 'denied'
-            ? 'Notifications blocked. Enable them in your browser settings.'
-            : 'Get tactical alerts for Boss Arena, rewards, and tournament events.'}
-        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-bold text-white">{s.label}</p>
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+            style={{ color: s.badgeColor, background: s.badgeBg }}>
+            {permission.toUpperCase()}
+          </span>
+        </div>
+        <p className="text-[11px] text-dark-muted mt-0.5 leading-relaxed">{s.desc}</p>
       </div>
-      {permission !== 'denied' && (
+      {permission === 'default' && (
         <button
           onClick={onEnable}
-          className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black"
+          className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black transition-all"
           style={{ background: 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff' }}
         >
           Enable
@@ -207,8 +247,6 @@ export function NotificationsPage() {
           <p className="text-xs text-dark-muted mt-1">Arena alerts, rewards & tactical intel</p>
         </div>
 
-        <PermissionBanner permission={permission} onEnable={handleEnableNotifications} />
-
         {/* Tabs */}
         <div className="flex gap-1 p-1 rounded-2xl mb-5"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -259,6 +297,9 @@ export function NotificationsPage() {
           {/* ── Settings Tab ── */}
           {activeTab === 'settings' && (
             <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+
+              <PermissionStatusCard permission={permission} onEnable={handleEnableNotifications} />
+
               <div className="rounded-2xl overflow-hidden divide-y divide-white/5"
                 style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 {!prefsLoaded ? (

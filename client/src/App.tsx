@@ -73,21 +73,20 @@ function isInstalledPWA() {
 // ── Notification permission / install prompt ──────────────────────────────────
 function NotificationPrompt({ onDone }: { onDone: () => void }) {
   const [hiding, setHiding] = useState(false);
-  const ios         = isIOS();
+  const ios          = isIOS();
   const installedPWA = isInstalledPWA();
+  const denied       = getPermissionState() === 'denied';
   // On iOS, push only works from an installed PWA (Add to Home Screen)
-  const needsInstall = ios && !installedPWA;
+  const needsInstall = ios && !installedPWA && !denied;
 
-  const dismiss = (permanent = false) => {
+  const dismiss = () => {
     setHiding(true);
-    if (permanent) localStorage.setItem('notif_prompt_dismissed', '1');
     setTimeout(onDone, 300);
   };
 
   const allow = async () => {
     // requestPermission MUST be called directly from a tap handler on iOS
     const result = await requestPermission();
-    localStorage.setItem('notif_prompt_dismissed', '1');
     setHiding(true);
     setTimeout(onDone, 300);
     return result;
@@ -111,6 +110,38 @@ function NotificationPrompt({ onDone }: { onDone: () => void }) {
     gap: 12,
   };
 
+  if (denied) {
+    // Browser has blocked notifications — guide user to unblock in settings
+    return (
+      <div style={{ ...bannerStyle, borderColor: 'rgba(251,191,36,0.4)' }}>
+        <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>🔕</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
+            Notifications are blocked
+          </p>
+          <p style={{ margin: '4px 0 10px', fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+            You've blocked notifications for this site. To enable them:
+          </p>
+          <ol style={{ margin: '0 0 12px 0', paddingLeft: 18, fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
+            <li>Click the <strong style={{ color: '#60a5fa' }}>🔒 lock icon</strong> in your browser's address bar</li>
+            <li>Find <strong style={{ color: '#60a5fa' }}>Notifications</strong> and set it to <strong style={{ color: '#60a5fa' }}>Allow</strong></li>
+            <li>Refresh the page</li>
+          </ol>
+          <button
+            onClick={dismiss}
+            style={{
+              width: '100%', padding: '8px 0', borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+              color: '#64748b', fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (needsInstall) {
     // iOS not installed — show step-by-step install guide
     return (
@@ -129,7 +160,7 @@ function NotificationPrompt({ onDone }: { onDone: () => void }) {
             <li>Open the app from your Home Screen</li>
           </ol>
           <button
-            onClick={() => dismiss(false)}
+            onClick={dismiss}
             style={{
               width: '100%',
               padding: '8px 0',
@@ -176,7 +207,7 @@ function NotificationPrompt({ onDone }: { onDone: () => void }) {
             Allow Notifications
           </button>
           <button
-            onClick={() => dismiss(true)}
+            onClick={dismiss}
             style={{
               padding: '8px 14px',
               borderRadius: 10,
@@ -215,6 +246,16 @@ function FCMInit() {
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Show prompt on page load regardless of auth — permission can be requested any time
+  useEffect(() => {
+    const state = getPermissionState();
+    if (state === 'granted' || state === 'unsupported') return;
+    // Show for both 'default' (not asked yet) and 'denied' (need to guide user)
+    const t = setTimeout(() => setShowPrompt(true), 2000);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once authenticated, load notification data and init FCM if already granted
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
@@ -225,24 +266,14 @@ function FCMInit() {
     setPermissionState(state);
     pingFCMToken().catch(() => {});
 
-    if (state === 'granted') {
-      // Already allowed — init silently
-      startFCM();
-    } else if (state === 'default' && isConfigured()) {
-      // Not yet asked — show prompt after a short delay so the page loads first
-      const dismissed = localStorage.getItem('notif_prompt_dismissed');
-      if (!dismissed) {
-        const t = setTimeout(() => setShowPrompt(true), 2500);
-        return () => clearTimeout(t);
-      }
-    }
+    if (state === 'granted') startFCM();
   }, [isAuthenticated, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePromptDone = () => {
     setShowPrompt(false);
-    // If user just allowed, init FCM now
-    if (getPermissionState() === 'granted') startFCM();
-    setPermissionState(getPermissionState());
+    const state = getPermissionState();
+    setPermissionState(state);
+    if (state === 'granted') startFCM();
   };
 
   return showPrompt ? <NotificationPrompt onDone={handlePromptDone} /> : null;
