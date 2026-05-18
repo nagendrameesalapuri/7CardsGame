@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { notify } from '../services/notify';
 import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, Card } from '../types';
-import { socketRoom, socketGame, socketChat, on, getSocket } from '../services/socket';
+import { socketRoom, socketGame, socketChat, on, getSocket, resetActionThrottle } from '../services/socket';
 import { soundService } from '../services/sound';
 
 // Tracks the last alerted handCount per opponent (playerId → count).
@@ -222,6 +222,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }));
 
     unsubs.push(on('game:state', (incoming) => {
+      // Reset throttle on each server state so legitimate sequential actions aren't blocked
+      resetActionThrottle();
       const isMyTurn = incoming.players[incoming.currentPlayerIndex]?.id === incoming.myPlayerId;
       const handTotal = calculateHandTotal(incoming.myHand);
       // SHOW is only available before drawing — once a card is drawn, must discard first
@@ -299,7 +301,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ gameError: msg });
       // Suppress transient reconnect errors that fire before socket re-joins the room
       if (msg === 'No active game' && get().game) return;
-      notify.error(msg);
+      // Use stable ID so duplicate errors replace the existing toast instead of stacking
+      notify.error(msg, { id: `game-err-${msg.replace(/\s+/g, '-').toLowerCase()}`, duration: 3000 });
     }));
 
     unsubs.push(on('chat:received', (msg) => {
