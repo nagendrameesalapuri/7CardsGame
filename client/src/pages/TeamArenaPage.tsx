@@ -97,7 +97,7 @@ export function TeamArenaPage() {
     stageResult, showBossIntro,
     subscribe, clearStageResult, continueToNextStage, dismissBossIntro, reset,
   } = useTeamArenaStore();
-  const { game } = useGameStore();
+  const { game, subscribeToEvents } = useGameStore();
 
   // Setup view state
   const [view, setView] = useState<'lobby' | 'teammate_select' | 'ai_select' | 'entry_mode' | 'join_invite'>('lobby');
@@ -111,10 +111,12 @@ export function TeamArenaPage() {
   const [joinError, setJoinError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Subscribe to socket events
+  // Subscribe to both team-arena socket events AND game:state events so we can
+  // receive the game state and navigate to /game when it arrives
   useEffect(() => {
-    const unsub = subscribe();
-    return unsub;
+    const unsub1 = subscribe();
+    const unsub2 = subscribeToEvents();
+    return () => { unsub1(); unsub2(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check wallet balance
@@ -144,6 +146,14 @@ export function TeamArenaPage() {
       navigate('/game');
     }
   }, [game, active, stageResult, waitingForTeammate, navigate]);
+
+  // Auto-rejoin room when we have an active tournament but no game (e.g. after
+  // stage result is cleared or page is refreshed mid-tournament)
+  useEffect(() => {
+    if (active && !game && !stageResult && !waitingForTeammate && statusChecked) {
+      socketTeamArena.continue();
+    }
+  }, [active, game, stageResult, waitingForTeammate, statusChecked]);
 
   const startWithAI = useCallback(() => {
     if (starting) return;
@@ -303,7 +313,7 @@ export function TeamArenaPage() {
     );
   }
 
-  // ── ACTIVE TOURNAMENT (not in game yet) ────────────────────────────────────
+  // ── ACTIVE TOURNAMENT (joining game, waiting for game:state) ────────────────
   if (active && !game) {
     const currentStageInfo = STAGES.find((s) => s.stage === currentStage);
     return (
@@ -340,7 +350,19 @@ export function TeamArenaPage() {
               <span className="text-sm font-black" style={{ color: '#fbbf24' }}>{totalPointsEarned}</span>
             </div>
 
-            <div className="mt-4 flex gap-3">
+            {/* Joining indicator — auto-continue fires from useEffect */}
+            <div className="mt-4 rounded-xl p-3 flex items-center justify-center gap-2"
+              style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                className="w-4 h-4 rounded-full border-2"
+                style={{ borderColor: 'rgba(99,102,241,0.3)', borderTopColor: '#818cf8' }}
+              />
+              <span className="text-xs font-bold" style={{ color: '#a5b4fc' }}>Joining game…</span>
+            </div>
+
+            <div className="mt-3 flex gap-3">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
@@ -352,7 +374,7 @@ export function TeamArenaPage() {
                   boxShadow: '0 4px 16px rgba(99,102,241,0.4)',
                 }}
               >
-                Continue →
+                Retry →
               </motion.button>
               <button
                 onClick={handleAbandon}
