@@ -30,9 +30,9 @@ interface GameStore {
   underAttack: boolean;
   handTotal: number;
 
-  // Resume game
-  resumeRoomCode: string | null;
-  clearResume: () => void;
+  // Resume game — all active rooms the user can rejoin
+  resumeRoomCodes: string[];
+  clearResume: (code?: string) => void;
 
   // Admin force-ended
   forceEndedMsg: string | null;
@@ -74,8 +74,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   gameError: null,
   lastAction: null,
-  resumeRoomCode: null,
-  clearResume: () => set({ resumeRoomCode: null }),
+  resumeRoomCodes: [],
+  clearResume: (code?) => set(s => ({
+    resumeRoomCodes: code ? s.resumeRoomCodes.filter(c => c !== code) : [],
+  })),
   matchResult: null,
   roundReadyUpdate: null,
   forceEndedMsg: null,
@@ -99,7 +101,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   resumeGame: (code) => {
-    set({ resumeRoomCode: null });
+    set(s => ({ resumeRoomCodes: s.resumeRoomCodes.filter(c => c !== code) }));
     socketGame.reconnect(code);
   },
 
@@ -108,7 +110,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       room: null, game: null, selectedCardIds: [],
       matchResult: null, lastAction: null, gameError: null,
-      resumeRoomCode: null, roundReadyUpdate: null,
+      resumeRoomCodes: [], roundReadyUpdate: null,
       isMyTurn: false, canShow: false, underAttack: false, handTotal: 0,
     });
   },
@@ -200,8 +202,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     s.on('connect', handleConnect);
     unsubs.push(() => s.off('connect', handleConnect));
 
-    unsubs.push(on('game:can_resume', ({ roomCode }: { roomCode: string }) => {
-      set({ resumeRoomCode: roomCode });
+    unsubs.push(on('game:can_resume', ({ roomCodes, roomCode }: { roomCodes?: string[]; roomCode?: string }) => {
+      // Support both old (single roomCode) and new (roomCodes array) payload
+      const codes = roomCodes ?? (roomCode ? [roomCode] : []);
+      if (codes.length > 0) set(s => ({ resumeRoomCodes: [...new Set([...s.resumeRoomCodes, ...codes])] }));
     }));
 
     unsubs.push(on('room:joined', (room) => {
@@ -209,7 +213,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({
         room, roomError: null,
         matchResult: null, game: null, lastAction: null,
-        resumeRoomCode: null, roundReadyUpdate: null,
+        resumeRoomCodes: [], roundReadyUpdate: null,
         isMyTurn: false, canShow: false,
         underAttack: false, handTotal: 0, selectedCardIds: [],
       });

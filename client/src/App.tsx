@@ -458,6 +458,157 @@ function FCMInit() {
   return showPrompt ? <NotificationPrompt onDone={handlePromptDone} /> : null;
 }
 
+// ── PWA Install Banner ────────────────────────────────────────────────────────
+const INSTALL_DISMISSED_KEY = 'pwa_install_dismissed_at';
+const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function isMobileBrowser() {
+  return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function isIOSSafari() {
+  const ua = navigator.userAgent.toLowerCase();
+  return /iphone|ipad|ipod/.test(ua) && /safari/.test(ua) && !/crios|fxios|opios/.test(ua);
+}
+
+function InstallBanner() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [visible, setVisible] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const ios = isIOSSafari();
+
+  useEffect(() => {
+    if (isInstalledPWA()) return;
+    if (!isMobileBrowser()) return;
+    const dismissed = localStorage.getItem(INSTALL_DISMISSED_KEY);
+    if (dismissed && Date.now() - Number(dismissed) < DISMISS_TTL) return;
+
+    if (ios) {
+      const t = setTimeout(() => setVisible(true), 2500);
+      return () => clearTimeout(t);
+    }
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setTimeout(() => setVisible(true), 2500);
+    };
+    window.addEventListener('beforeinstallprompt', handler as EventListener);
+    return () => window.removeEventListener('beforeinstallprompt', handler as EventListener);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dismiss = () => {
+    localStorage.setItem(INSTALL_DISMISSED_KEY, String(Date.now()));
+    setHiding(true);
+    setTimeout(() => setVisible(false), 320);
+  };
+
+  const install = async () => {
+    if (!deferredPrompt) return;
+    setInstalling(true);
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+    if (outcome === 'accepted') { setHiding(true); setTimeout(() => setVisible(false), 320); }
+    else setInstalling(false);
+  };
+
+  if (!visible) return null;
+
+  const bannerStyle: React.CSSProperties = {
+    position: 'fixed', bottom: 20, left: '50%',
+    transform: hiding ? 'translateX(-50%) translateY(130%)' : 'translateX(-50%) translateY(0)',
+    transition: 'transform 0.32s cubic-bezier(0.34,1.56,0.64,1)',
+    zIndex: 9997,
+    width: 'min(94vw, 400px)',
+    background: 'linear-gradient(135deg, #0f0c29 0%, #1a1040 50%, #0d1117 100%)',
+    border: '1px solid rgba(99,102,241,0.45)',
+    borderRadius: 20,
+    boxShadow: '0 0 0 1px rgba(99,102,241,0.1), 0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(99,102,241,0.12)',
+    overflow: 'hidden',
+  };
+
+  return (
+    <div style={bannerStyle}>
+      {/* Top accent */}
+      <div style={{ height: 3, background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, #8b5cf6, #6366f1)' }} />
+
+      <div style={{ padding: '16px 16px 18px' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+            background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
+            border: '1px solid rgba(99,102,241,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
+          }}>🃏</div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#e2e8f0', lineHeight: 1.2 }}>
+              Add to Home Screen
+            </p>
+            <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>
+              Faster access · Offline play · Push alerts
+            </p>
+          </div>
+
+          <button onClick={dismiss} style={{
+            flexShrink: 0, width: 28, height: 28, borderRadius: 8,
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            color: 'rgba(148,163,184,0.8)', fontSize: 16, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+          }} aria-label="Dismiss">×</button>
+        </div>
+
+        {ios ? (
+          /* iOS: manual steps */
+          <>
+            <div style={{
+              background: 'rgba(255,255,255,0.04)', borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.07)', padding: '10px 12px', marginBottom: 12,
+            }}>
+              {[
+                { icon: '⬆️', text: 'Tap the Share button in Safari' },
+                { icon: '➕', text: 'Tap "Add to Home Screen"' },
+                { icon: '✅', text: 'Open Arena of Sevens from your Home Screen' },
+              ].map((step, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '5px 0', borderBottom: i < 2 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{step.icon}</span>
+                  <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.4 }}>{step.text}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={dismiss} style={{
+              width: '100%', padding: '10px 0', borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)',
+              color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}>Got it, I'll do it later</button>
+          </>
+        ) : (
+          /* Android / Chrome: native install prompt */
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={install} disabled={installing} style={{
+              flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
+              background: installing ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff', fontSize: 14, fontWeight: 700, cursor: installing ? 'default' : 'pointer',
+              boxShadow: installing ? 'none' : '0 4px 20px rgba(99,102,241,0.45)',
+              transition: 'all 0.2s',
+            }}>
+              {installing ? 'Installing…' : '📲 Add to Home Screen'}
+            </button>
+            <button onClick={dismiss} style={{
+              padding: '11px 16px', borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)',
+              color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}>Later</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Detect admin subdomain (admin.yourdomain.com) — auto-route to admin panel
 const IS_ADMIN_SUBDOMAIN = window.location.hostname.startsWith('admin.');
 
@@ -484,6 +635,7 @@ export function App() {
     <ThemeProvider>
       <BrowserRouter>
         <FCMInit />
+        <InstallBanner />
         <AnnouncementBanner />
         <Routes>
           {/* On admin subdomain: only admin routes; everything else → /admin */}

@@ -91,6 +91,19 @@ export function getActiveGameByUserId(
   return undefined;
 }
 
+export function getAllActiveGamesByUserId(
+  userId: string,
+): Array<{ game: GameState; roomCode: string }> {
+  const results: Array<{ game: GameState; roomCode: string }> = [];
+  for (const [roomCode, gameId] of roomToGame.entries()) {
+    const game = activeGames.get(gameId);
+    if (game && game.players.some((p) => p.userId === userId && !p.isEliminated)) {
+      results.push({ game, roomCode });
+    }
+  }
+  return results;
+}
+
 export function getAllActiveRoomInfos() {
   const result: {
     roomCode: string;

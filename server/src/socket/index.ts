@@ -2,7 +2,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { registerRoomHandlers } from './handlers/roomHandler';
-import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './handlers/gameHandler';
+import { registerGameHandlers, getActiveGame, getActiveGameByUserId, getAllActiveGamesByUserId } from './handlers/gameHandler';
 import { registerChatHandlers } from './handlers/chatHandler';
 import { registerVoiceHandlers } from './handlers/voiceHandler';
 import { registerSpectatorHandlers } from './handlers/spectatorHandler';
@@ -90,11 +90,11 @@ export function initSocketIO(io: Server) {
     registerSpectatorHandlers(io, socket);
     registerSurvivalHandlers(io, socket);
 
-    // Notify client if they have an active game they can resume
+    // Notify client of all active games they can resume
     if (!isSpectator) {
-      const active = getActiveGameByUserId(uid);
-      if (active) {
-        socket.emit('game:can_resume', { roomCode: active.roomCode });
+      const actives = getAllActiveGamesByUserId(uid);
+      if (actives.length > 0) {
+        socket.emit('game:can_resume', { roomCodes: actives.map(a => a.roomCode) });
       }
     }
 
