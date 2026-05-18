@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { SurvivalTournament, TIER_CONFIG } from '../models/SurvivalTournament';
 import { getActiveGame } from '../socket/handlers/gameHandler';
+import { User } from '../models/User';
 
 const router = Router();
 
@@ -10,22 +11,31 @@ router.get('/active', async (_req: Request, res: Response) => {
   try {
     const activeTournaments = await SurvivalTournament.find(
       { status: 'active', currentRoomCode: { $ne: null } }
-    )
-      .populate<{ userId: { username: string; avatar: string } | null }>('userId', 'username avatar')
-      .lean();
+    ).lean();
 
-    const battles = (activeTournaments as any[])
-      .filter(t => t.currentRoomCode && getActiveGame(t.currentRoomCode))
-      .map(t => ({
-        survivalId:      t._id,
-        playerUsername:  t.userId?.username ?? 'Player',
-        playerAvatar:    t.userId?.avatar   ?? '',
-        tier:            t.tier,
-        tierLabel:       (TIER_CONFIG as any)[t.tier]?.label ?? t.tier,
-        currentStage:    t.currentStage,
-        roomCode:        t.currentRoomCode,
-        startedAt:       t.createdAt,
-      }));
+    const live = (activeTournaments as any[])
+      .filter(t => t.currentRoomCode && getActiveGame(t.currentRoomCode));
+
+    // Manual join — userId is a plain String, not a ref
+    const userIds = [...new Set(live.map(t => t.userId).filter(Boolean))];
+    const users = await User.find({ _id: { $in: userIds } })
+      .select('username avatar')
+      .lean();
+    const userMap = Object.fromEntries(users.map(u => [String(u._id), u]));
+
+    const battles = live.map(t => {
+      const user = userMap[String(t.userId)];
+      return {
+        survivalId:     t._id,
+        playerUsername: user?.username ?? 'Player',
+        playerAvatar:   (user as any)?.avatar ?? '',
+        tier:           t.tier,
+        tierLabel:      (TIER_CONFIG as any)[t.tier]?.label ?? t.tier,
+        currentStage:   t.currentStage,
+        roomCode:       t.currentRoomCode,
+        startedAt:      t.createdAt,
+      };
+    });
 
     res.json({ battles });
   } catch {
