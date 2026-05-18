@@ -200,6 +200,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     s.on('connect', handleConnect);
     unsubs.push(() => s.off('connect', handleConnect));
 
+    // Force a state resync when the app returns to foreground — catches "zombie" connections
+    // where the socket stays green but stops receiving updates (common on mobile when screen locks)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const { game } = get();
+        if (game) socketGame.reconnect(game.roomId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    unsubs.push(() => document.removeEventListener('visibilitychange', handleVisibility));
+
     unsubs.push(on('game:can_resume', ({ roomCode }: { roomCode: string }) => {
       set({ resumeRoomCode: roomCode });
     }));
