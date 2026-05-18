@@ -709,6 +709,97 @@ function StageResultOverlay({ onEnterFinalArena }: { onEnterFinalArena: () => vo
   );
 }
 
+// ── Live Battles Strip ────────────────────────────────────────────────────────
+
+const STAGE_COLORS_MAP = ['#22c55e', '#f59e0b', '#a855f7', '#3b82f6', '#ef4444'];
+const TIER_COLOR_MAP: Record<string, string> = {
+  beginner: '#22c55e', pro: '#60a5fa', elite: '#fbbf24', boss_arena: '#ef4444',
+};
+const TIER_ICON_MAP: Record<string, string> = {
+  beginner: '🥉', pro: '🥈', elite: '🥇', boss_arena: '💎',
+};
+
+function LiveBattlesStrip() {
+  const [battles, setBattles] = useState<any[]>([]);
+  const [ready, setReady] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const load = () => {
+      survivalApi.active()
+        .then(r => { setBattles(r.data.battles); setReady(true); })
+        .catch(() => setReady(true));
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center gap-2">
+          <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}
+            className="w-2 h-2 rounded-full" style={{ background: battles.length > 0 ? '#ef4444' : '#4b5563' }} />
+          <p className="text-[10px] uppercase tracking-[0.2em] font-black" style={{ color: '#e6edf3' }}>Live AI Battles</p>
+        </div>
+        {battles.length > 0 && (
+          <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
+            {battles.length} LIVE
+          </span>
+        )}
+      </div>
+
+      {battles.length === 0 ? (
+        <div className="px-4 py-4 text-center">
+          <p className="text-xs text-dark-muted/50">No live battles right now — be the first to enter!</p>
+        </div>
+      ) : (
+        <div>
+          {battles.map((b) => {
+            const stageColor = STAGE_COLORS_MAP[b.currentStage - 1] ?? '#8b949e';
+            const tierColor  = TIER_COLOR_MAP[b.tier]  ?? '#8b949e';
+            const tierIcon   = TIER_ICON_MAP[b.tier]   ?? '🎮';
+            const stageInfo  = STAGES[b.currentStage - 1];
+            return (
+              <div key={String(b.survivalId)}
+                className="flex items-center gap-3 px-4 py-3"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                  style={{ background: `${stageColor}15`, border: `1.5px solid ${stageColor}40` }}>
+                  {stageInfo?.emojis[0] ?? '⚔️'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-dark-text truncate max-w-[100px]">{b.playerUsername}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                      style={{ background: `${tierColor}18`, color: tierColor, border: `1px solid ${tierColor}30` }}>
+                      {tierIcon} {b.tierLabel}
+                    </span>
+                  </div>
+                  <p className="text-[10px] mt-0.5 font-semibold" style={{ color: stageColor }}>
+                    Stage {b.currentStage}/5 · {stageInfo?.name ?? 'Battle'}
+                  </p>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  onClick={() => navigate(`/spectate/${b.roomCode}`)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1"
+                  style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}>
+                  👁 Watch
+                </motion.button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── History Card ──────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; color: string; emoji: string; border: string }> = {
@@ -1219,6 +1310,9 @@ export function SurvivalTournamentPage() {
                   })}
                 </div>
               </div>
+
+              {/* Live battles spectator strip */}
+              <LiveBattlesStrip />
 
               {/* Tier cards */}
               <div className="grid sm:grid-cols-2 gap-4">

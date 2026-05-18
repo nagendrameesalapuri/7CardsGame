@@ -328,6 +328,7 @@ export const survivalApi = {
     runWinRate: number; bestStage: number;
     totalEarned: number; totalSpent: number; netPoints: number;
   }>('/survival/stats'),
+  active:  () => api.get<{ battles: any[] }>('/survival/active'),
 };
 
 export default api;

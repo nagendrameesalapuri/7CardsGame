@@ -5,6 +5,34 @@ import { getActiveGame } from '../socket/handlers/gameHandler';
 
 const router = Router();
 
+// Public — list active survival battles for spectators
+router.get('/active', async (_req: Request, res: Response) => {
+  try {
+    const activeTournaments = await SurvivalTournament.find(
+      { status: 'active', currentRoomCode: { $ne: null } }
+    )
+      .populate<{ userId: { username: string; avatar: string } | null }>('userId', 'username avatar')
+      .lean();
+
+    const battles = (activeTournaments as any[])
+      .filter(t => t.currentRoomCode && getActiveGame(t.currentRoomCode))
+      .map(t => ({
+        survivalId:      t._id,
+        playerUsername:  t.userId?.username ?? 'Player',
+        playerAvatar:    t.userId?.avatar   ?? '',
+        tier:            t.tier,
+        tierLabel:       (TIER_CONFIG as any)[t.tier]?.label ?? t.tier,
+        currentStage:    t.currentStage,
+        roomCode:        t.currentRoomCode,
+        startedAt:       t.createdAt,
+      }));
+
+    res.json({ battles });
+  } catch {
+    res.status(500).json({ error: 'Failed to load active battles' });
+  }
+});
+
 // Active survival for the logged-in user (used for initial page load — no socket timing issues)
 router.get('/status', requireAuth, async (req: Request, res: Response) => {
   try {

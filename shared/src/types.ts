@@ -229,6 +229,9 @@ export interface ClientPlayerState {
   seatIndex: number;
   isBot: boolean;
   badge?: PlayerBadge;
+  // Spectator-only: present for human players, absent for bots
+  hand?: Card[];
+  handTotal?: number;
 }
 
 // ---- Socket event payloads ----

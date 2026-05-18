@@ -1849,7 +1849,7 @@ function WalletsSection() {
       );
       setCreditResult({
         ok: true,
-        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setCreditAmount("");
       setCreditNote("");
@@ -1882,7 +1882,7 @@ function WalletsSection() {
       );
       setDebitResult({
         ok: true,
-        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setDebitAmount("");
       setDebitNote("");
@@ -1978,7 +1978,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -2060,7 +2060,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))
@@ -2177,7 +2177,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -2259,7 +2259,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))

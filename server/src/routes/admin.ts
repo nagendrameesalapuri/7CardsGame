@@ -583,7 +583,7 @@ export default function createAdminRouter(io: Server) {
             ? `[Admin] ${note}`
             : `[Admin] Manual credit of ₹${amount}`,
         });
-        res.json({ balance: user.walletBalance, username: user.username });
+        res.json({ balance: Math.round(user.walletBalance * 100) / 100, username: user.username });
       } catch {
         res.status(500).json({ error: "Failed to credit wallet" });
       }
@@ -616,7 +616,7 @@ export default function createAdminRouter(io: Server) {
           : `[Admin] Manual debit of ₹${amount}`,
       });
       res.json({
-        balance: updatedUser!.walletBalance,
+        balance: Math.round(updatedUser!.walletBalance * 100) / 100,
         username: updatedUser!.username,
       });
     } catch {
@@ -639,7 +639,7 @@ export default function createAdminRouter(io: Server) {
           email: u.email,
           avatar: u.avatar,
           isGuest: u.isGuest,
-          balance: (u as any).walletBalance ?? 0,
+          balance: Math.round(((u as any).walletBalance ?? 0) * 100) / 100,
         })),
       });
     } catch {

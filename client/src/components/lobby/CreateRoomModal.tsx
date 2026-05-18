@@ -251,7 +251,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             <div className="flex items-center justify-between text-xs">
               <span className="text-dark-muted">Wallet Balance</span>
               <span className={isCashGame && walletBalance < form.entryFee ? 'text-red-400 font-bold' : 'text-neon-green font-bold'}>
-                ₹{walletBalance}
+                ₹{Number(walletBalance).toFixed(2)}
               </span>
             </div>
           )}
@@ -259,7 +259,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
           {/* Insufficient funds warning */}
           {isCashGame && !isGuest && walletBalance !== null && walletBalance < form.entryFee && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-              ⚠️ Insufficient balance. Add ₹{form.entryFee - walletBalance} more to create this room.
+              ⚠️ Insufficient balance. Add ₹{(form.entryFee - walletBalance).toFixed(2)} more to create this room.
             </div>
           )}
 
@@ -364,7 +364,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             {!form.name.trim()
               ? 'Enter Room Name'
               : !hasEnoughFunds
-              ? `Need ₹${form.entryFee - (walletBalance ?? 0)} more`
+              ? `Need ₹${(form.entryFee - (walletBalance ?? 0)).toFixed(2)} more`
               : isCashGame && !isGuest
               ? `Create · ₹${prizePool} Pot`
               : 'Create Room'}

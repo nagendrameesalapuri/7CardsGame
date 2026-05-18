@@ -64,7 +64,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     res.json({
-      balance: user.walletBalance,
+      balance: Math.round(user.walletBalance * 100) / 100,
       isGuest: user.isGuest,
       lockedRewards,
       transactions,
