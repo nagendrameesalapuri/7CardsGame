@@ -30,6 +30,10 @@ import {
   handleSurvivalMatchEnd,
   handleSurvivalForceEnd,
 } from "./survivalHandler";
+import {
+  handleTeamArenaMatchEnd,
+  handleTeamArenaForceEnd,
+} from "./teamArenaHandler";
 import { awardXp } from "../../utils/progressionService";
 import {
   XP_REWARDS,
@@ -285,6 +289,7 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
     console.error,
   );
   handleSurvivalForceEnd(io, roomCode).catch(console.error);
+  handleTeamArenaForceEnd(io, roomCode).catch(console.error);
   return true;
 }
 
@@ -1063,8 +1068,9 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   gameBotPersonality.delete(state.id);
 
-  // Survival hooks — run async, non-blocking
+  // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
+  handleTeamArenaMatchEnd(io, state, matchResult).catch(console.error);
 }
 
 

@@ -163,6 +163,17 @@ export const socketChat = {
   react: (emoji: string) => getSocket().emit('chat:reaction', emoji),
 };
 
+// ── Team Arena events ─────────────────────────────────────────────────────────
+
+export const socketTeamArena = {
+  start:          (data: { teammateType: 'ai' | 'human'; aiPersonality?: string; entryMode: 'host_pays' | 'split' }) =>
+                    getSocket().emit('team-arena:start', data),
+  joinAsTeammate: (inviteCode: string) => getSocket().emit('team-arena:join_as_teammate', { inviteCode }),
+  continue:       () => getSocket().emit('team-arena:continue'),
+  status:         () => getSocket().emit('team-arena:status'),
+  abandon:        () => getSocket().emit('team-arena:abandon'),
+};
+
 // ── Tournament events ─────────────────────────────────────────────────────────
 
 export const socketTournament = {
@@ -225,6 +236,13 @@ type EventMap = {
   'survival:tiebreaker':      { stage: number; stageName: string; stageDesc?: string; botNames: string[]; personalities: string[]; playerScore: number; botScore: number; botScores: number[]; scoreboard: any[]; stageResults: any[] };
   'survival:status_result':   any;
   'survival:abandoned':       { totalPointsEarned: number; refunded?: boolean; refundAmount?: number; forcedByAdmin?: boolean };
+  // Team Arena
+  'team-arena:started':       { tournamentId: string; inviteCode: string; teammateType: string; teammateName: string; aiPersonality?: string; entryPoints: number; currentStage: number; totalStages: number; roomCode?: string; stageConfig: any; waitingForTeammate: boolean; isTeammate?: boolean };
+  'team-arena:teammate_joined': { teammateId: string; teammateName: string; teammateAvatar: string; roomCode: string | null };
+  'team-arena:stage_result':  { stage: number; totalStages: number; stageName: string; stageSubtitle: string; teamAScore: number; teamBScore: number; teamAWon: boolean; isDraw: boolean; scoreboard: any[]; pointsEarned: number; stageResults: any[]; enemyBotNames: string[]; teammateName: string; tournamentOver: boolean; won?: boolean; totalPointsEarned?: number; nextStage?: number; nextRoomCode?: string; nextStageName?: string; nextStageSubtitle?: string; nextStageConfig?: any; newWalletBalance?: number };
+  'team-arena:status_result': any;
+  'team-arena:abandoned':     { totalPointsEarned: number; refunded?: boolean; refundAmount?: number; forcedByAdmin?: boolean; hostLeft?: boolean; teammateLeft?: boolean };
+  'team-arena:error':         string;
   'survival:error':           string;
   'progression:update':       { xpGained: number; multiplier: number; newXp: number; newLevel: number; newRank: string; leveled: boolean; rankedUp: boolean; winStreak: number; xpProgress: number; xpNeeded: number; newAchievements?: any[] };
   // Voice chat (WebRTC signaling)

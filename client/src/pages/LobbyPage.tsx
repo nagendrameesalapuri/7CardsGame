@@ -703,6 +703,69 @@ export function LobbyPage() {
               </motion.div>
             )}
 
+            {/* ── Team Arena ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }}
+              whileHover={{ scale: 1.012, y: -3 }} whileTap={{ scale: 0.99 }}
+              onClick={() => navigate('/team-arena')}
+              className="relative overflow-hidden rounded-2xl cursor-pointer group"
+              style={{
+                background: 'linear-gradient(145deg,rgba(8,4,28,0.97),rgba(16,8,40,0.95))',
+                border: '1px solid rgba(99,102,241,0.35)',
+                boxShadow: '0 4px 40px rgba(99,102,241,0.1)',
+              }}
+            >
+              <Shimmer />
+              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.22),transparent 70%)', filter: 'blur(28px)' }} />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-6xl opacity-8 group-hover:opacity-15 transition-opacity select-none">⚔️</div>
+
+              <div className="relative flex items-center gap-4 px-5 py-4">
+                <div className="flex-shrink-0 relative">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                    style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.25),rgba(139,92,246,0.18))', border: '1px solid rgba(99,102,241,0.4)' }}>
+                    ⚔️
+                  </div>
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <div key={s} className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(99,102,241,0.4)' }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <p className="text-base font-black text-white leading-tight">Team Arena</p>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(99,102,241,0.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+                      2v2
+                    </span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(139,92,246,0.14)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.3)' }}>
+                      NEW
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-muted">Survive together · 5 stages · AI or human teammate</p>
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {['🛡 Sentinel','⚡ Vanguard','🎭 Mirage','🧠 Oracle'].map((p) => (
+                      <span key={p} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'rgba(99,102,241,0.12)', color: 'rgba(165,180,252,0.75)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <motion.div
+                  className="flex-shrink-0 flex flex-col items-end gap-2"
+                  animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2.2 }}
+                >
+                  <span className="text-xs font-black px-3 py-2 rounded-xl"
+                    style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', boxShadow: '0 4px 16px rgba(99,102,241,0.35)' }}>
+                    Enter →
+                  </span>
+                  <span className="text-[10px] text-indigo-400 font-semibold">Team scoring</span>
+                </motion.div>
+              </div>
+            </motion.div>
+
             {/* ── Play vs AI ── */}
             {botOptions.length > 0 && (
               <motion.div
