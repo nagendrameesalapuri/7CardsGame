@@ -74,12 +74,54 @@ export const usersApi = {
   leaderboard: () => api.get<{ leaderboard: any[] }>("/users/leaderboard"),
   profile: (id: string) =>
     api.get<{ user: any; recentGames: any[] }>(`/users/${id}/profile`),
-  updateMe: (data: { username?: string; avatar?: string }) =>
+  updateMe: (data: { username?: string; avatar?: string; selectedBadgeId?: string | null }) =>
     api.patch("/users/me", data),
+  search: (q: string) =>
+    api.get<{ users: Array<{ id: string; username: string; avatar: string }> }>(
+      `/users/search?q=${encodeURIComponent(q)}&limit=30`
+    ),
 };
 
 export const gamesApi = {
   history: () => api.get<{ games: any[] }>("/games/history"),
+};
+
+export type NotificationCategory =
+  | 'tournament' | 'boss_arena' | 'rewards' | 'daily_missions'
+  | 'multiplayer' | 'survival_streak' | 'events' | 'system';
+
+export interface AppNotificationRecord {
+  _id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  type: 'info' | 'warning' | 'success';
+  actionUrl?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPrefs {
+  tournament: boolean;
+  boss_arena: boolean;
+  rewards: boolean;
+  daily_missions: boolean;
+  survival_streak: boolean;
+  multiplayer: boolean;
+  events: boolean;
+  system: boolean;
+}
+
+export const notificationsApi = {
+  list: (page = 1) =>
+    api.get<{ notifications: AppNotificationRecord[]; total: number; unread: number; pages: number }>(
+      `/notifications?page=${page}`
+    ),
+  markAllRead: () => api.patch('/notifications/read', {}),
+  markRead:    (id: string) => api.patch(`/notifications/${id}/read`, {}),
+  clear:       () => api.delete('/notifications'),
+  getPrefs:    () => api.get<{ preferences: NotificationPrefs }>('/notifications/preferences'),
+  savePrefs:   (prefs: Partial<NotificationPrefs>) => api.patch('/notifications/preferences', prefs),
 };
 
 export const configApi = {
@@ -110,6 +152,8 @@ export const walletApi = {
       amount,
       utrNumber,
     }),
+  voucherExtract: (imageBase64: string, brand: string) =>
+    api.post<{ voucherNumber: string; voucherPin: string; voucherExpiry: string }>('/wallet/voucher/extract', { imageBase64, brand }),
   voucherSubmit: (data: {
     voucherBrand: string;
     voucherNumber: string;
@@ -205,6 +249,8 @@ export const admin = {
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>("/leaderboard"),
   resetLeaderboard: () => adminApi.post("/leaderboard/reset"),
+  getProgressionLeaderboard: (category: 'xp' | 'achievements') =>
+    adminApi.get<{ leaderboard: any[]; category: string }>(`/progression/leaderboard?category=${category}`),
 
   getSupport: (status?: string) =>
     adminApi.get<{ tickets: any[]; summary: any }>("/support", {
@@ -218,8 +264,50 @@ export const admin = {
   sendNotification: (title: string, message: string, type: "info" | "warning" | "success") =>
     adminApi.post<{ success: boolean; recipients: number }>("/notify", { title, message, type }),
 
+  sendPushNotification: (opts: {
+    title: string;
+    message: string;
+    category?: string;
+    type?: "info" | "warning" | "success";
+    actionUrl?: string;
+    global?: boolean;
+    userIds?: string[];
+    inactiveHours?: number;
+  }) => adminApi.post<{ ok: boolean; mode: string; count?: number }>("/push/send", opts),
+
+  getPushUsers: () => adminApi.get<{ users: Record<string, { deviceCount: number; lastActiveAt: string; devices: string[] }>; total: number }>("/push/users"),
+  getPushHealth: () => adminApi.get<{ envVarsSet: boolean; projectId: string | null; tokenCount: number; hint: string }>("/push/health"),
+  getPushBroadcasts: (page = 1) => adminApi.get<{
+    broadcasts: Array<{
+      _id: string;
+      title: string;
+      message: string;
+      category: string;
+      type: string;
+      targetType: 'global' | 'targeted' | 'inactive';
+      intendedCount: number;
+      deliveredCount: number;
+      readCount: number;
+      createdAt: string;
+    }>;
+    total: number;
+    page: number;
+    pages: number;
+  }>(`/push/broadcasts?page=${page}`),
+
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),
+
+  getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
+  createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>
+    adminApi.post<{ announcement: any }>("/announcements", data),
+  updateAnnouncement: (id: string, data: { active?: boolean; message?: string; type?: string }) =>
+    adminApi.patch<{ announcement: any }>(`/announcements/${id}`, data),
+  deleteAnnouncement: (id: string) => adminApi.delete(`/announcements/${id}`),
+};
+
+export const announcementsApi = {
+  getActive: () => api.get<{ announcements: any[] }>("/announcements"),
 };
 
 export const progressionApi = {
@@ -240,6 +328,7 @@ export const survivalApi = {
     runWinRate: number; bestStage: number;
     totalEarned: number; totalSpent: number; netPoints: number;
   }>('/survival/stats'),
+  active:  () => api.get<{ battles: any[] }>('/survival/active'),
 };
 
 export default api;

@@ -11,11 +11,11 @@ export const SURVIVAL_STAGES: Array<{
   name: string;
   description: string;
 }> = [
-  { stage: 1, botCount: 1, personalities: ["safe"],                        botNames: ["Safe Bot"],                               name: "Safe Bot",          description: "1v1 · Defensive AI"          },
-  { stage: 2, botCount: 1, personalities: ["aggressive"],                  botNames: ["Aggressive Bot"],                         name: "Aggressive Bot",    description: "1v1 · Aggressive AI"          },
-  { stage: 3, botCount: 1, personalities: ["bluff"],                       botNames: ["Bluff Bot"],                              name: "Bluff Bot",         description: "1v1 · Deceptive AI"           },
-  { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Smart AI", "Aggressive AI"],              name: "Dual AI Challenge", description: "1v2 · Smart + Aggressive AI"  },
-  { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Boss AI", "Smart AI", "Aggressive AI"],   name: "Final Boss Arena",  description: "1v3 · Boss + Smart + Aggressive AI" },
+  { stage: 1, botCount: 1, personalities: ["safe"],                        botNames: ["Iron Fist"],                              name: "Warmup Duel",       description: "1v1 · Defensive AI"               },
+  { stage: 2, botCount: 1, personalities: ["aggressive"],                  botNames: ["Blaze"],                                  name: "Tactical Pressure", description: "1v1 · Aggressive AI"              },
+  { stage: 3, botCount: 1, personalities: ["bluff"],                       botNames: ["Phantom"],                                name: "Mind Games",        description: "1v1 · Deceptive AI"               },
+  { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Smart AI", "Aggressive AI"],              name: "Survival Clash",    description: "1v2 · Smart + Aggressive AI"       },
+  { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Boss AI", "Smart AI", "Aggressive AI"],   name: "Final Arena",       description: "1v3 · Boss + Smart + Aggressive AI" },
 ];
 
 export const TIER_CONFIG: Record<
@@ -63,6 +63,7 @@ export interface ISurvivalTournament extends Document {
   totalPointsEarned: number;
   roundsPlayed: number;
   currentRoomCode: string | null;
+  tiebreakerPending: boolean;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -97,6 +98,7 @@ const SurvivalTournamentSchema = new Schema<ISurvivalTournament>(
     totalPointsEarned: { type: Number, default: 0 },
     roundsPlayed: { type: Number, default: 0 },
     currentRoomCode: { type: String, default: null },
+    tiebreakerPending: { type: Boolean, default: false },
     completedAt: { type: Date },
   },
   { timestamps: true },

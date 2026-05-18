@@ -38,6 +38,7 @@ import {
 } from "../../utils/progression";
 import { getBadge } from "../../utils/badgeCache";
 import { recordEvent } from "../../utils/gameAnalytics";
+import { notifyWinStreak } from "../../services/notificationTriggers";
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -298,13 +299,24 @@ export async function startRoomGame(
 
   const botNamesConfig: string[] = (room.config as any).botNames ?? [];
   const botPersonalitiesConfig: BotPersonality[] = (room.config as any).botPersonalities ?? [];
+  const singleBotPersonality: string = (room.config as any).botPersonality ?? '';
 
-  const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => ({
-    userId: `bot_${uuidv4().slice(0, 6)}`,
-    username: botNamesConfig[i] ?? `Bot ${i + 1}`,
-    avatar: `bot_${i + 1}`,
-    isBot: true,
-  }));
+  const PERSONALITY_NAMES: Record<string, string> = {
+    safe: 'Safe Bot', aggressive: 'Aggressive Bot', bluff: 'Bluff Bot', smart: 'Smart AI', boss: 'Boss AI',
+  };
+
+  const botPlayers = Array.from({ length: room.config.botCount }, (_, i) => {
+    const personality = botPersonalitiesConfig[i] ?? (i === 0 && singleBotPersonality ? singleBotPersonality : 'smart');
+    return {
+      userId: `bot_${uuidv4().slice(0, 6)}`,
+      username: botNamesConfig[i]
+        ?? (botPersonalitiesConfig[i] ? PERSONALITY_NAMES[botPersonalitiesConfig[i]] : undefined)
+        ?? (i === 0 && singleBotPersonality ? PERSONALITY_NAMES[singleBotPersonality] : undefined)
+        ?? `Bot ${i + 1}`,
+      avatar: `bot_${personality}`,
+      isBot: true,
+    };
+  });
 
   const allPlayers = [
     ...room.players.map((p) => ({
@@ -427,12 +439,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
 
       const botPlayers = Array.from(
         { length: room.config.botCount },
-        (_, i) => ({
-          userId: `bot_${uuidv4().slice(0, 6)}`,
-          username: roomBotNames[i] ?? `Bot ${i + 1}`,
-          avatar: `bot_${i + 1}`,
-          isBot: true,
-        }),
+        (_, i) => {
+          const p = roomBotPersonalities[i] ?? 'smart';
+          return {
+            userId: `bot_${uuidv4().slice(0, 6)}`,
+            username: roomBotNames[i] ?? `Bot ${i + 1}`,
+            avatar: `bot_${p}`,
+            isBot: true,
+          };
+        },
       );
 
       const allPlayers = [
@@ -562,6 +577,13 @@ export function registerGameHandlers(io: Server, socket: Socket) {
       }),
     );
 
+    // Detect Jack play for analytics
+    const discardingPlayer = previousState?.players.find((p) => p.userId === userId);
+    const jackCount = cardIds.filter((id) => {
+      const card = discardingPlayer?.hand.find((c) => c.id === id);
+      return card?.rank === "J" && !card?.isJoker;
+    }).length;
+
     handlePlayerAction(
       io,
       socket,
@@ -585,6 +607,22 @@ export function registerGameHandlers(io: Server, socket: Socket) {
             resultState.players.find((p) => p.userId === userId)?.handCount ??
             0,
         });
+        if (jackCount > 0 && previousState) {
+          // Find the skipped player's hand count to determine if show was denied
+          const currentPlayerIdx = previousState.players.findIndex((p) => p.userId === userId);
+          const skippedIdx = (currentPlayerIdx + 1) % previousState.players.length;
+          const skippedPlayer = previousState.players[skippedIdx];
+          const skippedHandCount = skippedPlayer?.handCount ?? 99;
+          const deniedShow = skippedHandCount <= 3;
+          recordEvent({
+            type: "jack_skip",
+            gameId: resultState.id,
+            userId,
+            isBot: false,
+            targetHandCount: skippedHandCount,
+            deniedShow,
+          });
+        }
       },
     );
   });
@@ -673,6 +711,15 @@ export function registerGameHandlers(io: Server, socket: Socket) {
               isBot: false,
               cardsThrown: data.cardIds.length,
               targetTook: false,
+            });
+          } else if (data.action === "take") {
+            recordEvent({
+              type: "attack_chain",
+              gameId: resultState.id,
+              attackerId: userId,
+              isBot: false,
+              cardsThrown: 0,
+              targetTook: true,
             });
           }
         },
@@ -803,6 +850,25 @@ function handleRoundEnd(io: Server, state: GameState) {
     botPersonality: gameBotPersonality.get(state.id),
     loserTotal: loserResult?.roundPoints ?? 0,
   });
+
+  // Analytics: detect farming patterns in human players
+  const behaviors = gameBehavior.get(state.id);
+  if (behaviors) {
+    for (const [uid, tracker] of behaviors.entries()) {
+      const player = state.players.find((p) => p.userId === uid && !p.isBot);
+      if (!player) continue;
+      const farmingScore = (tracker.cuts > 5 ? 2 : 0) + (tracker.draws > 10 && tracker.showAttempts === 0 ? 3 : 0);
+      if (farmingScore >= 3) {
+        recordEvent({
+          type: "farming_signal",
+          gameId: state.id,
+          userId: uid,
+          indicator: farmingScore,
+          details: `cuts=${tracker.cuts} draws=${tracker.draws} shows=${tracker.showAttempts}`,
+        });
+      }
+    }
+  }
 
   // Persist round results
   Game.findOneAndUpdate(
@@ -974,6 +1040,9 @@ async function handleMatchEnd(io: Server, state: GameState) {
       baseXp,
       isBot: hasBots,
       won: isWinner,
+    }).then((prog: any) => {
+      // Notify on win-streak milestones (non-blocking)
+      if (isWinner && prog?.winStreak) notifyWinStreak(p.userId, prog.winStreak);
     }).catch(console.error);
   }
 
@@ -1263,6 +1332,9 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       break;
     case "attack_take":
       result = GameEngine.processAttackResponse(state, botPlayerId, "take");
+      if (result?.success) {
+        recordEvent({ type: "attack_chain", gameId: state.id, attackerId: botPlayerId, isBot: true, cardsThrown: 0, targetTook: true });
+      }
       break;
   }
 

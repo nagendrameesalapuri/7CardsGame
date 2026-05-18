@@ -17,7 +17,7 @@ export function getSpectatorCounts(): Map<string, number> {
   return result;
 }
 
-/** Build a public (spectator-safe) game state: no card faces, no myHand */
+/** Build spectator game state: human cards visible, bot cards hidden */
 export function buildSpectatorState(state: GameState) {
   return {
     id: state.id,
@@ -36,6 +36,8 @@ export function buildSpectatorState(state: GameState) {
       isEliminated: p.isEliminated,
       seatIndex: p.seatIndex,
       isBot: p.isBot,
+      // Expose real cards for human players; bots stay hidden
+      hand: p.isBot ? undefined : p.hand,
     })),
     discardPile: state.discardPile,
     deckCount: state.deck.length,

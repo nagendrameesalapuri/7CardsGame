@@ -39,6 +39,7 @@ type Section =
   | "tournaments"
   | "support"
   | "notify"
+  | "announcements"
   | "survivalconfig"
   | "analytics"
   | "aiguide";
@@ -173,20 +174,18 @@ function NumberInput({
 
 function OverviewSection() {
   const [stats, setStats] = useState<any>(null);
+  const [rooms, setRooms] = useState<any[]>([]);
+
+  const fetchAll = useCallback(() => {
+    admin.getStats().then((r) => setStats(r.data)).catch(console.error);
+    admin.getRooms().then((r) => setRooms(r.data.rooms ?? [])).catch(console.error);
+  }, []);
 
   useEffect(() => {
-    admin
-      .getStats()
-      .then((r) => setStats(r.data))
-      .catch(console.error);
-    const t = setInterval(() => {
-      admin
-        .getStats()
-        .then((r) => setStats(r.data))
-        .catch(console.error);
-    }, 10000);
+    fetchAll();
+    const t = setInterval(fetchAll, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [fetchAll]);
 
   if (!stats)
     return (
@@ -194,7 +193,7 @@ function OverviewSection() {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h2 className="text-lg font-bold text-white">Platform Overview</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard icon="👥" label="Total Users" value={stats.totalUsers} />
@@ -223,6 +222,79 @@ function OverviewSection() {
           color="#fbbf24"
         />
       </div>
+
+      {/* ── Active Rooms inline panel ── */}
+      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+        <div className="flex items-center justify-between px-4 pt-4 pb-3"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-base">🏠</span>
+            <span className="text-sm font-bold text-white">Active Rooms</span>
+            {rooms.length > 0 && (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(168,85,247,0.18)", color: "#c084fc" }}>
+                {rooms.length}
+              </span>
+            )}
+          </div>
+          <button onClick={fetchAll} className="text-[11px] text-dark-muted hover:text-neon-green transition-colors px-2 py-1 rounded">
+            ↺ Refresh
+          </button>
+        </div>
+
+        {rooms.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-dark-muted">No active rooms right now</div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            {rooms.map((room) => (
+              <div key={room.code} className="px-4 py-3 flex items-center gap-3">
+                {/* Status dot */}
+                <div className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                    boxShadow: room.status === "playing" ? "0 0 6px #22c55e" : "0 0 6px #fbbf24" }} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-dark-text truncate">{room.name || room.code}</span>
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{
+                        background: room.status === "playing" ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)",
+                        color: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                      }}>
+                      {room.status === "playing" ? "LIVE" : "WAITING"}
+                    </span>
+                    {(room.config?.isPrivate ?? room.isPrivate) && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#6b7280" }}>🔒 Private</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-dark-muted mt-0.5">
+                    {room.code} · {room.playerCount}/{room.maxPlayers} players
+                    {room.status === "playing" && ` · Round ${room.roundNumber ?? "?"}/${room.roundCount ?? "?"}`}
+                    {room.spectatorCount > 0 && ` · 👁 ${room.spectatorCount}`}
+                    {(room.config?.entryFee ?? 0) > 0 && ` · 💰 ₹${room.config?.entryFee}`}
+                  </p>
+                </div>
+
+                {/* Player avatars / count */}
+                <div className="flex items-center flex-shrink-0 text-[11px] text-dark-muted gap-1">
+                  {(room.players ?? []).slice(0, 4).map((p: any, i: number) => (
+                    <div key={p.userId ?? i}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
+                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", marginLeft: i > 0 ? -6 : 0, zIndex: 4 - i }}
+                      title={p.username}>
+                      {p.isBot ? "🤖" : "👤"}
+                    </div>
+                  ))}
+                  {(room.players ?? []).length > 4 && (
+                    <span className="ml-1">+{(room.players ?? []).length - 4}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl p-4 text-sm text-dark-muted" style={cardStyle}>
         Auto-refreshes every 10 seconds. Changes made here are applied
         instantly.
@@ -674,80 +746,256 @@ function UsersSection() {
   );
 }
 
-function LeaderboardSection() {
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const RANK_COLORS: Record<string, string> = {
+  bronze: '#cd7f32', silver: '#c0c0c0', gold: '#fbbf24',
+  platinum: '#67e8f9', diamond: '#a78bfa', master: '#f43f5e',
+};
 
-  const fetch = () => {
-    admin
-      .getLeaderboard()
-      .then((r) => {
-        setLeaderboard(r.data.leaderboard);
-        setLoading(false);
-      })
+const DUMMY_XP = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  xp: 4820, level: 18, playerRank: 'gold'     },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  xp: 4210, level: 16, playerRank: 'gold'     },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  xp: 3780, level: 14, playerRank: 'silver'   },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  xp: 3540, level: 14, playerRank: 'silver'   },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  xp: 3120, level: 12, playerRank: 'silver'   },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  xp: 2870, level: 11, playerRank: 'silver'   },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  xp: 2540, level: 10, playerRank: 'bronze'   },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  xp: 2340, level: 9,  playerRank: 'bronze'   },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  xp: 2100, level: 8,  playerRank: 'bronze'   },
+  { username: 'SandeepRao',        avatar: 'avatar_10', xp: 1890, level: 7,  playerRank: 'bronze'   },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', xp: 1650, level: 7,  playerRank: 'bronze'   },
+  { username: 'RohitMishra',       avatar: 'avatar_12', xp: 1410, level: 6,  playerRank: 'bronze'   },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  xp: 1250, level: 5,  playerRank: 'bronze'   },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  xp: 1080, level: 5,  playerRank: 'bronze'   },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  xp: 920,  level: 4,  playerRank: 'bronze'   },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  xp: 780,  level: 4,  playerRank: 'bronze'   },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  xp: 640,  level: 3,  playerRank: 'bronze'   },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  xp: 490,  level: 2,  playerRank: 'bronze'   },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  xp: 310,  level: 2,  playerRank: 'bronze'   },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  xp: 180,  level: 1,  playerRank: 'bronze'   },
+];
+
+const DUMMY_ACHIEVEMENTS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  achievementCount: 14, level: 18, playerRank: 'gold'   },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  achievementCount: 12, level: 16, playerRank: 'gold'   },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  achievementCount: 11, level: 14, playerRank: 'silver' },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  achievementCount: 10, level: 14, playerRank: 'silver' },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  achievementCount: 9,  level: 12, playerRank: 'silver' },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  achievementCount: 8,  level: 11, playerRank: 'silver' },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  achievementCount: 7,  level: 10, playerRank: 'bronze' },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  achievementCount: 7,  level: 9,  playerRank: 'bronze' },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  achievementCount: 6,  level: 8,  playerRank: 'bronze' },
+  { username: 'SandeepRao',        avatar: 'avatar_10', achievementCount: 6,  level: 7,  playerRank: 'bronze' },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', achievementCount: 5,  level: 7,  playerRank: 'bronze' },
+  { username: 'RohitMishra',       avatar: 'avatar_12', achievementCount: 5,  level: 6,  playerRank: 'bronze' },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  achievementCount: 2,  level: 3,  playerRank: 'bronze' },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  achievementCount: 2,  level: 2,  playerRank: 'bronze' },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  achievementCount: 1,  level: 2,  playerRank: 'bronze' },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  achievementCount: 1,  level: 1,  playerRank: 'bronze' },
+];
+
+const DUMMY_WINS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  gamesWon: 184, gamesPlayed: 247, winRate: 74 },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  gamesWon: 152, gamesPlayed: 211, winRate: 72 },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  gamesWon: 127, gamesPlayed: 189, winRate: 67 },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  gamesWon: 122, gamesPlayed: 178, winRate: 69 },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  gamesWon: 98,  gamesPlayed: 152, winRate: 64 },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  gamesWon: 87,  gamesPlayed: 134, winRate: 65 },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  gamesWon: 76,  gamesPlayed: 128, winRate: 59 },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  gamesWon: 71,  gamesPlayed: 119, winRate: 60 },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  gamesWon: 65,  gamesPlayed: 109, winRate: 60 },
+  { username: 'SandeepRao',        avatar: 'avatar_10', gamesWon: 59,  gamesPlayed: 101, winRate: 58 },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', gamesWon: 52,  gamesPlayed: 96,  winRate: 54 },
+  { username: 'RohitMishra',       avatar: 'avatar_12', gamesWon: 44,  gamesPlayed: 87,  winRate: 51 },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  gamesWon: 39,  gamesPlayed: 81,  winRate: 48 },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  gamesWon: 35,  gamesPlayed: 76,  winRate: 46 },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  gamesWon: 29,  gamesPlayed: 69,  winRate: 42 },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  gamesWon: 24,  gamesPlayed: 63,  winRate: 38 },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  gamesWon: 21,  gamesPlayed: 59,  winRate: 36 },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  gamesWon: 17,  gamesPlayed: 54,  winRate: 31 },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  gamesWon: 12,  gamesPlayed: 48,  winRate: 25 },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  gamesWon: 8,   gamesPlayed: 39,  winRate: 21 },
+];
+
+function LeaderboardSection() {
+  type Tab = 'wins' | 'xp' | 'achievements';
+  const [tab, setTab] = useState<Tab>('wins');
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [xpBoard, setXpBoard] = useState<any[]>([]);
+  const [achBoard, setAchBoard] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [progLoading, setProgLoading] = useState(false);
+
+  const fetchWins = () => {
+    admin.getLeaderboard()
+      .then((r) => { setLeaderboard(r.data.leaderboard); setLoading(false); })
       .catch(console.error);
   };
 
+  const fetchProg = (category: 'xp' | 'achievements', setter: (d: any[]) => void) => {
+    setProgLoading(true);
+    admin.getProgressionLeaderboard(category)
+      .then((r) => { setter(r.data.leaderboard); })
+      .catch(console.error)
+      .finally(() => setProgLoading(false));
+  };
+
+  useEffect(() => { fetchWins(); }, []);
+
   useEffect(() => {
-    fetch();
-  }, []);
+    if (tab === 'xp' && xpBoard.length === 0) fetchProg('xp', setXpBoard);
+    if (tab === 'achievements' && achBoard.length === 0) fetchProg('achievements', setAchBoard);
+  }, [tab]);
 
   const resetAll = async () => {
     if (!confirm("Reset ALL user stats? This cannot be undone.")) return;
     await admin.resetLeaderboard().catch(console.error);
-    fetch();
+    fetchWins();
   };
+
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'wins',         label: 'Game Wins',    icon: '🏆' },
+    { key: 'xp',          label: 'XP & Levels',  icon: '⭐' },
+    { key: 'achievements', label: 'Achievements', icon: '🎖️' },
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Leaderboard</h2>
-        <button
-          onClick={resetAll}
-          className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-          style={{
-            background: "rgba(255,59,92,0.12)",
-            color: "#ff3b5c",
-            border: "1px solid rgba(255,59,92,0.3)",
-          }}
-        >
-          Reset All
-        </button>
+        {tab === 'wins' && (
+          <button
+            onClick={resetAll}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ background: "rgba(255,59,92,0.12)", color: "#ff3b5c", border: "1px solid rgba(255,59,92,0.3)" }}
+          >
+            Reset All
+          </button>
+        )}
       </div>
 
-      {loading ? (
-        <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {leaderboard.slice(0, 50).map((u) => (
-            <div
-              key={String(u.id)}
-              className="p-3 rounded-xl flex items-center gap-3"
-              style={cardStyle}
-            >
-              <span className="w-8 text-center font-bold text-dark-muted text-sm">
-                #{u.rank}
-              </span>
-              <Avatar avatar={u.avatar} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-dark-text truncate">
-                  {u.username}
-                </p>
-                <p className="text-[11px] text-dark-muted">
-                  {u.gamesPlayed} played · {u.winRate}% win
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-bold text-neon-green text-sm">
-                  {u.gamesWon}W
-                </p>
-                {u.isBanned && (
-                  <p className="text-[10px] text-neon-red">BANNED</p>
-                )}
-              </div>
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={tab === t.key
+              ? { background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+              : { background: 'rgba(255,255,255,0.04)', color: '#6b7280', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Wins tab */}
+      {tab === 'wins' && (
+        loading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(leaderboard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_WINS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...leaderboard.map((u) => ({ ...u, isReal: true })),
+            ...dummyFiltered.map((d, i) => ({ ...d, id: `dummy_${i}`, rank: 0, isBanned: false, isReal: false })),
+          ]
+            .sort((a, b) => b.gamesWon - a.gamesWon)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+
+          return (
+            <div className="space-y-2">
+              {merged.slice(0, 50).map((u) => (
+                <div key={String(u.id ?? u.username)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">{u.gamesPlayed} played · {u.winRate}% win</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-neon-green text-sm">{u.gamesWon}W</p>
+                    {u.isBanned && <p className="text-[10px] text-neon-red">BANNED</p>}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()
+      )}
+
+      {/* XP & Levels tab */}
+      {tab === 'xp' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(xpBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_XP.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...xpBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_xp_${i}` })),
+          ]
+            .sort((a, b) => b.xp - a.xp)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#fbbf24' }}>{u.xp.toLocaleString()} XP</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
+      )}
+
+      {/* Achievements tab */}
+      {tab === 'achievements' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(achBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_ACHIEVEMENTS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...achBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_ach_${i}` })),
+          ]
+            .sort((a, b) => b.achievementCount - a.achievementCount)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#a78bfa' }}>{u.achievementCount} 🎖️</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );
@@ -1601,7 +1849,7 @@ function WalletsSection() {
       );
       setCreditResult({
         ok: true,
-        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setCreditAmount("");
       setCreditNote("");
@@ -1634,7 +1882,7 @@ function WalletsSection() {
       );
       setDebitResult({
         ok: true,
-        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setDebitAmount("");
       setDebitNote("");
@@ -1730,7 +1978,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -1812,7 +2060,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))
@@ -1929,7 +2177,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -2011,7 +2259,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))
@@ -2588,27 +2836,311 @@ function SupportSection() {
 
 // ── Notify Section ─────────────────────────────────────────────────────────────
 
+const NOTIF_CATEGORIES = [
+  { value: "system",          label: "🔔 System" },
+  { value: "tournament",      label: "⚔️ Tournament" },
+  { value: "boss_arena",      label: "👑 Boss Arena" },
+  { value: "rewards",         label: "🎁 Rewards" },
+  { value: "daily_missions",  label: "🎯 Daily Missions" },
+  { value: "survival_streak", label: "🔥 Survival Streak" },
+  { value: "multiplayer",     label: "👥 Multiplayer" },
+  { value: "events",          label: "🎉 Events" },
+] as const;
+
+type NotifTarget = "global" | "specific" | "inactive";
+
+interface NotifTemplate {
+  label: string;
+  title: string;
+  message: string;
+  type: "info" | "warning" | "success";
+  category: string;
+  actionUrl?: string;
+  hasAmount?: boolean; // if true, show an amount input to substitute {amount}
+}
+
+const NOTIF_TEMPLATES: Record<string, NotifTemplate[]> = {
+  "🎁 Bonuses & Rewards": [
+    {
+      label: "Joining Bonus",
+      title: "🎁 Welcome Bonus Credited!",
+      message: "A joining bonus of {amount} points has been added to your account. Start playing and Master the SHOW!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Bonus",
+      title: "💰 Deposit Bonus Unlocked",
+      message: "Your deposit bonus of {amount} points is now live in your wallet. Use it in your next game!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Loyalty Reward",
+      title: "🏅 Loyalty Reward Credited",
+      message: "Thank you for being a valued player! {amount} loyalty points have been added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Referral Bonus",
+      title: "👥 Referral Bonus Earned!",
+      message: "Your referral reward of {amount} points has been credited. Keep inviting friends to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Special Cashback",
+      title: "💸 Cashback Applied",
+      message: "A cashback of {amount} points has been added to your account. Keep playing to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "💳 Deposits": [
+    {
+      label: "Deposit Approved",
+      title: "✅ Deposit Approved",
+      message: "Your deposit of ₹{amount} has been successfully approved and added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Pending",
+      title: "⏳ Deposit Under Review",
+      message: "Your deposit of ₹{amount} is being reviewed. It will be credited within 24 hours.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Rejected",
+      title: "❌ Deposit Could Not Be Processed",
+      message: "Your deposit of ₹{amount} could not be verified. Please re-submit with a clear screenshot.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Reminder",
+      title: "💳 Add Funds to Keep Playing",
+      message: "Your balance is running low. Deposit now to continue competing in the Arena of Sevens.",
+      type: "info", category: "system", actionUrl: "/wallet",
+    },
+  ],
+  "💸 Withdrawals": [
+    {
+      label: "Withdrawal Approved",
+      title: "✅ Withdrawal Approved",
+      message: "Your withdrawal of ₹{amount} has been approved and is being processed. Expect it within 24–48 hrs.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Delivered",
+      title: "🎉 Payment Sent!",
+      message: "Your withdrawal of ₹{amount} has been successfully transferred to your account.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Rejected",
+      title: "⚠️ Withdrawal Request Issue",
+      message: "Your withdrawal of ₹{amount} could not be processed. Please check your bank details and retry.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Processing",
+      title: "🔄 Withdrawal In Progress",
+      message: "Your withdrawal request of ₹{amount} is being processed. We'll notify you once complete.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "⚔️ Tournament": [
+    {
+      label: "Tournament Starting",
+      title: "⚔️ Tournament Starts Now!",
+      message: "The Arena of Sevens tournament is LIVE! Register now and compete for the top spot.",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Ending Soon",
+      title: "⏰ Tournament Ends in 1 Hour",
+      message: "Last chance to enter! The current tournament closes soon. Join now before seats fill up.",
+      type: "warning", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "New Tournament Open",
+      title: "🏆 New Tournament is Open",
+      message: "A new ranked tournament has started. Entry is open — prove your skills and claim glory!",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Results",
+      title: "🏅 Tournament Results Are In",
+      message: "The latest tournament has ended. Check the leaderboard to see the final rankings!",
+      type: "success", category: "tournament", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Special Prize Pool",
+      title: "💎 Special Prize Pool — {amount} Points",
+      message: "This weekend's tournament has a prize pool of {amount} points! Register now to compete.",
+      type: "success", category: "tournament", actionUrl: "/survival", hasAmount: true,
+    },
+  ],
+  "👑 Boss Arena": [
+    {
+      label: "Boss Arena Unlocked",
+      title: "👑 Boss Arena is OPEN",
+      message: "You've unlocked the Boss Arena! The ultimate challenge awaits — enter if you dare.",
+      type: "success", category: "boss_arena", actionUrl: "/survival",
+    },
+    {
+      label: "Boss Arena Event",
+      title: "🔥 Boss Arena Special Event",
+      message: "A limited Boss Arena event is live! Defeat the champion and claim massive rewards.",
+      type: "warning", category: "boss_arena", actionUrl: "/survival",
+    },
+  ],
+  "🔥 Streaks & Live": [
+    {
+      label: "Win Streak Alert",
+      title: "🔥 You're on a Hot Streak!",
+      message: "Your current win streak is live on the leaderboard. Keep it up and dominate the Arena!",
+      type: "success", category: "survival_streak", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Streak at Risk",
+      title: "⚠️ Your Streak is at Risk",
+      message: "You haven't played today! Log in now to keep your survival streak alive.",
+      type: "warning", category: "survival_streak", actionUrl: "/survival",
+    },
+    {
+      label: "Live Game Alert",
+      title: "🎮 Game is Live — Join Now!",
+      message: "A live multiplayer game is waiting for you. Jump in and show your skills!",
+      type: "info", category: "multiplayer", actionUrl: "/lobby",
+    },
+    {
+      label: "Come Back",
+      title: "👋 We Miss You!",
+      message: "It's been a while since your last game. Return to the Arena and continue your climb!",
+      type: "info", category: "survival_streak", actionUrl: "/lobby",
+    },
+  ],
+  "🎉 Events & System": [
+    {
+      label: "Special Event Live",
+      title: "🎉 Special Event is LIVE",
+      message: "A limited-time event has started in Arena of Sevens. Play now to earn double rewards!",
+      type: "success", category: "events", actionUrl: "/lobby",
+    },
+    {
+      label: "Maintenance Notice",
+      title: "🔧 Scheduled Maintenance",
+      message: "The server will undergo maintenance in 30 minutes. Please complete your current games.",
+      type: "warning", category: "system",
+    },
+    {
+      label: "App Update",
+      title: "🆕 New Update Available",
+      message: "Arena of Sevens has been updated with new features! Refresh the app to get the latest.",
+      type: "info", category: "system",
+    },
+    {
+      label: "Weekend Offer",
+      title: "🎊 Weekend Special Offer",
+      message: "This weekend only — play 3 games and get {amount} bonus points! Offer ends Sunday.",
+      type: "success", category: "events", actionUrl: "/lobby", hasAmount: true,
+    },
+  ],
+};
+
+type BroadcastRecord = {
+  _id: string;
+  title: string;
+  message: string;
+  category: string;
+  type: string;
+  targetType: 'global' | 'targeted' | 'inactive';
+  intendedCount: number;
+  deliveredCount: number;
+  readCount: number;
+  createdAt: string;
+};
+
 function NotifySection() {
+  const [tab, setTab] = useState<"push" | "live" | "history">("push");
+
+  // Live (socket) state
+  const [liveTitle, setLiveTitle] = useState("");
+  const [liveMessage, setLiveMessage] = useState("");
+  const [liveType, setLiveType] = useState<"info" | "warning" | "success">("info");
+  const [liveSending, setLiveSending] = useState(false);
+  const [liveResult, setLiveResult] = useState<{ success: boolean; msg: string } | null>(null);
+
+  // Broadcast history state
+  const [broadcasts, setBroadcasts] = useState<BroadcastRecord[]>([]);
+  const [broadcastsLoading, setBroadcastsLoading] = useState(false);
+  const [broadcastPage, setBroadcastPage] = useState(1);
+  const [broadcastPages, setBroadcastPages] = useState(1);
+
+  // Push (FCM) state
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [type, setType] = useState<"info" | "warning" | "success">("info");
+  const [category, setCategory] = useState("system");
+  const [actionUrl, setActionUrl] = useState("");
+  const [target, setTarget] = useState<NotifTarget>("global");
+  const [userIds, setUserIds] = useState("");
+  const [inactiveHours, setInactiveHours] = useState("24");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [tokenUsers, setTokenUsers] = useState<number | null>(null);
 
-  const send = async () => {
-    if (!title.trim() || !message.trim()) return;
-    setSending(true);
-    setResult(null);
+  // Template picker state
+  const [templateGroup, setTemplateGroup] = useState<string | null>(null);
+  const [amountValue, setAmountValue] = useState("");
+  const [activeTemplate, setActiveTemplate] = useState<NotifTemplate | null>(null);
+
+  // Health state
+  const [health, setHealth] = useState<{ envVarsSet: boolean; tokenCount: number; hint: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  // Load FCM user count on mount
+  useEffect(() => {
+    admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
+  }, []);
+
+  const loadBroadcasts = useCallback(async (page = 1) => {
+    setBroadcastsLoading(true);
     try {
-      const res = await admin.sendNotification(title.trim(), message.trim(), type);
-      setResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
-      setTitle("");
-      setMessage("");
-    } catch (err: any) {
-      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
-    } finally {
-      setSending(false);
+      const r = await admin.getPushBroadcasts(page);
+      setBroadcasts(r.data.broadcasts);
+      setBroadcastPages(r.data.pages);
+      setBroadcastPage(page);
+    } catch { /* silent */ }
+    finally { setBroadcastsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") loadBroadcasts(1);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const checkHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const r = await admin.getPushHealth();
+      setHealth(r.data);
+    } catch { setHealth(null); }
+    finally { setHealthLoading(false); }
+  };
+
+  const applyTemplate = (tpl: NotifTemplate) => {
+    setActiveTemplate(tpl);
+    setAmountValue("");
+    setType(tpl.type);
+    setCategory(tpl.category);
+    setActionUrl(tpl.actionUrl ?? "");
+    if (!tpl.hasAmount) {
+      setTitle(tpl.title);
+      setMessage(tpl.message);
     }
+    // If has amount, wait until user fills amount
+  };
+
+  const applyAmountToTemplate = (amt: string) => {
+    if (!activeTemplate) return;
+    setTitle(activeTemplate.title.replace("{amount}", amt));
+    setMessage(activeTemplate.message.replace("{amount}", amt));
   };
 
   const typeOptions: { value: "info" | "warning" | "success"; label: string; color: string }[] = [
@@ -2617,77 +3149,510 @@ function NotifySection() {
     { value: "success", label: "✅ Success", color: "#00ff88" },
   ];
 
+  const sendLive = async () => {
+    if (!liveTitle.trim() || !liveMessage.trim()) return;
+    setLiveSending(true);
+    setLiveResult(null);
+    try {
+      const res = await admin.sendNotification(liveTitle.trim(), liveMessage.trim(), liveType);
+      setLiveResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
+      setLiveTitle("");
+      setLiveMessage("");
+    } catch (err: any) {
+      setLiveResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setLiveSending(false);
+    }
+  };
+
+  const sendPush = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      let targetOpts: { global?: boolean; userIds?: string[]; inactiveHours?: number } = {};
+      if (target === "global") {
+        targetOpts = { global: true };
+      } else if (target === "inactive") {
+        targetOpts = { inactiveHours: parseInt(inactiveHours, 10) || 24 };
+      } else {
+        const ids = userIds.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (!ids.length) {
+          setResult({ success: false, msg: "Enter at least one User ID" });
+          setSending(false);
+          return;
+        }
+        targetOpts = { userIds: ids };
+      }
+      const res = await admin.sendPushNotification({
+        title: title.trim(),
+        message: message.trim(),
+        category,
+        type,
+        actionUrl: actionUrl.trim() || undefined,
+        ...targetOpts,
+      });
+      const d = res.data;
+      const modeLabel = d.mode === "global" ? "all users" : d.mode === "inactive" ? "inactive users" : `${d.count} user(s)`;
+      setResult({ success: true, msg: `Push sent to ${modeLabel}` });
+      setTitle(""); setMessage(""); setUserIds(""); setActionUrl("");
+      setActiveTemplate(null); setAmountValue(""); setTemplateGroup(null);
+      // Refresh history if it was already loaded
+      if (broadcasts.length > 0) loadBroadcasts(1);
+    } catch (err: any) {
+      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const inputStyle = { border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" };
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-dark-text">Push Notification</h2>
-      <p className="text-xs text-dark-muted">Send a real-time notification to all currently connected users.</p>
-
-      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
-        {/* Type selector */}
-        <div>
-          <p className="text-xs text-dark-muted mb-2">Type</p>
-          <div className="flex gap-2">
-            {typeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setType(opt.value)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
-                  color: type === opt.value ? opt.color : "#6b7280",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Title */}
-        <div>
-          <p className="text-xs text-dark-muted mb-1.5">Title</p>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={80}
-            placeholder="e.g. Maintenance in 30 minutes"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
-          />
-        </div>
-
-        {/* Message */}
-        <div>
-          <p className="text-xs text-dark-muted mb-1.5">Message</p>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={300}
-            rows={3}
-            placeholder="Detailed message visible in the notification bell…"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
-          />
-          <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
-        </div>
-
-        {/* Send button */}
-        <button
-          onClick={send}
-          disabled={sending || !title.trim() || !message.trim()}
-          className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}
-        >
-          {sending ? "Sending…" : "📢 Send to All Users"}
-        </button>
-
-        {result && (
-          <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
-            {result.success ? "✓ " : "✗ "}{result.msg}
-          </p>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-dark-text">Notifications</h2>
+        {tokenUsers !== null && (
+          <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+            📱 {tokenUsers} FCM device{tokenUsers !== 1 ? "s" : ""}
+          </span>
         )}
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+        {([
+          { id: "push",    label: "📲 Push (FCM)" },
+          { id: "live",    label: "⚡ Live (Socket)" },
+          { id: "history", label: "📊 History" },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setResult(null); setLiveResult(null); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: tab === t.id ? "rgba(99,102,241,0.25)" : "transparent",
+              color: tab === t.id ? "#a5b4fc" : "#6b7280",
+              border: tab === t.id ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "push" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+
+          {/* ── Firebase Health Check ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={checkHealth} disabled={healthLoading}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>
+              {healthLoading ? "Checking…" : "🔍 Check Firebase"}
+            </button>
+            {health && (
+              <span className="text-[11px] px-2.5 py-1 rounded-full font-medium flex-1"
+                style={{
+                  background: health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.1)" : "rgba(251,191,36,0.1)",
+                  color:      health.envVarsSet && health.tokenCount > 0 ? "#00ff88"              : "#fbbf24",
+                  border:     `1px solid ${health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.2)" : "rgba(251,191,36,0.2)"}`,
+                }}>
+                {health.envVarsSet ? "✓ Firebase OK" : "✗ Firebase not configured"} · {health.tokenCount} token{health.tokenCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {health && (
+              <p className="w-full text-[10px] text-dark-muted/70 -mt-2">{health.hint}</p>
+            )}
+          </div>
+
+          {health && !health.envVarsSet && (
+            <div className="rounded-xl p-3 text-xs space-y-1"
+              style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", color: "#fbbf24" }}>
+              <p className="font-bold">Add these to Render env vars:</p>
+              <p className="font-mono">FIREBASE_PROJECT_ID</p>
+              <p className="font-mono">FIREBASE_CLIENT_EMAIL</p>
+              <p className="font-mono">FIREBASE_PRIVATE_KEY</p>
+            </div>
+          )}
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+          {/* ── Template Picker ── */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Quick Templates</p>
+            {/* Group tabs */}
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {Object.keys(NOTIF_TEMPLATES).map(group => (
+                <button
+                  key={group}
+                  onClick={() => setTemplateGroup(templateGroup === group ? null : group)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all"
+                  style={{
+                    background: templateGroup === group ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${templateGroup === group ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: templateGroup === group ? "#a5b4fc" : "#64748b",
+                  }}>
+                  {group}
+                </button>
+              ))}
+            </div>
+
+            {/* Template cards */}
+            {templateGroup && (
+              <div className="flex flex-col gap-2 mb-1">
+                {(NOTIF_TEMPLATES[templateGroup] ?? []).map((tpl) => {
+                  const isActive = activeTemplate?.label === tpl.label && activeTemplate?.title === tpl.title;
+                  return (
+                    <button
+                      key={tpl.label}
+                      onClick={() => applyTemplate(tpl)}
+                      className="w-full text-left rounded-xl px-3 py-2.5 transition-all"
+                      style={{
+                        background: isActive ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${isActive ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                      }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold" style={{ color: isActive ? "#a5b4fc" : "#cbd5e1" }}>
+                          {tpl.label}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{
+                          background: tpl.type === "success" ? "rgba(0,255,136,0.1)" : tpl.type === "warning" ? "rgba(251,191,36,0.1)" : "rgba(96,165,250,0.1)",
+                          color: tpl.type === "success" ? "#00ff88" : tpl.type === "warning" ? "#fbbf24" : "#60a5fa",
+                        }}>
+                          {tpl.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: "#64748b" }}>
+                        {tpl.title}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Amount input when template needs it */}
+            {activeTemplate?.hasAmount && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={amountValue}
+                  onChange={e => {
+                    setAmountValue(e.target.value);
+                    applyAmountToTemplate(e.target.value);
+                  }}
+                  placeholder="Enter amount (e.g. 30 or ₹500)"
+                  className="flex-1 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                  style={{ border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.07)" }}
+                />
+                <span className="text-[11px] text-dark-muted shrink-0">fills {"{amount}"}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+          {/* Target mode */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Target</p>
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { v: "global",   l: "🌐 All Users" },
+                { v: "specific", l: "👤 Specific Users" },
+                { v: "inactive", l: "💤 Inactive Users" },
+              ] as { v: NotifTarget; l: string }[]).map(({ v, l }) => (
+                <button key={v} onClick={() => setTarget(v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: target === v ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${target === v ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: target === v ? "#a5b4fc" : "#6b7280",
+                  }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conditional target inputs */}
+          {target === "specific" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">User IDs <span className="text-dark-muted/50">(one per line or comma-separated)</span></p>
+              <textarea
+                value={userIds}
+                onChange={e => setUserIds(e.target.value)}
+                rows={3}
+                placeholder="64abc123…&#10;64def456…"
+                className="w-full px-3 py-2 rounded-xl text-xs text-dark-text bg-transparent outline-none resize-none font-mono"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {target === "inactive" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">Inactive for at least (hours)</p>
+              <input
+                type="number" min={1} max={720}
+                value={inactiveHours}
+                onChange={e => setInactiveHours(e.target.value)}
+                className="w-32 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {/* Category */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Category</p>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text outline-none"
+              style={{ ...inputStyle, appearance: "none" as any }}>
+              {NOTIF_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value} style={{ background: "#1a1a2e" }}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Type */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: type === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input
+              value={title} onChange={e => setTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Maintenance in 30 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Message */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea
+              value={message} onChange={e => setMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Notification body text…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle}
+            />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
+          </div>
+
+          {/* Action URL */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Action URL <span className="text-dark-muted/50">(optional deep link)</span></p>
+            <input
+              value={actionUrl} onChange={e => setActionUrl(e.target.value)}
+              placeholder="/lobby  or  /survival"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            onClick={sendPush}
+            disabled={sending || !title.trim() || !message.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}>
+            {sending ? "Sending…" : target === "global" ? "📢 Send to All Users" : target === "inactive" ? "💤 Send to Inactive" : "📲 Send to Selected Users"}
+          </button>
+
+          {result && (
+            <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
+              {result.success ? "✓ " : "✗ "}{result.msg}
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "live" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <p className="text-xs text-dark-muted">Instantly delivers an in-app toast to all currently connected users (no FCM required).</p>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setLiveType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: liveType === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${liveType === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: liveType === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input value={liveTitle} onChange={e => setLiveTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Server restart in 5 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle} />
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea value={liveMessage} onChange={e => setLiveMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Detailed message visible in the notification bell…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle} />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{liveMessage.length}/300</p>
+          </div>
+
+          <button onClick={sendLive} disabled={liveSending || !liveTitle.trim() || !liveMessage.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff" }}>
+            {liveSending ? "Sending…" : "⚡ Broadcast Live"}
+          </button>
+
+          {liveResult && (
+            <p className="text-xs text-center font-medium" style={{ color: liveResult.success ? "#00ff88" : "#ff6b6b" }}>
+              {liveResult.success ? "✓ " : "✗ "}{liveResult.msg}
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-dark-text">Broadcast History</p>
+            <button onClick={() => loadBroadcasts(broadcastPage)}
+              className="text-[11px] px-3 py-1 rounded-lg font-medium transition-all"
+              style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+              {broadcastsLoading ? "Loading…" : "↻ Refresh"}
+            </button>
+          </div>
+
+          {broadcastsLoading && broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6 animate-pulse">Loading broadcasts…</p>
+          ) : broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6">No broadcasts sent yet</p>
+          ) : (
+            <div className="space-y-3">
+              {broadcasts.map(b => {
+                const deliverPct = b.intendedCount > 0
+                  ? Math.round((b.deliveredCount / b.intendedCount) * 100) : 0;
+                const readPct = b.intendedCount > 0
+                  ? Math.round((b.readCount / b.intendedCount) * 100) : 0;
+                const targetLabel = b.targetType === 'global' ? '🌍 Global'
+                  : b.targetType === 'targeted' ? '🎯 Targeted' : '⏰ Inactive';
+                const typeColor = b.type === 'success' ? '#00ff88'
+                  : b.type === 'warning' ? '#fbbf24' : '#60a5fa';
+                return (
+                  <div key={b._id} className="rounded-xl p-4 space-y-3"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {/* Header row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-dark-text truncate">{b.title}</p>
+                        <p className="text-[11px] text-dark-muted mt-0.5 line-clamp-2">{b.message}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                          style={{ background: `${typeColor}22`, color: typeColor }}>
+                          {b.type}
+                        </span>
+                        <span className="text-[10px] text-dark-muted">{targetLabel}</span>
+                      </div>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Intended", value: b.intendedCount, color: "#94a3b8", pct: null },
+                        { label: "Delivered", value: b.deliveredCount, color: "#60a5fa", pct: deliverPct },
+                        { label: "Read", value: b.readCount, color: "#00ff88", pct: readPct },
+                      ].map(stat => (
+                        <div key={stat.label} className="rounded-lg p-2.5 text-center"
+                          style={{ background: `${stat.color}11`, border: `1px solid ${stat.color}22` }}>
+                          <p className="text-lg font-bold" style={{ color: stat.color }}>{stat.value}</p>
+                          <p className="text-[10px] font-medium" style={{ color: `${stat.color}bb` }}>
+                            {stat.label}
+                          </p>
+                          {stat.pct !== null && (
+                            <p className="text-[10px]" style={{ color: `${stat.color}88` }}>
+                              {stat.pct}%
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Progress bars */}
+                    <div className="space-y-1.5">
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#60a5fa99" }}>Delivery rate</span>
+                          <span style={{ color: "#60a5fa" }}>{deliverPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${deliverPct}%`, background: "linear-gradient(90deg, #3b82f6, #60a5fa)" }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#00ff8899" }}>Read rate</span>
+                          <span style={{ color: "#00ff88" }}>{readPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${readPct}%`, background: "linear-gradient(90deg, #00cc6a, #00ff88)" }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <p className="text-[10px] text-dark-muted/60">
+                      {new Date(b.createdAt).toLocaleString()} · {b.category}
+                    </p>
+                  </div>
+                );
+              })}
+
+              {/* Pagination */}
+              {broadcastPages > 1 && (
+                <div className="flex justify-center gap-2 pt-1">
+                  <button disabled={broadcastPage <= 1} onClick={() => loadBroadcasts(broadcastPage - 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>← Prev</button>
+                  <span className="text-xs text-dark-muted self-center">
+                    {broadcastPage} / {broadcastPages}
+                  </span>
+                  <button disabled={broadcastPage >= broadcastPages} onClick={() => loadBroadcasts(broadcastPage + 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>Next →</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3510,6 +4475,277 @@ function AiGuideSection() {
   );
 }
 
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+interface AnnouncementRecord {
+  _id: string;
+  message: string;
+  type: "banner" | "marquee" | "popup";
+  active: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+function AnnouncementsSection() {
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [type, setType] = useState<"banner" | "marquee" | "popup">("banner");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await admin.getAnnouncements();
+      setAnnouncements(r.data.announcements);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!message.trim()) { setError("Message is required"); return; }
+    setError(null);
+    setAdding(true);
+    try {
+      await admin.createAnnouncement({ message: message.trim(), type });
+      setMessage("");
+      await load();
+    } catch {
+      setError("Failed to add announcement");
+    } finally { setAdding(false); }
+  };
+
+  const handleToggle = async (id: string, active: boolean) => {
+    try {
+      await admin.updateAnnouncement(id, { active: !active });
+      setAnnouncements(prev => prev.map(a => a._id === id ? { ...a, active: !active } : a));
+    } catch { /* silent */ }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await admin.deleteAnnouncement(id);
+      setAnnouncements(prev => prev.filter(a => a._id !== id));
+    } catch { /* silent */ }
+  };
+
+  const TYPE_LABELS: Record<string, string> = {
+    banner: "Banner",
+    marquee: "Marquee",
+    popup: "Popup",
+  };
+
+  const TYPE_COLORS: Record<string, string> = {
+    banner: "#60a5fa",
+    marquee: "#fbbf24",
+    popup: "#a78bfa",
+  };
+
+  const TYPE_ICONS: Record<string, string> = { banner: "🔔", marquee: "📡", popup: "💬" };
+  const TYPE_DESC: Record<string, string> = {
+    banner: "Pinned bar at the top of every page",
+    marquee: "Animated scrolling ticker strip",
+    popup: "Floating card — players must dismiss",
+  };
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.4)", boxShadow: "0 0 20px rgba(99,102,241,0.2)" }}>
+          📣
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-white">Announcements</h2>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(148,163,184,0.6)" }}>Broadcast messages to all players in real-time</p>
+        </div>
+      </div>
+
+      {/* Type cards — select visually */}
+      <div className="grid grid-cols-3 gap-3">
+        {(["banner","marquee","popup"] as const).map(t => (
+          <button key={t} onClick={() => setType(t)}
+            className="rounded-2xl p-4 text-left transition-all"
+            style={{
+              background: type === t
+                ? `linear-gradient(135deg,${TYPE_COLORS[t]}22,${TYPE_COLORS[t]}10)`
+                : "rgba(255,255,255,0.03)",
+              border: `1.5px solid ${type === t ? TYPE_COLORS[t] + "60" : "rgba(255,255,255,0.07)"}`,
+              boxShadow: type === t ? `0 0 20px ${TYPE_COLORS[t]}18` : "none",
+              transform: type === t ? "translateY(-1px)" : "none",
+            }}>
+            <div className="text-xl mb-2">{TYPE_ICONS[t]}</div>
+            <p className="text-sm font-black mb-1" style={{ color: type === t ? TYPE_COLORS[t] : "#e2e8f0" }}>
+              {TYPE_LABELS[t]}
+            </p>
+            <p className="text-[10px] leading-snug" style={{ color: "rgba(148,163,184,0.55)" }}>
+              {TYPE_DESC[t]}
+            </p>
+          </button>
+        ))}
+      </div>
+
+      {/* Compose area */}
+      <div className="rounded-2xl overflow-hidden"
+        style={{ background: "rgba(12,14,22,0.97)", border: "1px solid rgba(255,255,255,0.07)" }}>
+        {/* Top accent */}
+        <div style={{ height: 3, background: `linear-gradient(90deg,${TYPE_COLORS[type]},${TYPE_COLORS[type]}80,transparent)` }} />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{TYPE_ICONS[type]}</span>
+            <p className="text-sm font-bold text-white">Compose {TYPE_LABELS[type]}</p>
+          </div>
+
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder={`Write your ${TYPE_LABELS[type].toLowerCase()} message here…`}
+            rows={4}
+            maxLength={500}
+            className="w-full rounded-xl px-4 py-3 text-sm resize-none outline-none text-dark-text placeholder-dark-muted"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${message ? TYPE_COLORS[type] + "40" : "rgba(255,255,255,0.08)"}`,
+              transition: "border-color 0.2s",
+            }}
+          />
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{ color: "rgba(148,163,184,0.4)" }}>
+              {message.length}/500 characters
+            </p>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !message.trim()}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all disabled:opacity-40"
+              style={{
+                background: `linear-gradient(135deg,${TYPE_COLORS[type]}30,${TYPE_COLORS[type]}18)`,
+                border: `1px solid ${TYPE_COLORS[type]}50`,
+                color: TYPE_COLORS[type],
+                boxShadow: !adding && message.trim() ? `0 0 16px ${TYPE_COLORS[type]}20` : "none",
+              }}
+            >
+              {adding ? "Publishing…" : "＋ Publish Announcement"}
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-widest" style={{ color: "rgba(148,163,184,0.45)" }}>
+            Published ({announcements.length})
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="rounded-2xl p-8 text-center text-sm text-dark-muted animate-pulse" style={cardStyle}>Loading…</div>
+        ) : announcements.length === 0 ? (
+          <div className="rounded-2xl p-10 text-center" style={cardStyle}>
+            <p className="text-3xl mb-3">📭</p>
+            <p className="text-sm font-semibold text-dark-muted">No announcements published yet</p>
+            <p className="text-xs text-dark-muted mt-1">Compose one above and hit Publish</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {announcements.map(ann => (
+              <motion.div
+                key={ann._id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: ann.active ? 1 : 0.55, y: 0 }}
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: ann.active
+                    ? `linear-gradient(135deg,${TYPE_COLORS[ann.type]}10,rgba(12,14,22,0.97))`
+                    : "rgba(12,14,22,0.7)",
+                  border: `1px solid ${ann.active ? TYPE_COLORS[ann.type] + "35" : "rgba(255,255,255,0.06)"}`,
+                }}>
+                {/* Left accent */}
+                <div style={{ display: "flex" }}>
+                  <div style={{ width: 4, flexShrink: 0, background: ann.active ? TYPE_COLORS[ann.type] : "rgba(255,255,255,0.08)" }} />
+                  <div className="flex-1 p-5">
+                    <div className="flex items-start gap-4">
+                      {/* Icon circle */}
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                        style={{
+                          background: `${TYPE_COLORS[ann.type]}18`,
+                          border: `1px solid ${TYPE_COLORS[ann.type]}35`,
+                        }}>
+                        {TYPE_ICONS[ann.type]}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        {/* Badge + status */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                            style={{ background: `${TYPE_COLORS[ann.type]}20`, color: TYPE_COLORS[ann.type], border: `1px solid ${TYPE_COLORS[ann.type]}35` }}>
+                            {TYPE_LABELS[ann.type]}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                            style={{ background: ann.active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)", color: ann.active ? "#22c55e" : "#6b7280" }}>
+                            {ann.active ? "● Live" : "○ Paused"}
+                          </span>
+                        </div>
+
+                        {/* Message */}
+                        <p className="text-base font-semibold text-white break-words leading-relaxed">
+                          {ann.message}
+                        </p>
+
+                        <p className="text-[11px] mt-2" style={{ color: "rgba(148,163,184,0.4)" }}>
+                          Published {new Date(ann.createdAt).toLocaleDateString()} at {new Date(ann.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        {/* Toggle */}
+                        <button
+                          onClick={() => handleToggle(ann._id, ann.active)}
+                          className="relative flex-shrink-0"
+                          style={{ width: 48, height: 26, borderRadius: 13,
+                            background: ann.active ? "#22c55e" : "rgba(255,255,255,0.1)",
+                            border: `1px solid ${ann.active ? "#16a34a" : "rgba(255,255,255,0.1)"}`,
+                            transition: "background 0.2s", cursor: "pointer" }}
+                          title={ann.active ? "Pause" : "Activate"}
+                        >
+                          <motion.span layout
+                            className="absolute top-[3px] w-5 h-5 bg-white rounded-full shadow-md"
+                            animate={{ x: ann.active ? 24 : 3 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDelete(ann._id)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.7)", fontSize: 16 }}
+                          title="Delete"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -3543,6 +4779,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
       { key: "support",       icon: "🎧", label: "Support" },
       { key: "notify",        icon: "📢", label: "Notify Players" },
+      { key: "announcements", icon: "📣", label: "Announcements" },
     ],
   },
   {
@@ -3770,6 +5007,7 @@ export function AdminPage() {
               {section === "gameconfig" && <GameConfigSection config={config} onSave={saveConfig} />}
               {section === "walletconfig" && <WalletConfigSection config={config} onSave={saveConfig} />}
               {section === "notify" && <NotifySection />}
+              {section === "announcements" && <AnnouncementsSection />}
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
               {section === "analytics" && <AnalyticsSection />}
               {section === "aiguide" && <AiGuideSection />}

@@ -19,11 +19,19 @@ import { Layout } from '../components/layout/Layout';
 const POINTS_PER_RUPEE = 100;
 
 const STAGES = [
-  { stage: 1, name: 'Safe Bot',          botCount: 1, emojis: ['🛡️'], color: '#22c55e', desc: 'Defensive & cautious',                    difficulty: 'Easy'   },
-  { stage: 2, name: 'Aggressive Bot',    botCount: 1, emojis: ['⚡'], color: '#f59e0b', desc: 'Fast attacks & pressure',                 difficulty: 'Medium' },
-  { stage: 3, name: 'Bluff Bot',         botCount: 1, emojis: ['🎭'], color: '#a855f7', desc: 'Deceptive & unpredictable',               difficulty: 'Hard'   },
-  { stage: 4, name: 'Dual AI Challenge', botCount: 2, emojis: ['🧠','⚔️'], color: '#3b82f6', desc: 'Beat Smart + Aggressive AI',        difficulty: 'Expert' },
-  { stage: 5, name: 'Final Boss Arena',  botCount: 3, emojis: ['💀','🧠','⚔️'], color: '#ef4444', desc: 'Survive Boss + Smart + Aggressive AI', difficulty: 'Boss' },
+  { stage: 1, name: 'Warmup Duel',       botCount: 1, emojis: ['🥊'],             color: '#22c55e', desc: 'Defensive & cautious opener',            difficulty: 'Easy'   },
+  { stage: 2, name: 'Tactical Pressure', botCount: 1, emojis: ['⚡'],             color: '#f59e0b', desc: 'Fast attacks & relentless pressure',      difficulty: 'Medium' },
+  { stage: 3, name: 'Mind Games',        botCount: 1, emojis: ['🎭'],             color: '#a855f7', desc: 'Deceptive bluffs & unpredictable plays',  difficulty: 'Hard'   },
+  { stage: 4, name: 'Survival Clash',    botCount: 2, emojis: ['🧠','⚔️'],       color: '#3b82f6', desc: 'Dual threat — Smart + Aggressive AI',     difficulty: 'Expert' },
+  { stage: 5, name: 'Final Arena',       botCount: 3, emojis: ['💀','🧠','⚔️'], color: '#ef4444', desc: 'Boss + Elite Duo — survive to win',       difficulty: 'Boss'   },
+];
+
+const AI_PERSONALITIES = [
+  { stage: 1, icon: '🛡️', name: 'Iron Fist',   type: 'The Cautious Defender',     desc: 'Patient and methodical. Waits for your mistakes before striking.',    color: '#22c55e', accent: 'rgba(34,197,94,0.07)'   },
+  { stage: 2, icon: '🔥', name: 'Blaze',        type: 'The Relentless Attacker',   desc: 'Constant pressure. Never lets you breathe. Attack or be overwhelmed.', color: '#f59e0b', accent: 'rgba(245,158,11,0.07)'  },
+  { stage: 3, icon: '🌀', name: 'Phantom',      type: 'The Mind Bender',           desc: 'Unpredictable bluffs and misdirection. You can never read its hand.',  color: '#a855f7', accent: 'rgba(168,85,247,0.07)'  },
+  { stage: 4, icon: '🧠', name: 'Dual Core',    type: 'Smart + Aggressive Tandem', desc: 'Two coordinated AIs with opposing styles. Split your focus or fall.',  color: '#3b82f6', accent: 'rgba(59,130,246,0.07)'  },
+  { stage: 5, icon: '👑', name: 'Apex Trinity', type: 'Final Boss + Elite Guard',  desc: 'Three synchronized AIs. One wrong move ends everything. Win or die.',  color: '#ef4444', accent: 'rgba(239,68,68,0.07)'   },
 ];
 
 const TIER_DISPLAY = [
@@ -36,245 +44,284 @@ const TIER_DISPLAY = [
 // ── Battle Illustration ───────────────────────────────────────────────────────
 
 function BattleIllustration() {
+  // AI personality data for the banner
+  const AIS = [
+    { x: 418, y: 148, r: 22, emoji: '🛡️', color: '#22c55e', label: 'Iron Fist',   fs: 14 },
+    { x: 468, y: 142, r: 22, emoji: '🔥', color: '#f59e0b', label: 'Blaze',        fs: 14 },
+    { x: 518, y: 148, r: 22, emoji: '🌀', color: '#a855f7', label: 'Phantom',      fs: 14 },
+    { x: 432, y: 105, r: 26, emoji: '🧠', color: '#3b82f6', label: 'Smart AI',     fs: 16 },
+    { x: 504, y: 105, r: 26, emoji: '⚡', color: '#f59e0b', label: 'Aggressive',   fs: 16 },
+  ];
+
   return (
     <div className="relative rounded-2xl overflow-hidden w-full"
-      style={{ background: 'linear-gradient(135deg,#06080f 0%,#0d1022 50%,#090610 100%)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <svg viewBox="0 0 600 210" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ display: 'block' }}>
+      style={{ background: 'linear-gradient(160deg,#04060e 0%,#0a0d1f 55%,#060410 100%)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <svg viewBox="0 0 600 230" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ display: 'block' }}>
         <defs>
-          <radialGradient id="sv-hg" cx="28%" cy="55%" r="38%">
-            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.22"/>
+          {/* Atmospheric glows */}
+          <radialGradient id="bi-lg" cx="20%" cy="55%" r="45%">
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.2"/>
             <stop offset="100%" stopColor="#fbbf24" stopOpacity="0"/>
           </radialGradient>
-          <radialGradient id="sv-rg" cx="72%" cy="55%" r="38%">
+          <radialGradient id="bi-rg" cx="80%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.22"/>
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
           </radialGradient>
-          <radialGradient id="sv-cg" cx="50%" cy="50%" r="30%">
-            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.38"/>
-            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0"/>
+          <radialGradient id="bi-cg" cx="50%" cy="45%" r="28%">
+            <stop offset="0%" stopColor="#6d28d9" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#6d28d9" stopOpacity="0"/>
           </radialGradient>
-          <linearGradient id="sv-vs" x1="0" y1="0" x2="1" y2="1">
+          <radialGradient id="bi-boss" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.45"/>
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="bi-human" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#fbbf24" stopOpacity="0"/>
+          </radialGradient>
+          {/* VS gradient */}
+          <linearGradient id="bi-vs" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#fbbf24"/>
             <stop offset="50%" stopColor="#ffffff"/>
             <stop offset="100%" stopColor="#ef4444"/>
           </linearGradient>
-          <filter id="sv-glow">
-            <feGaussianBlur stdDeviation="3.5" result="b"/>
+          {/* Trophy gradient */}
+          <linearGradient id="bi-trophy" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fbbf24"/>
+            <stop offset="100%" stopColor="#d97706"/>
+          </linearGradient>
+          {/* Filters */}
+          <filter id="bi-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          <filter id="sv-bloom">
-            <feGaussianBlur stdDeviation="7" result="b"/>
+          <filter id="bi-softglow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="bi-bloom" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="12" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
           <style>{`
-            @keyframes sv-pulse{0%,100%{opacity:.65}50%{opacity:1}}
-            @keyframes sv-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-            @keyframes sv-float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-            @keyframes sv-blink{0%,88%,100%{opacity:1}93%{opacity:.1}}
-            @keyframes sv-spark{0%,100%{opacity:0;transform:scale(0)}40%,60%{opacity:1;transform:scale(1)}}
-            .svp{animation:sv-pulse 2s ease-in-out infinite}
-            .svf{animation:sv-float 3s ease-in-out infinite}
-            .svf2{animation:sv-float2 2.6s ease-in-out infinite .6s}
-            .svf3{animation:sv-float2 3.4s ease-in-out infinite 1.1s}
-            .svbl{animation:sv-blink 4s ease-in-out infinite}
-            .svs1{animation:sv-spark 2s ease-in-out infinite}
-            .svs2{animation:sv-spark 2s ease-in-out infinite .4s}
-            .svs3{animation:sv-spark 2s ease-in-out infinite .8s}
-            .svs4{animation:sv-spark 2s ease-in-out infinite 1.2s}
-            .svs5{animation:sv-spark 2s ease-in-out infinite 1.6s}
+            @keyframes bi-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+            @keyframes bi-float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+            @keyframes bi-pulse{0%,100%{opacity:.6}50%{opacity:1}}
+            @keyframes bi-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+            @keyframes bi-spark{0%,100%{opacity:0;transform:scale(0)}45%,55%{opacity:1;transform:scale(1)}}
+            @keyframes bi-blink{0%,85%,100%{opacity:1}92%{opacity:0.1}}
+            @keyframes bi-hb{0%,100%{transform:scale(1)}20%{transform:scale(1.06)}40%{transform:scale(1)}}
+            .bif{animation:bi-float 3.2s ease-in-out infinite}
+            .bif2{animation:bi-float2 2.8s ease-in-out infinite .6s}
+            .bif3{animation:bi-float2 3.6s ease-in-out infinite 1.2s}
+            .bip{animation:bi-pulse 2s ease-in-out infinite}
+            .bihb{animation:bi-hb 1.4s ease-in-out infinite}
+            .bibl{animation:bi-blink 3s ease-in-out infinite}
+            .bis1{animation:bi-spark 2.2s ease-in-out infinite}
+            .bis2{animation:bi-spark 2.2s ease-in-out infinite .4s}
+            .bis3{animation:bi-spark 2.2s ease-in-out infinite .8s}
+            .bis4{animation:bi-spark 2.2s ease-in-out infinite 1.2s}
+            .bis5{animation:bi-spark 2.2s ease-in-out infinite 1.6s}
           `}</style>
         </defs>
 
-        {/* Background glows */}
-        <rect width="600" height="210" fill="url(#sv-hg)"/>
-        <rect width="600" height="210" fill="url(#sv-rg)"/>
-        <rect width="600" height="210" fill="url(#sv-cg)"/>
+        {/* ── Atmosphere ── */}
+        <rect width="600" height="230" fill="url(#bi-lg)"/>
+        <rect width="600" height="230" fill="url(#bi-rg)"/>
+        <rect width="600" height="230" fill="url(#bi-cg)"/>
 
-        {/* Subtle grid */}
-        <g opacity="0.035" stroke="#fff" strokeWidth="0.5">
-          {[0,1,2,3,4,5,6,7,8,9,10].map(i=><line key={`h${i}`} x1="0" y1={i*21} x2="600" y2={i*21}/>)}
-          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map(i=><line key={`v${i}`} x1={i*21} y1="0" x2={i*21} y2="210"/>)}
+        {/* Subtle grid lines */}
+        <g opacity="0.03" stroke="#fff" strokeWidth="0.5">
+          {[0,1,2,3,4,5,6,7,8,9,10].map(i=><line key={`h${i}`} x1="0" y1={i*23} x2="600" y2={i*23}/>)}
+          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map(i=><line key={`v${i}`} x1={i*21} y1="0" x2={i*21} y2="230"/>)}
         </g>
 
-        {/* ── HUMAN (LEFT) ── */}
-        <g className="svf">
-          {/* aura ring */}
-          <circle cx="148" cy="92" r="68" fill="none" stroke="#fbbf24" strokeWidth="0.6" opacity="0.18"/>
-          {/* head */}
-          <circle cx="148" cy="60" r="26" fill="#13111e" stroke="#fbbf24" strokeWidth="2.2" filter="url(#sv-glow)"/>
-          {/* hair */}
-          <path d="M122 53 Q148 38 174 53" fill="#fbbf24" opacity="0.55"/>
-          {/* eyes */}
-          <ellipse cx="140" cy="58" rx="4.5" ry="5" fill="#fbbf24"/>
-          <ellipse cx="156" cy="58" rx="4.5" ry="5" fill="#fbbf24"/>
-          <circle cx="140" cy="58" r="2" fill="#09090f"/>
-          <circle cx="156" cy="58" r="2" fill="#09090f"/>
-          <circle cx="141" cy="57" r="1" fill="#fff" opacity="0.6"/>
-          <circle cx="157" cy="57" r="1" fill="#fff" opacity="0.6"/>
-          {/* smile */}
-          <path d="M140 70 Q148 77 156 70" stroke="#fbbf24" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          {/* body */}
-          <rect x="131" y="90" width="34" height="40" rx="7" fill="#13111e" stroke="#fbbf24" strokeWidth="1.8"/>
-          <line x1="148" y1="90" x2="148" y2="130" stroke="#fbbf24" strokeWidth="0.5" opacity="0.3"/>
-          {/* collar */}
-          <path d="M138 90 L148 102 L158 90" stroke="#fbbf24" strokeWidth="1" fill="none" opacity="0.4"/>
-          {/* left arm */}
-          <path d="M131 102 Q112 97 96 112" stroke="#fbbf24" strokeWidth="5.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          {/* right arm → cards */}
-          <path d="M165 102 Q184 97 198 112" stroke="#fbbf24" strokeWidth="5.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          {/* HUMAN label */}
-          <text x="148" y="147" textAnchor="middle" fill="#fbbf24" fontSize="8.5" fontWeight="900" letterSpacing="3" opacity="0.75">HUMAN</text>
+        {/* Arena floor glow line */}
+        <rect x="0" y="180" width="600" height="1" fill="none" opacity="0"/>
+        <line x1="50" y1="182" x2="550" y2="182" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
+
+        {/* ══════════════════════════════════════════
+            HUMAN CHAMPION — LEFT
+        ══════════════════════════════════════════ */}
+        <g className="bif">
+          {/* Outer aura ring */}
+          <circle cx="110" cy="100" r="72" fill="url(#bi-human)" opacity="0.5"/>
+          <circle cx="110" cy="100" r="62" fill="none" stroke="#fbbf24" strokeWidth="0.5" opacity="0.12" className="bip"/>
+
+          {/* Champion ring (spinning dashes) */}
+          <circle cx="110" cy="100" r="52" fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="6 4" opacity="0.3" className="bip"/>
+
+          {/* Shield body */}
+          <path d="M110 52 L140 68 L140 100 Q140 122 110 134 Q80 122 80 100 L80 68 Z"
+            fill="#0d1117" stroke="#fbbf24" strokeWidth="2" filter="url(#bi-glow)"/>
+          {/* Shield inner border */}
+          <path d="M110 60 L133 74 L133 100 Q133 117 110 126 Q87 117 87 100 L87 74 Z"
+            fill="none" stroke="#fbbf24" strokeWidth="0.6" opacity="0.35"/>
+
+          {/* Sword on shield */}
+          <line x1="110" y1="72" x2="110" y2="118" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" filter="url(#bi-glow)"/>
+          <line x1="98" y1="87" x2="122" y2="87" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" filter="url(#bi-glow)"/>
+          <circle cx="110" cy="72" r="4" fill="#fbbf24" filter="url(#bi-glow)"/>
+
+          {/* Star badge */}
+          <text x="110" y="147" textAnchor="middle" fill="#fbbf24" fontSize="9" fontWeight="900" letterSpacing="4" opacity="0.8">YOU</text>
+          <text x="110" y="157" textAnchor="middle" fill="#fbbf24" fontSize="7" fontWeight="700" letterSpacing="2" opacity="0.5">CHAMPION</text>
         </g>
 
-        {/* Human cards fan */}
-        <g className="svf">
-          <g transform="translate(76,86) rotate(-22,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
-            <text x="14" y="26" textAnchor="middle" fill="#09090f" fontSize="14" fontWeight="900">7</text>
+        {/* Card fan (human) */}
+        <g className="bif">
+          <g transform="translate(54,118) rotate(-20,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
+            <text x="12" y="22" textAnchor="middle" fill="#09090f" fontSize="12" fontWeight="900">7</text>
           </g>
-          <g transform="translate(98,80) rotate(-8,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
-            <text x="14" y="26" textAnchor="middle" fill="#dc2626" fontSize="14" fontWeight="900">♥</text>
+          <g transform="translate(74,112) rotate(-7,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
+            <text x="12" y="22" textAnchor="middle" fill="#dc2626" fontSize="12" fontWeight="900">♥</text>
           </g>
-          <g transform="translate(118,78) rotate(5,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
-            <text x="14" y="26" textAnchor="middle" fill="#09090f" fontSize="14" fontWeight="900">K</text>
+          <g transform="translate(93,112) rotate(6,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1"/>
+            <text x="12" y="22" textAnchor="middle" fill="#09090f" fontSize="12" fontWeight="900">K</text>
           </g>
-          <g transform="translate(137,82) rotate(18,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
-            <text x="14" y="26" textAnchor="middle" fill="#1f2937" fontSize="14" fontWeight="900">♠</text>
-          </g>
-        </g>
-
-        {/* ── ROBOT AI (RIGHT) ── */}
-        <g className="svf2">
-          {/* aura ring */}
-          <circle cx="452" cy="92" r="68" fill="none" stroke="#ef4444" strokeWidth="0.6" opacity="0.18"/>
-          {/* main antenna */}
-          <line x1="452" y1="30" x2="452" y2="44" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
-          <circle cx="452" cy="26" r="5" fill="#ef4444" className="svp" filter="url(#sv-glow)"/>
-          {/* side antennae */}
-          <line x1="434" y1="38" x2="425" y2="29" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-          <line x1="470" y1="38" x2="479" y2="29" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-          <circle cx="425" cy="29" r="3" fill="#ef4444" opacity="0.7" className="svp"/>
-          <circle cx="479" cy="29" r="3" fill="#ef4444" opacity="0.7" className="svp"/>
-          {/* robot head */}
-          <rect x="422" y="44" width="60" height="50" rx="9" fill="#13060f" stroke="#ef4444" strokeWidth="2.5" filter="url(#sv-glow)"/>
-          <rect x="427" y="49" width="50" height="40" rx="6" fill="none" stroke="#ef4444" strokeWidth="0.5" opacity="0.25"/>
-          {/* eye sockets */}
-          <rect x="430" y="53" width="16" height="12" rx="3" fill="#09090f" stroke="#ef4444" strokeWidth="1" opacity="0.8"/>
-          <rect x="454" y="53" width="16" height="12" rx="3" fill="#09090f" stroke="#ef4444" strokeWidth="1" opacity="0.8"/>
-          {/* glowing pupils */}
-          <rect x="432" y="55" width="12" height="8" rx="2" fill="#ef4444" className="svbl"/>
-          <rect x="456" y="55" width="12" height="8" rx="2" fill="#ef4444" className="svbl"/>
-          {/* eye bloom */}
-          <rect x="432" y="55" width="12" height="8" rx="2" fill="#ff1111" opacity="0.5" filter="url(#sv-bloom)"/>
-          <rect x="456" y="55" width="12" height="8" rx="2" fill="#ff1111" opacity="0.5" filter="url(#sv-bloom)"/>
-          {/* specular */}
-          <rect x="436" y="56" width="4" height="3" rx="1" fill="#fff" opacity="0.9"/>
-          <rect x="460" y="56" width="4" height="3" rx="1" fill="#fff" opacity="0.9"/>
-          {/* LED mouth */}
-          {[0,1,2,3,4,5,6,7,8].map(i=>(
-            <rect key={i} x={430+i*4.5} y="74" width="3.2" height="6" rx="1" fill="#00ff88" opacity={i%3===1?0.9:0.35} className="svp"/>
-          ))}
-          {/* robot body */}
-          <rect x="418" y="97" width="68" height="42" rx="9" fill="#13060f" stroke="#ef4444" strokeWidth="2"/>
-          {/* circuit lines */}
-          <line x1="428" y1="107" x2="476" y2="107" stroke="#ef4444" strokeWidth="0.8" opacity="0.5"/>
-          <line x1="428" y1="115" x2="476" y2="115" stroke="#3b82f6" strokeWidth="0.8" opacity="0.5"/>
-          <line x1="428" y1="123" x2="476" y2="123" stroke="#22c55e" strokeWidth="0.8" opacity="0.4"/>
-          <circle cx="476" cy="107" r="3" fill="#ef4444" className="svs1"/>
-          <circle cx="428" cy="115" r="3" fill="#3b82f6" className="svs3"/>
-          <circle cx="476" cy="123" r="3" fill="#22c55e" className="svs5"/>
-          <rect x="440" y="110" width="24" height="12" rx="3" fill="#1a0a10" stroke="#ef4444" strokeWidth="0.5" opacity="0.5"/>
-          {/* arms */}
-          <path d="M418 109 Q398 103 382 116" stroke="#ef4444" strokeWidth="5.5" fill="none" strokeLinecap="round"/>
-          <path d="M486 109 Q506 103 520 116" stroke="#ef4444" strokeWidth="5.5" fill="none" strokeLinecap="round"/>
-          {/* AI BOT label */}
-          <text x="452" y="154" textAnchor="middle" fill="#ef4444" fontSize="8.5" fontWeight="900" letterSpacing="5" opacity="0.75">AI BOT</text>
-        </g>
-
-        {/* Bot cards fan (dark neon) */}
-        <g className="svf2">
-          <g transform="translate(336,86) rotate(-19,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#ef4444" fontSize="14" fontWeight="900">A</text>
-          </g>
-          <g transform="translate(356,80) rotate(-6,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#060c1a" stroke="#3b82f6" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#60a5fa" fontSize="14" fontWeight="900">♠</text>
-          </g>
-          <g transform="translate(374,78) rotate(7,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#ef4444" fontSize="14" fontWeight="900">K</text>
-          </g>
-          <g transform="translate(392,84) rotate(20,13,18)">
-            <rect width="28" height="40" rx="3.5" fill="#110614" stroke="#a855f7" strokeWidth="1.5"/>
-            <text x="14" y="26" textAnchor="middle" fill="#c084fc" fontSize="14" fontWeight="900">Q</text>
+          <g transform="translate(112,116) rotate(19,12,17)">
+            <rect width="25" height="35" rx="3" fill="#fff" stroke="#e5e7eb" strokeWidth="0.8"/>
+            <text x="12" y="22" textAnchor="middle" fill="#1e293b" fontSize="12" fontWeight="900">♠</text>
           </g>
         </g>
 
-        {/* ── CENTER CLASH ── */}
-        {/* Outer orbit rings */}
-        <circle cx="300" cy="95" r="48" fill="none" stroke="#7c3aed" strokeWidth="0.6" opacity="0.25" className="svp"/>
-        <circle cx="300" cy="95" r="32" fill="none" stroke="#a855f7" strokeWidth="0.7" opacity="0.3" className="svp"/>
+        {/* Human spark particles */}
+        <circle cx="72"  cy="68" r="2.5" fill="#fbbf24" className="bis1"/>
+        <circle cx="55"  cy="90" r="2"   fill="#fbbf24" className="bis3"/>
+        <circle cx="150" cy="70" r="2.5" fill="#fbbf24" className="bis5"/>
+        <circle cx="160" cy="108"r="2"   fill="#fbbf24" className="bis2"/>
 
-        {/* Energy arcs from sides */}
-        <path d="M225 82 L255 100 L240 100 L268 118" stroke="#fbbf24" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" filter="url(#sv-glow)"/>
-        <path d="M375 82 L345 100 L360 100 L332 118" stroke="#ef4444" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" filter="url(#sv-glow)"/>
+        {/* ══════════════════════════════════════════
+            CENTER — VS + CHAMPIONSHIP
+        ══════════════════════════════════════════ */}
 
-        {/* VS glow shadow */}
-        <text x="300" y="90" textAnchor="middle" fill="#7c3aed" fontSize="40" fontWeight="900" fontFamily="Arial Black,Arial" opacity="0.35" filter="url(#sv-bloom)">VS</text>
-        {/* VS main text */}
-        <text x="300" y="90" textAnchor="middle" fill="url(#sv-vs)" fontSize="40" fontWeight="900" fontFamily="Arial Black,Arial" letterSpacing="-2">VS</text>
-        {/* BATTLE sub-label */}
-        <text x="300" y="106" textAnchor="middle" fill="#a855f7" fontSize="7.5" fontWeight="800" letterSpacing="5.5" opacity="0.8">BATTLE</text>
+        {/* Orbit rings */}
+        <circle cx="295" cy="98" r="50" fill="none" stroke="#6d28d9" strokeWidth="0.5" strokeDasharray="4 5" opacity="0.3" className="bip"/>
+        <circle cx="295" cy="98" r="35" fill="none" stroke="#7c3aed" strokeWidth="0.5" opacity="0.2" className="bip"/>
 
-        {/* Flying clash cards */}
-        <g className="svf3" transform="translate(265,48) rotate(-38,9,13)">
-          <rect width="20" height="28" rx="2.5" fill="#fbbf24" stroke="#f59e0b" strokeWidth="0.8" opacity="0.75"/>
-          <text x="10" y="18" textAnchor="middle" fill="#09090f" fontSize="11" fontWeight="900">7</text>
-        </g>
-        <g className="svf" transform="translate(312,44) rotate(24,9,13)">
-          <rect width="20" height="28" rx="2.5" fill="#13060f" stroke="#ef4444" strokeWidth="1.2" opacity="0.7"/>
-          <text x="10" y="18" textAnchor="middle" fill="#ef4444" fontSize="11" fontWeight="900">A</text>
-        </g>
-        <g className="svf2" transform="translate(252,132) rotate(58,8,11)">
-          <rect width="18" height="25" rx="2" fill="#fff" opacity="0.6"/>
-          <text x="9" y="16" textAnchor="middle" fill="#dc2626" fontSize="10" fontWeight="900">♥</text>
-        </g>
-        <g className="svf3" transform="translate(325,132) rotate(-42,8,11)">
-          <rect width="18" height="25" rx="2" fill="#060c1a" stroke="#60a5fa" strokeWidth="1" opacity="0.65"/>
-          <text x="9" y="16" textAnchor="middle" fill="#60a5fa" fontSize="10" fontWeight="900">♠</text>
+        {/* Trophy shape */}
+        <g filter="url(#bi-glow)" opacity="0.9">
+          {/* Cup body */}
+          <path d="M283 62 L307 62 L307 88 Q307 96 295 98 Q283 96 283 88 Z" fill="url(#bi-trophy)"/>
+          {/* Cup handles */}
+          <path d="M283 66 Q272 66 272 76 Q272 86 283 86" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M307 66 Q318 66 318 76 Q318 86 307 86" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round"/>
+          {/* Stem */}
+          <rect x="291" y="98" width="8" height="10" fill="#fbbf24"/>
+          {/* Base */}
+          <rect x="284" y="108" width="22" height="4" rx="2" fill="#fbbf24"/>
+          {/* Star on cup */}
+          <text x="295" y="84" textAnchor="middle" fontSize="12" fill="#0d1117" fontWeight="900">★</text>
         </g>
 
-        {/* Spark particles */}
-        <circle cx="242" cy="88" r="3.5" fill="#fbbf24" className="svs1"/>
-        <circle cx="262" cy="72" r="2.5" fill="#fbbf24" className="svs2"/>
-        <circle cx="358" cy="88" r="3.5" fill="#ef4444" className="svs3"/>
-        <circle cx="338" cy="72" r="2.5" fill="#ef4444" className="svs4"/>
-        <circle cx="300" cy="46" r="3" fill="#a855f7" className="svs5"/>
-        <circle cx="283" cy="118" r="2.5" fill="#60a5fa" className="svs2"/>
-        <circle cx="317" cy="118" r="2.5" fill="#22c55e" className="svs4"/>
-        <circle cx="248" cy="110" r="2" fill="#fbbf24" className="svs3"/>
-        <circle cx="352" cy="110" r="2" fill="#ef4444" className="svs1"/>
-        <circle cx="274" cy="56" r="2" fill="#fff" className="svs4"/>
-        <circle cx="326" cy="56" r="2" fill="#fff" className="svs2"/>
-        <circle cx="289" cy="138" r="1.5" fill="#fbbf24" className="svs5"/>
-        <circle cx="311" cy="138" r="1.5" fill="#ef4444" className="svs1"/>
+        {/* VS text */}
+        <text x="295" y="136" textAnchor="middle" fill="#6d28d9" fontSize="28" fontWeight="900" fontFamily="Arial Black,Arial" opacity="0.4" filter="url(#bi-bloom)">VS</text>
+        <text x="295" y="136" textAnchor="middle" fill="url(#bi-vs)" fontSize="28" fontWeight="900" fontFamily="Arial Black,Arial" letterSpacing="-1">VS</text>
 
-        {/* Bottom tagline */}
-        <text x="300" y="188" textAnchor="middle" fill="rgba(255,255,255,0.22)" fontSize="7" letterSpacing="4" fontWeight="700">
-          5 STAGES · ONE SHOT · BECOME CHAMPION
-        </text>
+        {/* "1 vs 5" badge */}
+        <rect x="270" y="143" width="50" height="14" rx="7" fill="rgba(109,40,217,0.25)" stroke="rgba(109,40,217,0.5)" strokeWidth="1"/>
+        <text x="295" y="153" textAnchor="middle" fill="#a78bfa" fontSize="7" fontWeight="800" letterSpacing="2">1 vs 5 AI</text>
 
-        {/* Stage indicators */}
-        {[1,2,3,4,5].map((n,i)=>(
-          <g key={n} transform={`translate(${221+i*40},200)`}>
-            <circle r="8" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1"/>
-            <text textAnchor="middle" y="4" fill="rgba(255,255,255,0.22)" fontSize="7" fontWeight="800">{n}</text>
+        {/* Energy bolts (left→right) */}
+        <path d="M175 92 L220 105 L205 105 L248 118" stroke="#fbbf24" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.6" filter="url(#bi-glow)"/>
+        <path d="M415 92 L370 105 L385 105 L342 118" stroke="#ef4444" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.6" filter="url(#bi-glow)"/>
+
+        {/* Center sparks */}
+        <circle cx="260" cy="80" r="3" fill="#a855f7" className="bis2"/>
+        <circle cx="330" cy="80" r="3" fill="#a855f7" className="bis4"/>
+        <circle cx="275" cy="120" r="2" fill="#60a5fa" className="bis1"/>
+        <circle cx="315" cy="120" r="2" fill="#f59e0b" className="bis3"/>
+
+        {/* ══════════════════════════════════════════
+            5 AI PERSONALITIES — RIGHT PYRAMID
+            Row 1 (small): Iron Fist · Blaze · Phantom
+            Row 2 (medium): Smart AI · Aggressive AI
+            Row 3 (BOSS): Apex Trinity
+        ══════════════════════════════════════════ */}
+
+        {/* Row 1 — small AI cards */}
+        {AIS.map((ai, i) => (
+          <g key={i} className={i % 2 === 0 ? 'bif3' : 'bif2'}>
+            {/* Glow halo */}
+            <circle cx={ai.x} cy={ai.y} r={ai.r + 6} fill="none" stroke={ai.color} strokeWidth="1" opacity="0.2" className="bip"/>
+            {/* Circle body */}
+            <circle cx={ai.x} cy={ai.y} r={ai.r} fill="#0d1117" stroke={ai.color} strokeWidth="1.8" filter="url(#bi-glow)"
+              style={{ filter: `drop-shadow(0 0 6px ${ai.color}60)` }}/>
+            {/* Emoji */}
+            <text x={ai.x} y={ai.y + 6} textAnchor="middle" fontSize={ai.fs}>{ai.emoji}</text>
+            {/* Name label */}
+            <text x={ai.x} y={ai.y + ai.r + 10} textAnchor="middle" fill={ai.color} fontSize="6.5" fontWeight="800" opacity="0.85">
+              {ai.label.split(' ')[0].toUpperCase()}
+            </text>
           </g>
         ))}
+
+        {/* Connector lines between AIs */}
+        <line x1="418" y1="127" x2="432" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="468" y1="122" x2="468" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="518" y1="127" x2="504" y2="131" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="432" y1="79"  x2="468" y2="62"  stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+        <line x1="504" y1="79"  x2="468" y2="62"  stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3"/>
+
+        {/* ── BOSS AI — Apex Trinity (top center of pyramid) ── */}
+        <g className="bif">
+          {/* Boss outer bloom */}
+          <circle cx="468" cy="55" r="50" fill="url(#bi-boss)" opacity="0.6"/>
+          {/* Boss orbit ring */}
+          <circle cx="468" cy="55" r="40" fill="none" stroke="#ef4444" strokeWidth="0.8" strokeDasharray="5 4" opacity="0.35" className="bip"/>
+          <circle cx="468" cy="55" r="32" fill="none" stroke="#ef4444" strokeWidth="0.5" opacity="0.2" className="bip"/>
+          {/* Boss circle body */}
+          <circle cx="468" cy="55" r="28" fill="#130509" stroke="#ef4444" strokeWidth="2.5"
+            style={{ filter: 'drop-shadow(0 0 14px rgba(239,68,68,0.8))' }}/>
+          {/* Inner ring */}
+          <circle cx="468" cy="55" r="22" fill="none" stroke="#ef4444" strokeWidth="0.6" opacity="0.4"/>
+          {/* Skull emoji */}
+          <text x="468" y="64" textAnchor="middle" fontSize="26" className="bihb">💀</text>
+          {/* BOSS label */}
+          <rect x="449" y="85" width="38" height="13" rx="6.5" fill="rgba(239,68,68,0.2)" stroke="rgba(239,68,68,0.5)" strokeWidth="1"/>
+          <text x="468" y="95" textAnchor="middle" fill="#ef4444" fontSize="7.5" fontWeight="900" letterSpacing="3">BOSS</text>
+          {/* Apex Trinity sub-label */}
+          <text x="468" y="108" textAnchor="middle" fill="#ef4444" fontSize="6" fontWeight="700" letterSpacing="1" opacity="0.6">APEX TRINITY</text>
+        </g>
+
+        {/* Boss spark particles */}
+        <circle cx="438" cy="30" r="3" fill="#ef4444" className="bis1"/>
+        <circle cx="499" cy="28" r="2" fill="#ef4444" className="bis3"/>
+        <circle cx="428" cy="52" r="2" fill="#ef4444" className="bis5"/>
+        <circle cx="508" cy="48" r="2" fill="#ef4444" className="bis2"/>
+        <circle cx="455" cy="18" r="2.5" fill="#ff6b6b" className="bis4"/>
+        <circle cx="482" cy="15" r="2"   fill="#ff6b6b" className="bis1"/>
+
+        {/* ── Bottom strip ── */}
+        <line x1="30" y1="195" x2="570" y2="195" stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
+
+        {/* Stage progression dots */}
+        {[
+          { n:1, label:'WARMUP',    color:'#22c55e' },
+          { n:2, label:'TACTICAL',  color:'#f59e0b' },
+          { n:3, label:'MIND',      color:'#a855f7' },
+          { n:4, label:'CLASH',     color:'#3b82f6' },
+          { n:5, label:'FINALE',    color:'#ef4444' },
+        ].map((s,i)=>(
+          <g key={s.n} transform={`translate(${160+i*71},208)`}>
+            <circle r="9" fill={`${s.color}18`} stroke={s.color} strokeWidth="1.2" opacity="0.7"/>
+            <text y="4" textAnchor="middle" fill={s.color} fontSize="8" fontWeight="900">{s.n}</text>
+            <text y="18" textAnchor="middle" fill={s.color} fontSize="5.5" fontWeight="700" letterSpacing="1" opacity="0.6">{s.label}</text>
+          </g>
+        ))}
+
+        {/* Connecting arrows between stage dots */}
+        {[0,1,2,3].map(i=>(
+          <line key={i} x1={173+i*71} y1="208" x2={224+i*71} y2="208" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 2"/>
+        ))}
+
+        {/* Tagline */}
+        <text x="295" y="172" textAnchor="middle" fill="rgba(255,255,255,0.18)" fontSize="7" letterSpacing="5" fontWeight="700">
+          5 STAGES · ONE LIFE · BECOME CHAMPION
+        </text>
       </svg>
     </div>
   );
@@ -294,10 +341,12 @@ function PointsBalance({ rupees }: { rupees: number }) {
   );
 }
 
-function StageTracker({ currentStage, stageResults }: { currentStage: number; stageResults: any[] }) {
+// ── Progression Map (replaces StageTracker) ───────────────────────────────────
+
+function ProgressionMap({ currentStage, stageResults }: { currentStage: number; stageResults: any[] }) {
   return (
-    <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <p className="text-[10px] text-dark-muted uppercase tracking-widest mb-3 text-center">Championship Path</p>
+    <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <p className="text-[10px] text-dark-muted uppercase tracking-[0.2em] mb-4 text-center font-semibold">Championship Path</p>
       <div className="flex items-center justify-between">
         {STAGES.map((s, idx) => {
           const result = stageResults.find(r => r.stage === s.stage);
@@ -305,34 +354,54 @@ function StageTracker({ currentStage, stageResults }: { currentStage: number; st
           const isCleared = result?.playerWon;
           const isFailed = result && !result.playerWon;
           const isLocked = s.stage > currentStage && !result;
+          const isBoss = s.stage === 5;
 
           return (
             <React.Fragment key={s.stage}>
-              <div className="flex flex-col items-center gap-1">
-                <motion.div
-                  animate={isActive ? { scale: [1, 1.1, 1] } : {}}
-                  transition={{ repeat: Infinity, duration: 1.5 }}
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg relative"
-                  style={{
-                    background: isCleared ? `${s.color}22` : isFailed ? 'rgba(255,107,107,0.15)' : isActive ? `${s.color}18` : 'rgba(255,255,255,0.05)',
-                    border: `2px solid ${isCleared ? s.color : isFailed ? '#ff6b6b' : isActive ? s.color : 'rgba(255,255,255,0.1)'}`,
-                    opacity: isLocked ? 0.4 : 1,
-                  }}
-                >
-                  {isCleared ? '✓' : isFailed ? '✗' : s.emojis[0]}
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="relative">
                   {isActive && (
                     <motion.div
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
-                      transition={{ repeat: Infinity, duration: 1.5 }}
-                      className="absolute inset-0 rounded-full"
-                      style={{ border: `2px solid ${s.color}`, pointerEvents: 'none' }}
-                    />
+                      animate={{ scale: [1, 1.7, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ repeat: Infinity, duration: isBoss ? 0.9 : 1.6 }}
+                      className="absolute rounded-full pointer-events-none"
+                      style={{ border: `2px solid ${s.color}`, inset: -5, borderRadius: '50%' }} />
                   )}
-                </motion.div>
-                <p className="text-[9px] text-dark-muted text-center w-12 leading-tight">{s.name.split(' ')[0]}</p>
+                  <motion.div
+                    animate={isActive ? { scale: [1, 1.07, 1] } : {}}
+                    transition={{ repeat: Infinity, duration: isBoss ? 0.9 : 1.5 }}
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-base"
+                    style={{
+                      background: isCleared ? `${s.color}25` : isFailed ? 'rgba(255,107,107,0.15)' : isActive ? `${s.color}18` : 'rgba(255,255,255,0.04)',
+                      border: `2px solid ${isCleared ? s.color : isFailed ? '#ff6b6b' : isActive ? s.color : 'rgba(255,255,255,0.1)'}`,
+                      opacity: isLocked ? 0.3 : 1,
+                      boxShadow: isCleared ? `0 0 14px ${s.color}45` : isActive && isBoss ? `0 0 22px ${s.color}65` : isActive ? `0 0 12px ${s.color}35` : 'none',
+                    }}>
+                    {isCleared ? '✓' : isFailed ? '✗' : s.emojis[0]}
+                  </motion.div>
+                </div>
+                <div className="text-center w-14">
+                  <p className="text-[8px] font-bold leading-tight truncate" style={{ color: isActive ? s.color : isCleared ? `${s.color}bb` : 'rgba(139,148,158,0.5)' }}>
+                    {s.name.split(' ')[0]}
+                  </p>
+                  {isBoss && (
+                    <p className="text-[7px] font-black" style={{ color: 'rgba(239,68,68,0.55)' }}>BOSS</p>
+                  )}
+                </div>
               </div>
               {idx < STAGES.length - 1 && (
-                <div className="flex-1 h-0.5 mx-1" style={{ background: isCleared ? `linear-gradient(90deg, ${s.color}, ${STAGES[idx + 1].color})` : 'rgba(255,255,255,0.08)' }} />
+                <div className="flex-1 h-0.5 mx-1 relative overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  {isCleared && (
+                    <>
+                      <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${s.color}, ${STAGES[idx+1].color})` }} />
+                      <motion.div
+                        initial={{ x: '-100%' }} animate={{ x: '200%' }}
+                        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: idx * 0.25 }}
+                        className="absolute inset-0 w-1/3"
+                        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)' }} />
+                    </>
+                  )}
+                </div>
               )}
             </React.Fragment>
           );
@@ -342,8 +411,136 @@ function StageTracker({ currentStage, stageResults }: { currentStage: number; st
   );
 }
 
-function StageResultOverlay() {
-  const { stageResult, clearStageResult, continueToNextStage, reset } = useSurvivalStore();
+// ── Boss Cinematic ────────────────────────────────────────────────────────────
+
+function BossCinematic({ onComplete }: { onComplete: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onComplete, 4200);
+    return () => clearTimeout(t);
+  }, [onComplete]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(25,4,4,0.98) 0%, rgba(0,0,0,0.99) 100%)' }}>
+
+      {/* Ambient pulse rings */}
+      {[1, 2, 3].map(n => (
+        <motion.div key={n}
+          animate={{ scale: [0.8, 3], opacity: [0.35, 0] }}
+          transition={{ duration: 2.2, delay: n * 0.35, repeat: Infinity, ease: 'easeOut' }}
+          className="absolute rounded-full border border-red-700/60"
+          style={{ width: 100, height: 100 }} />
+      ))}
+
+      <div className="text-center px-8 relative z-10">
+        <motion.div
+          initial={{ scale: 0, rotate: -45 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 180, damping: 12, delay: 0.15 }}
+          className="text-8xl mb-6"
+          style={{ filter: 'drop-shadow(0 0 48px rgba(239,68,68,0.9)) drop-shadow(0 0 20px rgba(239,68,68,0.5))' }}>
+          💀
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7, duration: 0.5 }}>
+          <p className="text-[10px] tracking-[0.35em] font-black mb-2" style={{ color: 'rgba(239,68,68,0.6)' }}>STAGE 5</p>
+          <h2 className="text-5xl font-black tracking-tight mb-3"
+            style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #ff6b6b 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            FINAL ARENA
+          </h2>
+          <p className="text-sm font-semibold mb-1" style={{ color: 'rgba(148,163,184,0.85)' }}>The Apex Trinity awaits.</p>
+          <p className="text-xs" style={{ color: 'rgba(239,68,68,0.5)' }}>Three elite AIs. One chance. No mercy.</p>
+        </motion.div>
+
+        <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: 1.8, duration: 0.9 }}
+          className="mt-8 h-px w-52 mx-auto"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(239,68,68,0.7), transparent)' }} />
+
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.6 }}
+          className="text-[10px] mt-3 tracking-[0.25em] uppercase font-medium"
+          style={{ color: 'rgba(100,116,139,0.6)' }}>
+          Entering arena...
+        </motion.p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Tiebreaker Overlay ────────────────────────────────────────────────────────
+
+function TiebreakerOverlay() {
+  const { tiebreakerResult, playTiebreaker } = useSurvivalStore();
+  const { reset: resetGame } = useGameStore();
+
+  if (!tiebreakerResult) return null;
+
+  const { stage, stageName, botNames, playerScore, botScore, scoreboard } = tiebreakerResult;
+  const stageInfo = STAGES.find(s => s.stage === stage)!;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(16px)' }}>
+      <motion.div
+        initial={{ scale: 0.75, opacity: 0, y: 40 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: '1px solid rgba(251,191,36,0.35)' }}>
+
+        <div className="pt-8 pb-4 px-6 text-center relative"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.15) 0%, transparent 70%)' }}>
+          <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: 4, duration: 0.45 }} className="text-5xl mb-3">⚡</motion.div>
+          <h2 className="text-2xl font-black text-white">It's a Tie!</h2>
+          <p className="text-sm mt-1 font-semibold" style={{ color: stageInfo.color }}>
+            {stageInfo.emojis[0]} Stage {stage}: {stageName}
+          </p>
+          <p className="text-xs mt-2" style={{ color: 'rgba(148,163,184,0.7)' }}>One tiebreaker round — lowest score wins</p>
+        </div>
+
+        <div className="mx-5 mb-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="py-1.5 px-4 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold">Match Scores · Tied</p>
+          </div>
+          {(scoreboard ?? [
+            { name: 'You', score: playerScore, isHuman: true },
+            { name: botNames?.[0] ?? 'Bot', score: botScore, isHuman: false },
+          ]).map((entry, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined }}>
+              <span className="text-xs font-semibold" style={{ color: entry.isHuman ? '#fbbf24' : '#8b949e' }}>
+                {entry.isHuman ? '👤 ' : '🤖 '}{entry.name}
+              </span>
+              <span className="text-sm font-black" style={{ color: '#fbbf24' }}>{entry.score} pts</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mx-5 mb-4 rounded-xl px-4 py-2.5"
+          style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <p className="text-[11px] text-center" style={{ color: 'rgba(239,68,68,0.8)' }}>
+            ⚠️ If you tie again in the tiebreaker, you'll be eliminated
+          </p>
+        </div>
+
+        <div className="px-5 pb-6">
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={() => { resetGame(); playTiebreaker(); }}
+            className="w-full py-3.5 rounded-2xl font-bold text-base"
+            style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0d1117' }}>
+            ⚡ Play Tiebreaker Round
+          </motion.button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Stage Result Overlay ──────────────────────────────────────────────────────
+
+function StageResultOverlay({ onEnterFinalArena }: { onEnterFinalArena: () => void }) {
+  const { stageResult, continueToNextStage, reset } = useSurvivalStore();
   const { reset: resetGame } = useGameStore();
   const navigate = useNavigate();
 
@@ -357,9 +554,11 @@ function StageResultOverlay() {
   const stageInfo = STAGES.find(s => s.stage === stage)!;
   const nextInfo  = nextStage ? STAGES.find(s => s.stage === nextStage) : null;
   const isMultiBot = (botScores?.length ?? 0) > 1;
+  const goingToFinalArena = playerWon && nextStage === 5 && !tournamentOver;
 
   const handleAction = () => {
     if (tournamentOver) { resetGame(); reset(); navigate('/survival'); }
+    else if (playerWon && goingToFinalArena) { onEnterFinalArena(); }
     else if (playerWon) { continueToNextStage(); }
     else { resetGame(); reset(); navigate('/survival'); }
   };
@@ -374,8 +573,6 @@ function StageResultOverlay() {
     ? 'radial-gradient(ellipse at 50% 0%, rgba(255,60,60,0.12) 0%, transparent 70%)'
     : `radial-gradient(ellipse at 50% 0%, ${stageInfo.color}18 0%, transparent 70%)`;
 
-  const stageEmojis = stageInfo.emojis.join(' ');
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(16px)' }}>
       <motion.div
@@ -383,9 +580,8 @@ function StageResultOverlay() {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 180, damping: 18 }}
         className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
-        style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: tournamentOver && won ? '1px solid rgba(251,191,36,0.4)' : '1px solid rgba(255,255,255,0.08)' }}
-      >
-        {/* Hero */}
+        style={{ background: 'linear-gradient(160deg, #0d1117, #111827)', border: tournamentOver && won ? '1px solid rgba(251,191,36,0.4)' : '1px solid rgba(255,255,255,0.08)' }}>
+
         <div className="pt-8 pb-4 px-6 text-center relative">
           <div className="absolute inset-0 pointer-events-none" style={{ background: heroBg }} />
           <motion.div animate={{ y: [0, -8, 0] }} transition={{ repeat: 3, duration: 0.5 }} className="text-6xl mb-3 relative z-10">
@@ -393,7 +589,7 @@ function StageResultOverlay() {
           </motion.div>
           <h2 className="text-2xl font-black text-white relative z-10">{heroTitle}</h2>
           <p className="text-sm mt-1 relative z-10 font-semibold" style={{ color: stageInfo.color }}>
-            {stageEmojis} {stageName ?? stageInfo.name}
+            {stageInfo.emojis[0]} {stageName ?? stageInfo.name}
           </p>
           {isMultiBot && (
             <div className="flex justify-center gap-1.5 mt-2 flex-wrap relative z-10">
@@ -407,7 +603,6 @@ function StageResultOverlay() {
           )}
         </div>
 
-        {/* Scoreboard — ranked by score (lower = better) */}
         <div className="mx-5 mb-3 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="py-1.5 px-4 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
             <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold">Final Scoreboard · Lower = Better</p>
@@ -438,7 +633,6 @@ function StageResultOverlay() {
           ))}
         </div>
 
-        {/* Points earned */}
         {playerWon && pointsEarned > 0 && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
             className="mx-5 mb-3 rounded-xl py-2.5 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
@@ -448,7 +642,6 @@ function StageResultOverlay() {
           </motion.div>
         )}
 
-        {/* Champion total */}
         {tournamentOver && won && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5 }}
             className="mx-5 mb-3 rounded-2xl py-4 text-center" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)' }}>
@@ -458,8 +651,17 @@ function StageResultOverlay() {
           </motion.div>
         )}
 
-        {/* Next stage preview */}
-        {!tournamentOver && playerWon && nextInfo && (
+        {/* Boss preview — special section when about to enter Final Arena */}
+        {goingToFinalArena && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
+            className="mx-5 mb-3 rounded-xl px-4 py-3 text-center"
+            style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.3)' }}>
+            <p className="text-sm font-black mb-1" style={{ color: '#ef4444' }}>💀 The Final Arena Awaits</p>
+            <p className="text-[10px] text-dark-muted">The Apex Trinity is ready. Three elite AIs. Are you?</p>
+          </motion.div>
+        )}
+
+        {!tournamentOver && playerWon && nextInfo && !goingToFinalArena && (
           <div className="mx-5 mb-3 rounded-xl py-2 px-4" style={{ background: `${nextInfo.color}10`, border: `1px solid ${nextInfo.color}30` }}>
             <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">Up Next</p>
             <div className="flex items-center justify-between">
@@ -474,7 +676,6 @@ function StageResultOverlay() {
           </div>
         )}
 
-        {/* Stage progress pills */}
         <div className="mx-5 mb-4 flex gap-1 justify-center">
           {stageResults.map((r, i) => (
             <div key={i} className="flex-1 h-2 rounded-full max-w-[40px]" style={{ background: r.playerWon ? '#22c55e' : '#ef4444' }} />
@@ -484,18 +685,20 @@ function StageResultOverlay() {
           ))}
         </div>
 
-        {/* CTA */}
         <div className="px-5 pb-6">
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={handleAction}
             className="w-full py-3.5 rounded-2xl font-bold text-base"
             style={tournamentOver && won
               ? { background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0d1117' }
+              : goingToFinalArena
+              ? { background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff' }
               : playerWon && !tournamentOver && nextInfo
               ? { background: `linear-gradient(135deg, ${nextInfo.color}, ${nextInfo.color}cc)`, color: '#0d1117' }
-              : { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
+              : { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.1)' }}>
             {tournamentOver && won
               ? '🏆 Claim Victory!'
+              : goingToFinalArena
+              ? '💀 Enter Final Arena'
               : playerWon && !tournamentOver
               ? `⚔️ Stage ${nextStage}: ${nextStageName ?? nextInfo?.name}`
               : '🏠 Back to Lobby'}
@@ -506,11 +709,104 @@ function StageResultOverlay() {
   );
 }
 
+// ── Live Battles Strip ────────────────────────────────────────────────────────
+
+const STAGE_COLORS_MAP = ['#22c55e', '#f59e0b', '#a855f7', '#3b82f6', '#ef4444'];
+const TIER_COLOR_MAP: Record<string, string> = {
+  beginner: '#22c55e', pro: '#60a5fa', elite: '#fbbf24', boss_arena: '#ef4444',
+};
+const TIER_ICON_MAP: Record<string, string> = {
+  beginner: '🥉', pro: '🥈', elite: '🥇', boss_arena: '💎',
+};
+
+function LiveBattlesStrip() {
+  const [battles, setBattles] = useState<any[]>([]);
+  const [ready, setReady] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const load = () => {
+      survivalApi.active()
+        .then(r => { setBattles(r.data.battles); setReady(true); })
+        .catch(() => setReady(true));
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center gap-2">
+          <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}
+            className="w-2 h-2 rounded-full" style={{ background: battles.length > 0 ? '#ef4444' : '#4b5563' }} />
+          <p className="text-[10px] uppercase tracking-[0.2em] font-black" style={{ color: '#e6edf3' }}>Live AI Battles</p>
+        </div>
+        {battles.length > 0 && (
+          <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
+            {battles.length} LIVE
+          </span>
+        )}
+      </div>
+
+      {battles.length === 0 ? (
+        <div className="px-4 py-4 text-center">
+          <p className="text-xs text-dark-muted/50">No live battles right now — be the first to enter!</p>
+        </div>
+      ) : (
+        <div>
+          {battles.map((b) => {
+            const stageColor = STAGE_COLORS_MAP[b.currentStage - 1] ?? '#8b949e';
+            const tierColor  = TIER_COLOR_MAP[b.tier]  ?? '#8b949e';
+            const tierIcon   = TIER_ICON_MAP[b.tier]   ?? '🎮';
+            const stageInfo  = STAGES[b.currentStage - 1];
+            return (
+              <div key={String(b.survivalId)}
+                className="flex items-center gap-3 px-4 py-3"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                  style={{ background: `${stageColor}15`, border: `1.5px solid ${stageColor}40` }}>
+                  {stageInfo?.emojis[0] ?? '⚔️'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-dark-text truncate max-w-[100px]">{b.playerUsername}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                      style={{ background: `${tierColor}18`, color: tierColor, border: `1px solid ${tierColor}30` }}>
+                      {tierIcon} {b.tierLabel}
+                    </span>
+                  </div>
+                  <p className="text-[10px] mt-0.5 font-semibold" style={{ color: stageColor }}>
+                    Stage {b.currentStage}/5 · {stageInfo?.name ?? 'Battle'}
+                  </p>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  onClick={() => navigate(`/spectate/${b.roomCode}`)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1"
+                  style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}>
+                  👁 Watch
+                </motion.button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── History Card ──────────────────────────────────────────────────────────────
+
 const STATUS_META: Record<string, { label: string; color: string; emoji: string; border: string }> = {
-  won:       { label: 'Champion',   color: '#fbbf24', emoji: '🏆', border: 'rgba(251,191,36,0.25)'  },
-  lost:      { label: 'Eliminated', color: '#ff6b6b', emoji: '💀', border: 'rgba(255,107,107,0.2)' },
-  abandoned: { label: 'Abandoned',  color: '#9ca3af', emoji: '↩️', border: 'rgba(156,163,175,0.15)' },
-  active:    { label: 'In Progress',color: '#60a5fa', emoji: '⚔️', border: 'rgba(96,165,250,0.2)'  },
+  won:       { label: 'Champion',    color: '#fbbf24', emoji: '🏆', border: 'rgba(251,191,36,0.25)'  },
+  lost:      { label: 'Eliminated',  color: '#ff6b6b', emoji: '💀', border: 'rgba(255,107,107,0.2)'  },
+  abandoned: { label: 'Abandoned',   color: '#9ca3af', emoji: '↩️', border: 'rgba(156,163,175,0.15)' },
+  active:    { label: 'In Progress', color: '#60a5fa', emoji: '⚔️', border: 'rgba(96,165,250,0.2)'  },
 };
 
 function HistoryCard({ r, idx }: { r: any; idx: number }) {
@@ -525,7 +821,6 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
       className="rounded-2xl overflow-hidden"
       style={{ background: 'rgba(12,14,18,0.9)', border: `1px solid ${meta.border}` }}>
 
-      {/* Header */}
       <button className="w-full p-4 text-left" onClick={() => setExpanded(e => !e)}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -543,8 +838,6 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
             <span className="text-dark-muted text-xs">{expanded ? '▲' : '▼'}</span>
           </div>
         </div>
-
-        {/* Stage pill strip */}
         <div className="flex items-center gap-1">
           {STAGES.map(s => {
             const res = stageResults.find((sr: any) => sr.stage === s.stage);
@@ -570,18 +863,14 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
         </div>
       </button>
 
-      {/* Expanded details */}
       <AnimatePresence>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
             style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="p-4 pt-3 space-y-2">
-
-              {/* Per-stage rows */}
               {STAGES.map(s => {
                 const res = stageResults.find((sr: any) => sr.stage === s.stage);
-                const isRefunded = r.status === 'abandoned' && stageResults.length === 0;
                 if (!res && r.status !== 'active') {
                   if (s.stage > (r.currentStage ?? 1) && r.status !== 'won') return null;
                 }
@@ -622,7 +911,6 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
                 );
               })}
 
-              {/* Summary footer */}
               <div className="mt-3 pt-3 grid grid-cols-3 gap-2 text-center"
                 style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 <div>
@@ -661,6 +949,8 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
   );
 }
 
+// ── History Tab with Career Stats ─────────────────────────────────────────────
+
 function SurvivalHistoryTab() {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -694,18 +984,48 @@ function SurvivalHistoryTab() {
     </div>
   );
 
-  const won = records.filter(r => r.status === 'won').length;
-  const lost = records.filter(r => r.status === 'lost').length;
-  const abandoned = records.filter(r => r.status === 'abandoned').length;
+  const wonCount = records.filter(r => r.status === 'won').length;
+  const lostCount = records.filter(r => r.status === 'lost').length;
+  const abandonedCount = records.filter(r => r.status === 'abandoned').length;
+
+  // Compute replayability stats
+  const bossEncounters = records.filter(r =>
+    (r.stageResults ?? []).some((sr: any) => sr.stage === 5)
+  ).length;
+
+  const bestStageReached = records.reduce((best, r) => {
+    const maxStage = (r.stageResults ?? []).reduce((m: number, sr: any) => Math.max(m, sr.stage), 0);
+    return Math.max(best, maxStage);
+  }, 0);
 
   return (
     <div className="space-y-3">
-      {/* Summary bar */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      {/* Career overview */}
+      <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <p className="text-[10px] text-dark-muted uppercase tracking-[0.2em] mb-3 font-semibold text-center">Career Stats</p>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Champion', value: wonCount,     color: '#fbbf24', emoji: '🏆' },
+            { label: 'Eliminated', value: lostCount,  color: '#ff6b6b', emoji: '💀' },
+            { label: 'Boss Fights', value: bossEncounters, color: '#ef4444', emoji: '👑' },
+            { label: 'Best Stage', value: bestStageReached || '—', color: '#60a5fa', emoji: '⚔️' },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl p-2 text-center"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-base">{s.emoji}</p>
+              <p className="text-base font-black leading-tight" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[9px] text-dark-muted leading-tight mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Run history */}
+      <div className="grid grid-cols-3 gap-2 mb-2">
         {[
-          { label: 'Champion', value: won, color: '#fbbf24', emoji: '🏆' },
-          { label: 'Eliminated', value: lost, color: '#ff6b6b', emoji: '💀' },
-          { label: 'Abandoned', value: abandoned, color: '#9ca3af', emoji: '↩️' },
+          { label: 'Champion', value: wonCount,     color: '#fbbf24', emoji: '🏆' },
+          { label: 'Eliminated', value: lostCount,  color: '#ff6b6b', emoji: '💀' },
+          { label: 'Abandoned', value: abandonedCount, color: '#9ca3af', emoji: '↩️' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-2.5 text-center"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -726,7 +1046,8 @@ function SurvivalHistoryTab() {
 export function SurvivalTournamentPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
-  const { subscribe, active, currentStage, stageResults, stageResult, totalPointsEarned } = useSurvivalStore();
+  const { subscribe, active, currentStage, stageResults, stageResult, tiebreakerResult,
+    totalPointsEarned, clearStageResult, continueToNextStage } = useSurvivalStore();
   const { subscribeToEvents } = useGameStore();
   const [balance, setBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
@@ -738,6 +1059,7 @@ export function SurvivalTournamentPage() {
   const [survivalCfg, setSurvivalCfg] = useState<Record<string, { entryPoints: number; stageRewards: number[] }>>({});
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const [showBossCinematic, setShowBossCinematic] = useState(false);
 
   const refreshBalance = useCallback(() => {
     walletApi.get().then(r => setBalance(r.data.balance)).catch(() => {});
@@ -752,7 +1074,6 @@ export function SurvivalTournamentPage() {
       setStatusChecked(true);
       setActiveStatus(result);
     });
-    // Refresh balance when stage reward is credited
     const unsub5 = on('survival:stage_result', () => refreshBalance());
     const unsub7 = on('survival:abandoned', () => {
       setActiveStatus(null);
@@ -762,7 +1083,6 @@ export function SurvivalTournamentPage() {
       setStatusChecked(true);
     });
 
-    // Use HTTP for initial status load — no socket timing issues on refresh
     loadSurvivalStatus(setActiveStatus, setStatusChecked);
     refreshBalance();
     configApi.getPublic().then(r => {
@@ -770,7 +1090,6 @@ export function SurvivalTournamentPage() {
       if (st) setEnabledTiers({ beginner: st.beginner ?? true, pro: st.pro ?? true, elite: st.elite ?? true, boss_arena: st.boss_arena ?? true });
       if (r.data.survivalConfig) setSurvivalCfg(r.data.survivalConfig);
     }).catch(() => {});
-    // Live config updates
     const unsub6 = on('admin:config_updated', (cfg: any) => {
       const st = cfg.featureFlags?.survivalTiers;
       if (st) setEnabledTiers({ beginner: st.beginner ?? true, pro: st.pro ?? true, elite: st.elite ?? true, boss_arena: st.boss_arena ?? true });
@@ -800,24 +1119,65 @@ export function SurvivalTournamentPage() {
     socketSurvival.abandon();
   };
 
+  const handleEnterFinalArena = useCallback(() => {
+    clearStageResult();
+    setShowBossCinematic(true);
+  }, [clearStageResult]);
+
+  const handleCinematicComplete = useCallback(() => {
+    setShowBossCinematic(false);
+    socketSurvival.continue();
+  }, []);
+
   if (!isAuthenticated) return null;
 
   const pts = (balance ?? 0) * POINTS_PER_RUPEE;
+  const isDangerStage = active && currentStage >= 4;
 
   return (
     <Layout>
-      {/* Stage result overlay (shown after each match) */}
-      <AnimatePresence>{stageResult && <StageResultOverlay />}</AnimatePresence>
+      {/* Boss cinematic overlay */}
+      <AnimatePresence>
+        {showBossCinematic && <BossCinematic onComplete={handleCinematicComplete} />}
+      </AnimatePresence>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+      {/* Tiebreaker overlay */}
+      <AnimatePresence>{tiebreakerResult && <TiebreakerOverlay />}</AnimatePresence>
+
+      {/* Stage result overlay */}
+      <AnimatePresence>
+        {stageResult && <StageResultOverlay onEnterFinalArena={handleEnterFinalArena} />}
+      </AnimatePresence>
+
+      {/* Danger atmosphere — subtle red pulse for stages 4 & 5 */}
+      <AnimatePresence>
+        {isDangerStage && (
+          <motion.div key="danger-atmo"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 pointer-events-none z-0">
+            <motion.div
+              animate={{ opacity: [0, currentStage === 5 ? 0.18 : 0.1, 0] }}
+              transition={{ duration: currentStage === 5 ? 0.85 : 1.4, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(239,68,68,0.2) 0%, transparent 70%)' }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 relative z-10">
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-1">
-          <h1 className="text-3xl font-black" style={{ background: 'linear-gradient(135deg, #fbbf24, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          <p className="text-[10px] tracking-[0.3em] uppercase font-bold mb-2" style={{ color: 'rgba(251,191,36,0.5)' }}>Arena of Sevens</p>
+          <h1 className="text-3xl font-black"
+            style={{ background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 40%, #ef4444 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             AI Survival Championship
           </h1>
           <p className="text-dark-muted text-sm max-w-md mx-auto">
-            Face 5 progressive AI opponents. One loss ends it all. Defeat the Boss AI to become Champion.
+            {isDangerStage && currentStage === 5
+              ? '⚠️ You are in the Final Arena. The Apex Trinity awaits.'
+              : isDangerStage
+              ? `⚡ Stage ${currentStage} — Expert territory. Stay focused.`
+              : 'Face 5 progressive AI opponents. One loss ends it all. Defeat the Boss to become Champion.'}
           </p>
         </motion.div>
 
@@ -883,7 +1243,7 @@ export function SurvivalTournamentPage() {
                   ✕ Quit
                 </button>
               </div>
-              <StageTracker currentStage={activeStatus.currentStage} stageResults={activeStatus.stageResults ?? []} />
+              <ProgressionMap currentStage={activeStatus.currentStage} stageResults={activeStatus.stageResults ?? []} />
               <div className="mt-3 flex gap-2">
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={handleResume} disabled={starting}
                   className="flex-1 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
@@ -896,7 +1256,7 @@ export function SurvivalTournamentPage() {
         </AnimatePresence>
 
         {/* Active stage tracker (during tournament) */}
-        {active && <StageTracker currentStage={currentStage} stageResults={stageResults} />}
+        {active && <ProgressionMap currentStage={currentStage} stageResults={stageResults} />}
 
         {/* Tabs */}
         <div className="flex rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -912,26 +1272,47 @@ export function SurvivalTournamentPage() {
           {tab === 'play' ? (
             <motion.div key="play" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
 
-              {/* Stage showcase */}
+              {/* AI Personality Cards */}
               <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <p className="text-[10px] text-dark-muted uppercase tracking-widest text-center font-semibold">5 Progressive AI Stages</p>
+                <p className="text-[10px] text-dark-muted uppercase tracking-[0.2em] text-center font-semibold">5 Progressive AI Opponents</p>
                 <div className="space-y-2">
-                  {STAGES.map((s, i) => (
-                    <motion.div key={s.stage} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-                      className="flex items-center gap-3 px-3 py-2 rounded-xl"
-                      style={{ background: `${s.color}08`, border: `1px solid ${s.color}20` }}>
-                      <span className="text-xl w-8 text-center">{s.emojis[0]}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold text-dark-text">Stage {s.stage}: {s.name}</p>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: `${s.color}20`, color: s.color }}>{s.difficulty}</span>
+                  {AI_PERSONALITIES.map((ai, i) => {
+                    const stage = STAGES[i];
+                    return (
+                      <motion.div key={ai.stage}
+                        initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
+                        className="flex items-center gap-3 px-3 py-3 rounded-xl"
+                        style={{ background: ai.accent, border: `1px solid ${ai.color}22` }}>
+
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                          style={{ background: `${ai.color}15`, border: `1.5px solid ${ai.color}35`, boxShadow: `0 0 12px ${ai.color}20` }}>
+                          {ai.icon}
                         </div>
-                        <p className="text-[10px] text-dark-muted">{s.desc}</p>
-                      </div>
-                    </motion.div>
-                  ))}
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            <p className="text-xs font-black" style={{ color: ai.color }}>{ai.name}</p>
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                              style={{ background: `${ai.color}20`, color: ai.color, border: `1px solid ${ai.color}30` }}>
+                              {stage.difficulty}
+                            </span>
+                          </div>
+                          <p className="text-[10px] font-semibold" style={{ color: `${ai.color}99` }}>{ai.type}</p>
+                          <p className="text-[10px] text-dark-muted/70 mt-0.5 leading-tight">{ai.desc}</p>
+                        </div>
+
+                        <div className="text-right flex-shrink-0 ml-1">
+                          <p className="text-[8px] text-dark-muted/50 font-medium">STAGE</p>
+                          <p className="text-xl font-black leading-none" style={{ color: ai.color }}>{i + 1}</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* Live battles spectator strip */}
+              <LiveBattlesStrip />
 
               {/* Tier cards */}
               <div className="grid sm:grid-cols-2 gap-4">
@@ -951,24 +1332,17 @@ export function SurvivalTournamentPage() {
                       </div>
                       <div className="space-y-1 text-xs">
                         <div className="flex justify-between"><span className="text-dark-muted">Entry</span><span className="font-bold text-white">{points.toLocaleString()} pts</span></div>
-                        <div className="flex justify-between"><span className="text-dark-muted">= Real Money</span><span className="font-bold text-white">₹{(points / POINTS_PER_RUPEE).toFixed(0)}</span></div>
                         <div className="h-px" style={{ background: `${tier.color}30` }} />
                         {rewards.map((r, i) => (
                           <div key={i} className="flex justify-between items-center" style={{ opacity: 0.7 + i * 0.06 }}>
                             <span className="text-dark-muted">Stage {i + 1} clear</span>
-                            <div className="text-right">
-                              <span style={{ color: tier.color }}>+{r.toLocaleString()} pts</span>
-                              <span className="text-dark-muted/60 text-[10px] ml-1.5">≡ ₹{r / POINTS_PER_RUPEE}</span>
-                            </div>
+                            <span style={{ color: tier.color }}>+{r.toLocaleString()} pts</span>
                           </div>
                         ))}
                         <div className="h-px" style={{ background: `${tier.color}30` }} />
                         <div className="flex justify-between items-center font-bold">
                           <span className="text-dark-text">Max Reward</span>
-                          <div className="text-right">
-                            <span style={{ color: tier.color }}>+{totalReward.toLocaleString()} pts</span>
-                            <span className="text-dark-muted/60 text-[10px] ml-1.5">≡ ₹{totalReward / POINTS_PER_RUPEE}</span>
-                          </div>
+                          <span style={{ color: tier.color }}>+{totalReward.toLocaleString()} pts</span>
                         </div>
                       </div>
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
@@ -988,10 +1362,11 @@ export function SurvivalTournamentPage() {
                 <p className="text-xs font-semibold text-dark-muted uppercase tracking-wider">How it works</p>
                 <ul className="space-y-1.5 text-xs text-dark-muted">
                   <li>• Entry fee deducted instantly from your main wallet</li>
-                  <li>• Fight 5 AI opponents, each progressively harder</li>
+                  <li>• Fight 5 AI opponents — each progressively more dangerous</li>
                   <li>• Win a stage → points credited immediately to wallet</li>
                   <li>• Lose any stage → eliminated, tournament ends</li>
-                  <li>• Defeat Boss AI → become Champion, earn maximum reward</li>
+                  <li>• <strong className="text-yellow-400">Tie</strong> → one tiebreaker round; tie again = eliminated</li>
+                  <li>• Clear Stage 4 → face the <strong className="text-red-400">Apex Trinity Boss</strong> in the Final Arena</li>
                   <li>• <strong className="text-yellow-400">1 Rupee = {POINTS_PER_RUPEE} Points</strong> — rewards auto-convert to wallet</li>
                   <li>• 🔄 If you disconnect, resume from this page anytime</li>
                 </ul>
