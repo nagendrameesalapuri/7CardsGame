@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
-import { Card as CardType } from '../../types';
+import { Card as CardType, ClientPlayerState } from '../../types';
 import { Card } from './Card';
 import { useGameStore } from '../../store/gameStore';
 import { DiscardPileModal } from './DiscardPileModal';
@@ -9,6 +9,7 @@ import { DiscardPileModal } from './DiscardPileModal';
 interface DeckAreaProps {
   deckCount: number;
   discardPile: CardType[];
+  players: ClientPlayerState[];
   jokerRank: string;
   jokerCard: CardType;
   isMyTurn: boolean;
@@ -17,7 +18,7 @@ interface DeckAreaProps {
 }
 
 export function DeckArea({
-  deckCount, discardPile, jokerRank, jokerCard, isMyTurn, hasDrawnThisTurn, underAttack,
+  deckCount, discardPile, players, jokerRank, jokerCard, isMyTurn, hasDrawnThisTurn, underAttack,
 }: DeckAreaProps) {
   const { drawCard } = useGameStore();
   const [showPileModal, setShowPileModal] = React.useState(false);
@@ -229,6 +230,7 @@ export function DeckArea({
         isOpen={showPileModal}
         onClose={() => setShowPileModal(false)}
         discardPile={discardPile}
+        players={players}
       />
     </>
   );

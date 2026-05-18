@@ -207,13 +207,14 @@ export class GameEngine {
       if (!isCut) return fail('Draw a card first — or cut with a card matching the discard pile', state);
     }
 
+    const discardedCards = cardsToDiscard.map(c => ({ ...c, discardedBy: player.userId }));
     const newHand = player.hand.filter(c => !cardIds.includes(c.id));
     let s: GameState = {
       ...state,
       players: state.players.map(p =>
         p.id === playerId ? { ...p, hand: newHand, handCount: newHand.length } : p
       ),
-      discardPile: [...state.discardPile, ...cardsToDiscard],
+      discardPile: [...state.discardPile, ...discardedCards],
       hasDrawnThisTurn: false,
       drawnCard: null,
     };
@@ -221,7 +222,7 @@ export class GameEngine {
     const actions: GameAction[] = [{
       type: 'discard',
       playerId,
-      cards: cardsToDiscard,
+      cards: discardedCards,
       message: (() => {
         const count = cardsToDiscard.length;
         const rank = cardsToDiscard[0].rank;
@@ -286,6 +287,7 @@ export class GameEngine {
       }
 
       const newHand = player.hand.filter(c => !cardIds.includes(c.id));
+      const thrownCards = validSevens.map(c => ({ ...c, discardedBy: player.userId }));
       const newSevenCount = state.attackChain.sevensCount + validSevens.length;
       const nextTarget = GameEngine.nextActiveIndex(s, s.currentPlayerIndex, 1);
 
@@ -294,7 +296,7 @@ export class GameEngine {
         players: s.players.map(p =>
           p.id === playerId ? { ...p, hand: newHand, handCount: newHand.length } : p
         ),
-        discardPile: [...s.discardPile, ...validSevens],
+        discardPile: [...s.discardPile, ...thrownCards],
         attackChain: {
           sourcePlayerId: playerId,
           targetPlayerIndex: nextTarget,
@@ -534,7 +536,7 @@ export class GameEngine {
     const p = s.players.find(pl => pl.id === player.id)!;
     if (p.hand.length > 0) {
       const sorted = [...p.hand].sort((a, b) => DeckManager.getCardValue(b) - DeckManager.getCardValue(a));
-      const toDiscard = sorted[0];
+      const toDiscard = { ...sorted[0], discardedBy: player.userId };
       const newHand = p.hand.filter(c => c.id !== toDiscard.id);
       s = {
         ...s,

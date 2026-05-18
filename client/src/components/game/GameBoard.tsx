@@ -244,6 +244,7 @@ export function GameBoard() {
           <DeckArea
             deckCount={game.deckCount}
             discardPile={game.discardPile}
+            players={game.players}
             jokerRank={game.jokerRank}
             jokerCard={game.jokerCard}
             isMyTurn={isMyTurn}

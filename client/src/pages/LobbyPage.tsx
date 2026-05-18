@@ -373,7 +373,7 @@ function Shimmer() {
 }
 
 export function LobbyPage() {
-  const { room, game, subscribeToEvents, createRoom, resumeRoomCode, clearResume, joinRoom, resumeGame } = useGameStore();
+  const { room, game, subscribeToEvents, createRoom, resumeRoomCodes, clearResume, joinRoom, resumeGame } = useGameStore();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -610,26 +610,28 @@ export function LobbyPage() {
           </button>
         </div>
 
-        {/* ── Resume game banner ── */}
-        {resumeRoomCode && (
-          <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
-            className="mb-4 relative overflow-hidden rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+        {/* ── Resume game banners (one per active room) ── */}
+        {resumeRoomCodes.map((code, i) => (
+          <motion.div key={code}
+            initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06 }}
+            className="mb-2 relative overflow-hidden rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
             style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)' }}>
             <Shimmer />
             <div className="flex items-center gap-3 min-w-0">
-              <motion.span animate={{ rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2 }}
+              <motion.span animate={{ rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2, delay: i * 0.4 }}
                 className="text-2xl flex-shrink-0">🎮</motion.span>
               <div className="min-w-0">
                 <p className="font-black text-yellow-300 text-sm">Game in progress!</p>
-                <p className="text-dark-muted text-xs truncate">Room {resumeRoomCode} · Tap to rejoin</p>
+                <p className="text-dark-muted text-xs truncate">Room {code} · Tap to rejoin</p>
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              <Button variant="primary" size="sm" onClick={() => { resumeGame(resumeRoomCode); navigate('/game'); }}>▶ Resume</Button>
-              <button onClick={clearResume} className="text-dark-muted hover:text-white text-sm px-2 transition-colors">✕</button>
+              <Button variant="primary" size="sm" onClick={() => { resumeGame(code); navigate('/game'); }}>▶ Resume</Button>
+              <button onClick={() => clearResume(code)} className="text-dark-muted hover:text-white text-sm px-2 transition-colors">✕</button>
             </div>
           </motion.div>
-        )}
+        ))}
 
         {activeTab === 'history' && <HistoryTab />}
 

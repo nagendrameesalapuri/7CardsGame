@@ -34,6 +34,7 @@ export interface Card {
   rank: Rank;
   value: number; // 0 for jokers, 1 for A, 10 for J/Q/K, face value otherwise
   isJoker: boolean;
+  discardedBy?: string;
 }
 
 export interface PlayerState {
