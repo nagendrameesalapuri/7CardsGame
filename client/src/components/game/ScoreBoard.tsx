@@ -75,6 +75,7 @@ function TrophyRays({ color = '#ffd700' }: { color?: string }) {
 }
 
 const MATCH_END_DELAY_S = 15;
+const NEXT_ROUND_DELAY_S = 10;
 
 export function ScoreBoard({
   roundResult, players, roundNumber, roundCount,
@@ -86,6 +87,7 @@ export function ScoreBoard({
   const isFinalRound = roundNumber >= roundCount;
   const isWin = roundResult.showPlayerWon;
 
+  // Match-end countdown (existing)
   const [countdown, setCountdown] = useState(MATCH_END_DELAY_S);
   useEffect(() => {
     if (!isFinalRound) return;
@@ -94,11 +96,28 @@ export function ScoreBoard({
     return () => clearInterval(t);
   }, [isFinalRound]);
 
-  const myPlayer = players.find(p => p.userId === myUserId);
-  const iHaveClicked = !!(myPlayer && roundReadyUpdate?.readyUserIds.includes(myUserId));
+  // Auto next-round countdown — replaces the ready button
+  const [nextRoundSec, setNextRoundSec] = useState(NEXT_ROUND_DELAY_S);
+  const readyFired = React.useRef(false);
+  useEffect(() => {
+    if (isFinalRound) return;
+    readyFired.current = false;
+    setNextRoundSec(NEXT_ROUND_DELAY_S);
+    const t = setInterval(() => {
+      setNextRoundSec(s => {
+        if (s <= 1) {
+          clearInterval(t);
+          if (!readyFired.current) { readyFired.current = true; onReady(); }
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [isFinalRound, roundNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const myPlayer = players.find(p => p.userId === myUserId); // eslint-disable-line @typescript-eslint/no-unused-vars
   const readyCount = roundReadyUpdate?.readyUserIds.length ?? 0;
-  const totalHumans = roundReadyUpdate?.total ?? 0;
-  const allReady = totalHumans > 0 && readyCount >= totalHumans;
 
   const sorted = [...roundResult.playerResults].sort((a, b) => {
     const aWins = winnerIds.includes(a.playerId);
@@ -474,68 +493,33 @@ export function ScoreBoard({
           </div>
 
           {!isFinalRound && (
-            <div className="flex flex-col items-center gap-2.5">
-              <motion.button
-                whileHover={!iHaveClicked ? { scale: 1.03 } : {}}
-                whileTap={!iHaveClicked ? { scale: 0.96 } : {}}
-                onClick={() => !iHaveClicked && onReady()}
-                disabled={iHaveClicked}
-                className="w-full max-w-xs py-3.5 rounded-2xl font-black text-base relative overflow-hidden"
-                style={
-                  iHaveClicked
-                    ? {
-                        background: 'rgba(255,255,255,0.05)',
-                        color: 'rgba(255,255,255,0.3)',
-                        border: '1px solid rgba(255,255,255,0.07)',
-                        cursor: 'default',
-                      }
-                    : {
-                        background: 'linear-gradient(135deg, #00ff88 0%, #00e07a 50%, #00cc6a 100%)',
-                        color: '#0d1117',
-                        boxShadow: '0 8px 32px rgba(0,255,136,0.42), 0 2px 8px rgba(0,0,0,0.3)',
-                      }
-                }
-              >
-                {!iHaveClicked && (
-                  <motion.div
-                    animate={{ x: ['-100%', '200%'] }}
-                    transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
-                    style={{
-                      position: 'absolute', inset: 0,
-                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent)',
-                      pointerEvents: 'none',
-                    }}
+            <div className="flex flex-col items-center gap-2">
+              {/* Circular countdown ring */}
+              <div className="relative flex items-center justify-center" style={{ width: 72, height: 72 }}>
+                <svg width="72" height="72" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
+                  <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                  <motion.circle
+                    cx="36" cy="36" r="30" fill="none"
+                    stroke="#00ff88" strokeWidth="4" strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 30}`}
+                    strokeDashoffset={`${2 * Math.PI * 30 * (1 - nextRoundSec / NEXT_ROUND_DELAY_S)}`}
+                    style={{ transition: 'stroke-dashoffset 0.9s linear' }}
                   />
-                )}
-                <span className="relative z-10">
-                  {iHaveClicked ? '✓ Ready — waiting for others...' : '▶ Play Next Round'}
-                </span>
-              </motion.button>
-
-              {roundReadyUpdate && (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex gap-1.5">
-                    {Array.from({ length: totalHumans }).map((_, idx) => (
-                      <motion.div
-                        key={idx}
-                        animate={idx < readyCount ? { scale: [1, 1.35, 1] } : {}}
-                        transition={{ duration: 0.3 }}
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{
-                          background: idx < readyCount ? '#00ff88' : 'rgba(255,255,255,0.1)',
-                          boxShadow: idx < readyCount ? '0 0 9px rgba(0,255,136,0.65)' : 'none',
-                          transition: 'background 0.3s',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <span
-                    className="text-xs font-medium"
-                    style={{ color: allReady ? '#00ff88' : 'rgba(255,255,255,0.35)' }}
-                  >
-                    {allReady ? '● All ready! Starting...' : `${readyCount}/${totalHumans} ready`}
+                </svg>
+                <div className="flex flex-col items-center z-10">
+                  <span className="text-xl font-black" style={{ color: nextRoundSec <= 3 ? '#ff6b6b' : '#00ff88', lineHeight: 1 }}>
+                    {nextRoundSec}
                   </span>
+                  <span className="text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>sec</span>
                 </div>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Next round starting…
+              </p>
+              {readyCount > 0 && (
+                <p className="text-[10px]" style={{ color: '#00ff88' }}>
+                  {readyCount} player{readyCount > 1 ? 's' : ''} ready
+                </p>
               )}
             </div>
           )}
