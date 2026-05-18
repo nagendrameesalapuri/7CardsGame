@@ -16,6 +16,8 @@ import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
 import { ActionButtons } from './ActionButtons';
 import { VoiceChat } from './VoiceChat';
 import { useSurvivalStore } from '../../store/survivalStore';
+import { useNetworkQuality } from '../../hooks/useNetworkQuality';
+import { notify } from '../../services/notify';
 
 // ── Premium game-mode badge ───────────────────────────────────────────────────
 function GameModeBadge({ isSurvival, survivalStage, survivalTier, entryFee }: {
@@ -94,6 +96,22 @@ export function GameBoard() {
   const entryFee: number = (room?.config as any)?.entryFee ?? 0;
   const { active: isSurvival, currentStage: survivalStage, tier: survivalTier } = useSurvivalStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
+  const networkQuality = useNetworkQuality();
+
+  // Warn user when connection degrades
+  const prevQualityRef = React.useRef(networkQuality);
+  useEffect(() => {
+    const prev = prevQualityRef.current;
+    prevQualityRef.current = networkQuality;
+    if (networkQuality === prev) return;
+    if (networkQuality === 'offline') {
+      notify.error('Connection lost — trying to reconnect…', { id: 'network-quality', duration: Infinity });
+    } else if (networkQuality === 'reconnecting') {
+      notify.warning('Poor connection — reconnecting…', { id: 'network-quality', duration: Infinity });
+    } else if (prev !== 'good') {
+      notify.success('Connection restored!', { id: 'network-quality', duration: 3000 });
+    }
+  }, [networkQuality]);
 
   useEffect(() => {
     const unsub = subscribeToEvents();
@@ -165,7 +183,7 @@ export function GameBoard() {
           />
         </div>
 
-        {/* Right: mic + chat */}
+        {/* Right: mic + chat + network dot */}
         <div className="flex items-center justify-end gap-2">
           <VoiceChat size="sm" />
           <ChatPanel
@@ -173,6 +191,7 @@ export function GameBoard() {
             messages={game.chatMessages}
             playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
           />
+          <NetworkDot quality={networkQuality} />
         </div>
       </div>
 
@@ -341,6 +360,34 @@ export function GameBoard() {
           <WinnerCelebration key="winner" result={matchResult} onClose={leaveRoom} />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Network quality dot ───────────────────────────────────────────────────────
+import type { NetworkQuality } from '../../services/socket';
+
+function NetworkDot({ quality }: { quality: NetworkQuality }) {
+  const cfg = {
+    good:         { color: '#22c55e', glow: 'rgba(34,197,94,0.7)',   label: 'Connected',    pulse: false },
+    reconnecting: { color: '#f59e0b', glow: 'rgba(245,158,11,0.7)', label: 'Reconnecting…', pulse: true  },
+    offline:      { color: '#ef4444', glow: 'rgba(239,68,68,0.8)',   label: 'Offline',       pulse: true  },
+  }[quality];
+
+  return (
+    <div className="relative flex items-center justify-center" title={cfg.label}>
+      {cfg.pulse && (
+        <motion.span
+          animate={{ scale: [1, 2, 1], opacity: [0.6, 0, 0.6] }}
+          transition={{ repeat: Infinity, duration: 1.2, ease: 'easeOut' }}
+          className="absolute w-3 h-3 rounded-full pointer-events-none"
+          style={{ background: cfg.color }}
+        />
+      )}
+      <span
+        className="w-2.5 h-2.5 rounded-full relative z-10"
+        style={{ background: cfg.color, boxShadow: `0 0 6px ${cfg.glow}` }}
+      />
     </div>
   );
 }

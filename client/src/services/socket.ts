@@ -4,6 +4,39 @@ import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, SpectatorG
 let socket: Socket | null = null;
 let spectatorSocket: Socket | null = null;
 
+// ── Network quality tracking ──────────────────────────────────────────────────
+
+export type NetworkQuality = 'good' | 'reconnecting' | 'offline';
+let _quality: NetworkQuality = 'good';
+const _qualityListeners = new Set<(q: NetworkQuality) => void>();
+
+function setQuality(q: NetworkQuality) {
+  if (_quality === q) return;
+  _quality = q;
+  _qualityListeners.forEach(fn => fn(q));
+}
+
+export function getNetworkQuality(): NetworkQuality { return _quality; }
+export function subscribeNetworkQuality(fn: (q: NetworkQuality) => void): () => void {
+  _qualityListeners.add(fn);
+  return () => _qualityListeners.delete(fn);
+}
+
+// ── Action throttle (prevent rapid-fire duplicate emits) ──────────────────────
+
+let _lastActionAt = 0;
+const MIN_ACTION_INTERVAL_MS = 550;
+
+function canEmitAction(): boolean {
+  const now = Date.now();
+  if (now - _lastActionAt < MIN_ACTION_INTERVAL_MS) return false;
+  _lastActionAt = now;
+  return true;
+}
+
+// Reset throttle when a new game state arrives (so legitimate sequential actions aren't blocked)
+export function resetActionThrottle() { _lastActionAt = 0; }
+
 export function getSocket(): Socket {
   if (!socket) throw new Error('Socket not initialized — call connectSocket first');
   return socket;
@@ -26,9 +59,20 @@ export function connectSocket(token?: string, guestToken?: string): Socket {
     transports: ['websocket', 'polling'],
   });
 
-  socket.on('connect', () => console.log('[Socket] Connected:', socket!.id));
-  socket.on('disconnect', (reason) => console.warn('[Socket] Disconnected:', reason));
-  socket.on('connect_error', (err) => console.error('[Socket] Error:', err.message));
+  socket.on('connect', () => {
+    console.log('[Socket] Connected:', socket!.id);
+    setQuality('good');
+  });
+  socket.on('disconnect', (reason) => {
+    console.warn('[Socket] Disconnected:', reason);
+    setQuality('offline');
+  });
+  socket.on('connect_error', (err) => {
+    console.error('[Socket] Error:', err.message);
+    setQuality('offline');
+  });
+  socket.io.on('reconnect_attempt', () => setQuality('reconnecting'));
+  socket.io.on('reconnect', () => setQuality('good'));
 
   return socket;
 }
@@ -103,11 +147,11 @@ export const socketRoom = {
 // ── Game events ───────────────────────────────────────────────────────────────
 
 export const socketGame = {
-  draw: (source: 'deck' | 'discard') => getSocket().emit('game:draw', source),
-  discard: (cardIds: string[]) => getSocket().emit('game:discard', cardIds),
-  show: () => getSocket().emit('game:show'),
+  draw: (source: 'deck' | 'discard') => canEmitAction() && getSocket().emit('game:draw', source),
+  discard: (cardIds: string[]) => canEmitAction() && getSocket().emit('game:discard', cardIds),
+  show: () => canEmitAction() && getSocket().emit('game:show'),
   attackRespond: (action: 'throw' | 'take', cardIds?: string[]) =>
-    getSocket().emit('game:attack:respond', { action, cardIds }),
+    canEmitAction() && getSocket().emit('game:attack:respond', { action, cardIds }),
   reconnect: (roomCode: string) => getSocket().emit('game:reconnect', roomCode),
   roundReady: () => getSocket().emit('game:round_ready'),
 };
