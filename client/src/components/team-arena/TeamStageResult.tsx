@@ -157,7 +157,7 @@ export function TeamStageResult({ result, onContinue, onAbandon, stageResults }:
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 overflow-y-auto"
       style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(14px)' }}
     >
       {/* Confetti on win */}
@@ -171,6 +171,7 @@ export function TeamStageResult({ result, onContinue, onAbandon, stageResults }:
         }}
       />
 
+      <div className="min-h-full flex items-center justify-center p-4 py-6">
       <motion.div
         initial={{ scale: 0.88, y: 20 }}
         animate={{ scale: 1, y: 0 }}
@@ -415,6 +416,7 @@ export function TeamStageResult({ result, onContinue, onAbandon, stageResults }:
           </div>
         </div>
       </motion.div>
+      </div>
     </motion.div>
   );
 }
