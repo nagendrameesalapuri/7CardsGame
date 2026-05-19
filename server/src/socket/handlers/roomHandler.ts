@@ -155,12 +155,18 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
   // ── Join Room ──────────────────────────────────────────────────────────────
   socket.on('room:join', async (code: string) => {
+    // Per-user lock: ignore rapid duplicate taps that would cause double-charge
+    if (joiningUsers.has(userId)) return;
+    joiningUsers.add(userId);
     try {
       console.log(`[Room] ${username} attempting to join room: ${code}`);
       const room = await Room.findOne({ code: code.toUpperCase() });
 
       if (!room) { console.log('[Room] Not found:', code); return socket.emit('room:error', 'Room not found'); }
       if (room.status !== 'waiting') { console.log('[Room] Not waiting:', room.status); return socket.emit('room:error', 'Game already in progress'); }
+
+      // Cancel any pending grace-period delete so the room stays alive
+      cancelPendingWaitingDelete(room.code);
 
       const alreadyIn = room.players.some(p => p.userId === userId);
 
@@ -210,7 +216,10 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       }
 
       if (!alreadyIn) {
-        room.players.push({ userId, username, avatar, isReady: false, isHost: false, isBot: false, socketId: socket.id });
+        // Restore host status if this player is the original host (coming back after disconnect)
+        const isHost = room.hostId === userId;
+        room.players.push({ userId, username, avatar, isReady: false, isHost, isBot: false, socketId: socket.id });
+        if (isHost) room.players.forEach((p, i) => { if (p.userId !== userId) room.players[i].isHost = false; });
       } else {
         const idx = room.players.findIndex(p => p.userId === userId);
         if (idx >= 0) room.players[idx].socketId = socket.id;
@@ -228,6 +237,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     } catch (err) {
       console.error('[Room] Join error:', err);
       socket.emit('room:error', 'Failed to join room');
+    } finally {
+      joiningUsers.delete(userId);
     }
   });
 
@@ -282,6 +293,18 @@ export function cancelPendingAbandon(roomCode: string): void {
   const t = pendingAbandon.get(roomCode);
   if (t) { clearTimeout(t); pendingAbandon.delete(roomCode); }
 }
+
+// Grace-period timers for empty WAITING rooms (host switched apps, etc.)
+// Room is kept alive for 30 s so the host can come back.
+const pendingWaitingDelete = new Map<string, ReturnType<typeof setTimeout>>();
+
+function cancelPendingWaitingDelete(roomCode: string): void {
+  const t = pendingWaitingDelete.get(roomCode);
+  if (t) { clearTimeout(t); pendingWaitingDelete.delete(roomCode); }
+}
+
+// Per-user join lock: prevents concurrent double-join on rapid taps.
+const joiningUsers = new Set<string>();
 
 /** Refund the entry fee to every player who paid in a cash game room. */
 export async function refundAbandonedGame(room: IRoom) {
@@ -367,6 +390,25 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
   }
 
   if (room.players.length === 0) {
+    if (room.status === 'waiting' && !pendingWaitingDelete.has(room.code)) {
+      // Host/last player switched apps — give 30 s to come back before deleting
+      const roomCode = room.code;
+      const isPrivate = room.config.isPrivate;
+      await room.save();
+      const timer = setTimeout(async () => {
+        pendingWaitingDelete.delete(roomCode);
+        try {
+          const liveRoom = await Room.findOne({ code: roomCode });
+          if (!liveRoom || liveRoom.players.length > 0) return;
+          await refundAbandonedGame(liveRoom);
+          await Room.deleteOne({ _id: liveRoom._id });
+          if (!isPrivate) io.emit('lobby:rooms_updated');
+        } catch (e) { console.error('[Room] Waiting delete error:', e); }
+      }, 30_000);
+      pendingWaitingDelete.set(roomCode, timer);
+      if (!isPrivate) io.emit('lobby:rooms_updated');
+      return;
+    }
     await Room.deleteOne({ _id: room._id });
     return;
   }

@@ -385,6 +385,7 @@ export function LobbyPage() {
   const [showDailyLogin, setShowDailyLogin] = useState(false);
   const { progress, load: loadProgression, subscribe: subscribeProgression } = useProgressionStore();
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
+  const [joiningRoomCode, setJoiningRoomCode] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
@@ -964,11 +965,17 @@ export function LobbyPage() {
                               </p>
                             </div>
                             <motion.button
-                              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.96 }}
-                              onClick={() => useGameStore.getState().joinRoom(r.code)}
-                              className="flex-shrink-0 text-xs font-black px-3 py-1.5 rounded-lg"
+                              whileHover={{ scale: joiningRoomCode ? 1 : 1.06 }} whileTap={{ scale: joiningRoomCode ? 1 : 0.96 }}
+                              disabled={!!joiningRoomCode}
+                              onClick={() => {
+                                if (joiningRoomCode) return;
+                                setJoiningRoomCode(r.code);
+                                joinRoom(r.code);
+                                setTimeout(() => setJoiningRoomCode(null), 4000);
+                              }}
+                              className="flex-shrink-0 text-xs font-black px-3 py-1.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                               style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
-                              Join
+                              {joiningRoomCode === r.code ? 'Joining…' : 'Join'}
                             </motion.button>
                           </motion.div>
                         ))}

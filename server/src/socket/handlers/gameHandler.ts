@@ -54,6 +54,8 @@ const roomToGame = new Map<string, string>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 // Ready-for-next-round tracking: gameId → Set of userIds who have clicked "Play Next Round"
 const roundReadyPlayers = new Map<string, Set<string>>();
+// Auto-advance timers: if not all humans click "Next Round" within 20 s, advance anyway
+const roundAutoAdvanceTimers = new Map<string, NodeJS.Timeout>();
 // Survival bot personality per game (gameId → personality, shared fallback)
 const gameBotPersonality = new Map<string, BotPersonality>();
 // Per-bot personality override (gameId → botUserId → personality) for multi-bot stages
@@ -297,6 +299,8 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
   activeGames.delete(gameId);
   roomToGame.delete(roomCode);
   roundReadyPlayers.delete(gameId);
+  const rat = roundAutoAdvanceTimers.get(gameId);
+  if (rat) { clearTimeout(rat); roundAutoAdvanceTimers.delete(gameId); }
   gameDifficultyBoost.delete(gameId);
   cancelTurnTimer(gameId);
 
@@ -776,8 +780,9 @@ export function registerGameHandlers(io: Server, socket: Socket) {
     );
     emitRoundReadyUpdate(io, gameState, readySet, humanPlayers.length);
 
-    // Start next round when every human has clicked
-    if (humanPlayers.every((p) => readySet.has(p.userId))) {
+    // Only require connected humans — disconnected players must not block progression
+    const connectedHumans = humanPlayers.filter((p) => p.isConnected !== false);
+    if (connectedHumans.length === 0 || connectedHumans.every((p) => readySet.has(p.userId))) {
       startNextRound(io, gameState);
     }
   });
@@ -929,10 +934,24 @@ function handleRoundEnd(io: Server, state: GameState) {
   const humanPlayers = state.players.filter((p) => !p.isBot && !p.isEliminated);
   emitRoundReadyUpdate(io, state, readySet, humanPlayers.length);
 
-  // Edge case: no human players at all — start immediately
-  if (humanPlayers.length === 0) {
+  // Only connected humans need to click — disconnected players must not block progression
+  const connectedHumans = humanPlayers.filter((p) => p.isConnected !== false);
+  if (humanPlayers.length === 0 || connectedHumans.length === 0) {
     startNextRound(io, state);
+    return;
   }
+
+  // Auto-advance after 20 s — handles lost events, slow taps, or disconnected players
+  const gameId = state.id;
+  const timer = setTimeout(() => {
+    roundAutoAdvanceTimers.delete(gameId);
+    const currentState = activeGames.get(gameId);
+    if (currentState && currentState.status === "show_called" && roundReadyPlayers.has(gameId)) {
+      console.log(`[Game] Auto-advancing round for game ${gameId} after timeout`);
+      startNextRound(io, currentState);
+    }
+  }, 20_000);
+  roundAutoAdvanceTimers.set(gameId, timer);
 }
 
 function emitRoundReadyUpdate(
@@ -948,6 +967,10 @@ function emitRoundReadyUpdate(
 }
 
 function startNextRound(io: Server, state: GameState) {
+  // Cancel auto-advance timer if the round starts normally (all players clicked)
+  const t = roundAutoAdvanceTimers.get(state.id);
+  if (t) { clearTimeout(t); roundAutoAdvanceTimers.delete(state.id); }
+
   roundReadyPlayers.delete(state.id);
   const freshState = GameEngine.startNewRound(state, state.roundResult!);
   activeGames.set(freshState.id, freshState);
@@ -1078,6 +1101,8 @@ async function handleMatchEnd(io: Server, state: GameState) {
   activeGames.delete(state.id);
   roomToGame.delete(state.roomId);
   roundReadyPlayers.delete(state.id);
+  const rat2 = roundAutoAdvanceTimers.get(state.id);
+  if (rat2) { clearTimeout(rat2); roundAutoAdvanceTimers.delete(state.id); }
   gameDifficultyBoost.delete(state.id);
   cancelTurnTimer(state.id);
 
@@ -1104,7 +1129,7 @@ async function distributePrize(
   io: Server,
   state: GameState,
   matchResult: any,
-  winnerPlayer: any,
+  _winnerPlayer: any,
 ) {
   try {
     const room = await Room.findOne({ code: state.roomId }).lean();
@@ -1119,46 +1144,58 @@ async function distributePrize(
     // Collect all winner IDs (supports ties). Filter to human paid players only —
     // bots never receive prize money regardless of whether they won or tied.
     const winnerIds: string[] = matchResult.winnerIds ?? (matchResult.winnerId ? [matchResult.winnerId] : []);
-    const winnerPlayerIds = state.players
-      .filter(
-        (p) =>
-          winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId),
-      )
+    let winnerPlayerIds = state.players
+      .filter((p) => winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId))
       .map((p) => p.userId);
 
-    if (winnerPlayerIds.length === 0) return;
-    const share = Math.floor(pot / winnerPlayerIds.length);
+    // Bot won the match: fall back to the best-performing human paid player(s).
+    // Without this, the prize would be locked forever — nobody credited, nobody refunded.
+    if (winnerPlayerIds.length === 0) {
+      const humanPaid = state.players.filter((p) => !p.isBot && paidIds.includes(p.userId));
+      if (humanPaid.length === 0) return;
+      const scores: Array<{ playerId: string; totalScore: number }> =
+        matchResult.finalScores ?? state.players.map((p: any) => ({ playerId: p.id, totalScore: p.totalScore }));
+      const humanScored = humanPaid.map((p) => ({
+        userId: p.userId,
+        score: scores.find((s) => s.playerId === p.id)?.totalScore ?? p.totalScore,
+      }));
+      const minScore = Math.min(...humanScored.map((h) => h.score));
+      winnerPlayerIds = humanScored.filter((h) => h.score === minScore).map((h) => h.userId);
+      if (winnerPlayerIds.length === 0) return;
+    }
 
-    // Clear paidPlayerIds in DB first so a concurrent abandon-refund cannot
-    // double-pay even if the status update races against a disconnect.
+    // Clear paidPlayerIds BEFORE crediting so a concurrent abandon-refund
+    // cannot double-pay even if status races against a disconnect.
     await Room.findOneAndUpdate(
       { code: state.roomId },
       { $set: { paidPlayerIds: [] } },
     ).catch(console.error);
 
-    for (const uid of winnerPlayerIds) {
+    // Distribute evenly; give any remainder (from floor) to the first winner
+    const share = Math.floor(pot / winnerPlayerIds.length);
+    const remainder = pot - share * winnerPlayerIds.length;
+
+    for (let i = 0; i < winnerPlayerIds.length; i++) {
+      const uid = winnerPlayerIds[i];
+      const payout = i === 0 ? share + remainder : share;
       const updated = await User.findByIdAndUpdate(
         uid,
-        { $inc: { walletBalance: share } },
+        { $inc: { walletBalance: payout } },
         { new: true },
       );
       await Transaction.create({
         userId: uid,
         type: "winning",
-        amount: share,
+        amount: payout,
         status: "completed",
         description: `Prize won — room ${state.roomId}${winnerPlayerIds.length > 1 ? " (split)" : ""}`,
         metadata: { roomCode: state.roomId },
       });
-      // Notify winner's connected socket
-      for (const [, s] of io.sockets.sockets) {
-        if ((s as any).userId === uid) {
-          s.emit("wallet:prize_won", {
-            amount: share,
-            balance: updated?.walletBalance ?? 0,
-          });
-        }
-      }
+      // Notify winner via their personal socket room (joined on connect)
+      io.to(`user:${uid}`).emit("wallet:prize_won", {
+        amount: payout,
+        balance: updated?.walletBalance ?? 0,
+      });
     }
   } catch (err) {
     console.error("[Prize] Distribution error:", err);

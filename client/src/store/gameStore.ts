@@ -111,8 +111,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   joinRoom: (code) => {
+    if ((useGameStore as any)._joiningRoom) return;
+    (useGameStore as any)._joiningRoom = true;
     set({ roomError: null });
     socketRoom.join(code);
+    // Auto-clear after 5 s in case the server never responds
+    setTimeout(() => { (useGameStore as any)._joiningRoom = false; }, 5000);
   },
 
   resumeGame: (code) => {
@@ -275,6 +279,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     unsubs.push(
       on("room:joined", (room) => {
+        (useGameStore as any)._joiningRoom = false;
         lowCardAlerted.clear();
         set({
           room,
@@ -296,6 +301,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     unsubs.push(on("room:left", () => set({ room: null })));
     unsubs.push(
       on("room:error", (msg) => {
+        (useGameStore as any)._joiningRoom = false;
         set({ roomError: msg });
         notify.error(msg);
       }),
