@@ -8,7 +8,7 @@ import { GameBoard } from '../components/game/GameBoard';
 import { socketGame, on } from '../services/socket';
 
 export function GamePage() {
-  const { game, room, forceEndedMsg, subscribeToEvents, leaveRoom, reset } = useGameStore();
+  const { game, room, matchResult, forceEndedMsg, subscribeToEvents, leaveRoom, reset } = useGameStore();
   const { isAuthenticated } = useAuthStore();
   const { active: isSurvival } = useSurvivalStore();
   const { active: isTeamArena, subscribe: subscribeTeamArena } = useTeamArenaStore();
@@ -20,13 +20,13 @@ export function GamePage() {
     const unsub1 = subscribeToEvents();
     const unsub2 = subscribeTeamArena();
 
-    // Reconnect if we have a room but lost game state
-    if (room && !game) {
+    // Reconnect if we have a room but lost game state (skip if match already ended)
+    if (room && !game && !matchResult) {
       socketGame.reconnect(room.code);
     }
 
     return () => { unsub1(); unsub2(); };
-  }, [isAuthenticated, navigate, subscribeToEvents, room, game]);
+  }, [isAuthenticated, navigate, subscribeToEvents, room, game, matchResult]);
 
   // Auto-redirect to lobby when admin force-ends the game
   useEffect(() => {
@@ -35,6 +35,16 @@ export function GamePage() {
       navigate('/lobby', { replace: true });
     }
   }, [forceEndedMsg, navigate, reset]);
+
+  // When a survival tiebreaker is triggered, set tiebreaker state and go to /survival
+  useEffect(() => {
+    const unsub = on('survival:tiebreaker', (result: any) => {
+      useSurvivalStore.setState({ tiebreakerResult: result });
+      leaveRoom();
+      navigate('/survival', { replace: true });
+    });
+    return unsub;
+  }, [leaveRoom, navigate]);
 
   // When a survival stage ends, leave the room and go to /survival
   useEffect(() => {

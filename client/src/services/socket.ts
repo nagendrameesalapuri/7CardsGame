@@ -166,7 +166,7 @@ export const socketChat = {
 // ── Team Arena events ─────────────────────────────────────────────────────────
 
 export const socketTeamArena = {
-  start:          (data: { teammateType: 'ai' | 'human'; aiPersonality?: string; entryMode: 'host_pays' | 'split' }) =>
+  start:          (data: { teammateType: 'ai' | 'human'; aiPersonality?: string; entryMode: 'host_pays' | 'split'; tier?: string }) =>
                     getSocket().emit('team-arena:start', data),
   joinAsTeammate: (inviteCode: string) => getSocket().emit('team-arena:join_as_teammate', { inviteCode }),
   continue:       () => getSocket().emit('team-arena:continue'),

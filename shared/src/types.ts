@@ -131,9 +131,9 @@ export interface RoomConfig {
   allowBots: boolean;
   botCount: number;
   entryFee: number; // 0 = free game, >0 = cash game
-  botPersonality?:   string;   // single-bot personality
+  botPersonality?: string; // single-bot personality
   botPersonalities?: string[]; // per-bot personalities for multi-bot stages
-  botNames?:         string[]; // display names per bot
+  botNames?: string[]; // display names per bot
 }
 
 // ---- Wallet types ----
@@ -214,7 +214,7 @@ export interface ClientGameState {
 export interface PlayerBadge {
   emoji: string;
   name: string;
-  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  rarity: "common" | "rare" | "epic" | "legendary";
 }
 
 export interface ClientPlayerState {
@@ -312,9 +312,9 @@ export interface AdminSurvivalTierConfig {
 }
 
 export interface AdminSurvivalConfig {
-  beginner:   AdminSurvivalTierConfig;
-  pro:        AdminSurvivalTierConfig;
-  elite:      AdminSurvivalTierConfig;
+  beginner: AdminSurvivalTierConfig;
+  pro: AdminSurvivalTierConfig;
+  elite: AdminSurvivalTierConfig;
   boss_arena: AdminSurvivalTierConfig;
 }
 

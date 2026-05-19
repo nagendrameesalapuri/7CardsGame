@@ -107,8 +107,15 @@ export const AI_TEAMMATE_PROFILES = [
 ];
 
 // Stage rewards (in points, converted to rupees at POINTS_PER_RUPEE = 100)
-export const TEAM_ARENA_ENTRY_POINTS = 1000; // base entry per player
-export const TEAM_ARENA_STAGE_REWARDS = [150, 300, 550, 900, 1600]; // stages 1-5
+export const TEAM_ARENA_ENTRY_POINTS = 1000; // base entry per player (beginner default)
+export const TEAM_ARENA_STAGE_REWARDS = [150, 300, 550, 900, 1600]; // stages 1-5 (beginner default)
+
+export const TEAM_ARENA_TIERS: Record<string, { entryPoints: number; stageRewards: number[] }> = {
+  beginner: { entryPoints: 1000,  stageRewards: [150, 300, 550, 900, 1600]     },
+  pro:      { entryPoints: 2000,  stageRewards: [400, 800, 1400, 2400, 5000]   },
+  elite:    { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000, 12500] },
+  legend:   { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+};
 
 // ── Model types ────────────────────────────────────────────────────────────────
 
@@ -144,7 +151,9 @@ export interface ITeamArenaTournament extends Document {
   teammateUserId: string | null;             // null if AI teammate
   status: "waiting_teammate" | "active" | "won" | "lost" | "abandoned";
   currentStage: number;
+  tier: string;
   entryPoints: number;
+  stageRewards: number[];
   teamAScore: number;                        // cumulative
   teamBScore: number;                        // cumulative
   stageResults: TeamArenaStageResult[];
@@ -171,7 +180,9 @@ const TeamArenaTournamentSchema = new Schema<ITeamArenaTournament>(
       default: "waiting_teammate",
     },
     currentStage:      { type: Number, default: 1 },
+    tier:              { type: String, default: 'beginner' },
     entryPoints:       { type: Number, required: true },
+    stageRewards:      [{ type: Number }],
     teamAScore:        { type: Number, default: 0 },
     teamBScore:        { type: Number, default: 0 },
     stageResults: [

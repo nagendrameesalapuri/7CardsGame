@@ -10,8 +10,6 @@ import { Layout } from '../components/layout/Layout';
 import { TeamStageResult } from '../components/team-arena/TeamStageResult';
 import { BossIntro } from '../components/team-arena/BossIntro';
 
-const POINTS_PER_RUPEE = 100;
-
 const AI_PROFILES = [
   { personality: 'safe',       name: 'Sentinel', icon: '🛡',  playstyle: 'Cautious Defender',       desc: 'Patient and methodical. Minimises risk, holds out for the perfect SHOW.', color: '#22c55e', difficulty: 'Easy' },
   { personality: 'aggressive', name: 'Vanguard', icon: '⚡',  playstyle: 'Relentless Attacker',     desc: 'Maximum pressure. Throws 7s and skips constantly to tire opponents.',    color: '#f59e0b', difficulty: 'Hard' },
@@ -27,8 +25,294 @@ const STAGES = [
   { stage: 5, name: 'Final Arena',       subtitle: 'Master the SHOW',           emoji: '👑', color: '#ef4444', difficulty: 'Boss',   enemies: ['The Overlord', 'Nemesis'] },
 ];
 
-const ENTRY_POINTS = 1000;
-const STAGE_REWARDS = [150, 300, 550, 900, 1600];
+const POINTS_PER_RUPEE = 100;
+
+const TEAM_ARENA_TIERS = [
+  { id: 'beginner', label: 'Beginner', icon: '🥉', color: '#22c55e', glow: 'rgba(34,197,94,0.15)',  entryPoints: 1000,  stageRewards: [150, 300, 550, 900, 1600]     },
+  { id: 'pro',      label: 'Pro',      icon: '🥈', color: '#60a5fa', glow: 'rgba(96,165,250,0.15)', entryPoints: 2000,  stageRewards: [400, 800, 1400, 2400, 5000]   },
+  { id: 'elite',    label: 'Elite',    icon: '🥇', color: '#fbbf24', glow: 'rgba(251,191,36,0.15)', entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000, 12500] },
+  { id: 'legend',   label: 'Legend',   icon: '💎', color: '#ef4444', glow: 'rgba(239,68,68,0.15)',  entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+];
+
+// ── Team Arena Banner ──────────────────────────────────────────────────────────
+
+function TeamArenaBanner() {
+  return (
+    <div className="relative rounded-2xl overflow-hidden w-full"
+      style={{ background: 'linear-gradient(160deg,#04060e 0%,#0a0d1f 55%,#060410 100%)', border: '1px solid rgba(129,140,248,0.15)' }}>
+      <svg viewBox="0 0 600 210" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ display: 'block' }}>
+        <defs>
+          {/* Atmospheric glows */}
+          <radialGradient id="ta-lg" cx="22%" cy="50%" r="45%">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.22"/>
+            <stop offset="100%" stopColor="#818cf8" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-rg" cx="78%" cy="50%" r="45%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.2"/>
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-cg" cx="50%" cy="45%" r="30%">
+            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.3"/>
+            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-hero" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.4"/>
+            <stop offset="100%" stopColor="#818cf8" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-ally" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-e1" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.4"/>
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="ta-e2" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0"/>
+          </radialGradient>
+          <linearGradient id="ta-vs" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#818cf8"/>
+            <stop offset="50%" stopColor="#ffffff"/>
+            <stop offset="100%" stopColor="#ef4444"/>
+          </linearGradient>
+          <linearGradient id="ta-teamA" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#818cf8"/>
+            <stop offset="100%" stopColor="#22c55e"/>
+          </linearGradient>
+          <linearGradient id="ta-teamB" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#ef4444"/>
+            <stop offset="100%" stopColor="#f59e0b"/>
+          </linearGradient>
+          <filter id="ta-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="ta-softglow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="7" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="ta-bloom" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="11" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <style>{`
+            @keyframes ta-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+            @keyframes ta-float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+            @keyframes ta-pulse{0%,100%{opacity:.5}50%{opacity:1}}
+            @keyframes ta-spark{0%,100%{opacity:0;transform:scale(0)}45%,55%{opacity:1;transform:scale(1)}}
+            @keyframes ta-bolt{0%,100%{opacity:0.35}50%{opacity:0.8}}
+            @keyframes ta-ring{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+            .taf{animation:ta-float 3s ease-in-out infinite}
+            .taf2{animation:ta-float2 2.8s ease-in-out infinite .5s}
+            .taf3{animation:ta-float2 3.5s ease-in-out infinite 1s}
+            .tap{animation:ta-pulse 1.8s ease-in-out infinite}
+            .tas1{animation:ta-spark 2s ease-in-out infinite}
+            .tas2{animation:ta-spark 2s ease-in-out infinite .35s}
+            .tas3{animation:ta-spark 2s ease-in-out infinite .7s}
+            .tas4{animation:ta-spark 2s ease-in-out infinite 1.05s}
+            .tab{animation:ta-bolt 1.6s ease-in-out infinite}
+          `}</style>
+        </defs>
+
+        {/* Atmosphere */}
+        <rect width="600" height="210" fill="url(#ta-lg)"/>
+        <rect width="600" height="210" fill="url(#ta-rg)"/>
+        <rect width="600" height="210" fill="url(#ta-cg)"/>
+
+        {/* Grid */}
+        <g opacity="0.025" stroke="#fff" strokeWidth="0.5">
+          {[0,1,2,3,4,5,6,7,8,9].map(i=><line key={`h${i}`} x1="0" y1={i*24} x2="600" y2={i*24}/>)}
+          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map(i=><line key={`v${i}`} x1={i*21} y1="0" x2={i*21} y2="210"/>)}
+        </g>
+
+        {/* Team A label bar (top-left) */}
+        <rect x="18" y="14" width="54" height="14" rx="7" fill="rgba(129,140,248,0.18)" stroke="rgba(129,140,248,0.45)" strokeWidth="1"/>
+        <text x="45" y="24" textAnchor="middle" fill="#818cf8" fontSize="7.5" fontWeight="800" letterSpacing="1">TEAM A</text>
+
+        {/* Team B label bar (top-right) */}
+        <rect x="528" y="14" width="54" height="14" rx="7" fill="rgba(239,68,68,0.18)" stroke="rgba(239,68,68,0.45)" strokeWidth="1"/>
+        <text x="555" y="24" textAnchor="middle" fill="#ef4444" fontSize="7.5" fontWeight="800" letterSpacing="1">TEAM B</text>
+
+        {/* ══ HUMAN PLAYER — left side ══ */}
+        <g className="taf">
+          {/* Outer halo */}
+          <circle cx="95" cy="95" r="58" fill="url(#ta-hero)" opacity="0.55"/>
+          <circle cx="95" cy="95" r="48" fill="none" stroke="#818cf8" strokeWidth="0.6" strokeDasharray="5 4" opacity="0.28" className="tap"/>
+          {/* Shield */}
+          <path d="M95 52 L122 66 L122 94 Q122 113 95 124 Q68 113 68 94 L68 66 Z"
+            fill="#0d1117" stroke="#818cf8" strokeWidth="2" filter="url(#ta-glow)"/>
+          <path d="M95 60 L116 72 L116 94 Q116 108 95 116 Q74 108 74 94 L74 72 Z"
+            fill="none" stroke="#818cf8" strokeWidth="0.6" opacity="0.3"/>
+          {/* Person icon on shield */}
+          <circle cx="95" cy="77" r="8" fill="#818cf8" opacity="0.9"/>
+          <path d="M81 102 Q81 89 95 89 Q109 89 109 102" fill="#818cf8" opacity="0.9"/>
+          {/* YOU label */}
+          <text x="95" y="138" textAnchor="middle" fill="#818cf8" fontSize="9" fontWeight="900" letterSpacing="3.5" opacity="0.9">YOU</text>
+          <text x="95" y="148" textAnchor="middle" fill="#818cf8" fontSize="6.5" fontWeight="700" letterSpacing="2" opacity="0.5">PLAYER</text>
+        </g>
+
+        {/* Human card fan */}
+        <g className="taf">
+          <g transform="translate(38,128) rotate(-22,12,16)">
+            <rect width="22" height="32" rx="3" fill="#818cf8" stroke="#6366f1" strokeWidth="1"/>
+            <text x="11" y="20" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="900">7</text>
+          </g>
+          <g transform="translate(57,122) rotate(-8,11,16)">
+            <rect width="22" height="32" rx="3" fill="#fff" stroke="#e2e8f0" strokeWidth="0.8"/>
+            <text x="11" y="20" textAnchor="middle" fill="#dc2626" fontSize="11" fontWeight="900">♥</text>
+          </g>
+          <g transform="translate(75,122) rotate(7,11,16)">
+            <rect width="22" height="32" rx="3" fill="#818cf8" stroke="#6366f1" strokeWidth="1"/>
+            <text x="11" y="20" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="900">K</text>
+          </g>
+          <g transform="translate(93,127) rotate(22,11,16)">
+            <rect width="22" height="32" rx="3" fill="#fff" stroke="#e2e8f0" strokeWidth="0.8"/>
+            <text x="11" y="20" textAnchor="middle" fill="#1e293b" fontSize="11" fontWeight="900">♠</text>
+          </g>
+        </g>
+
+        {/* Human sparks */}
+        <circle cx="57" cy="62" r="2.5" fill="#818cf8" className="tas1"/>
+        <circle cx="42" cy="88" r="2"   fill="#818cf8" className="tas3"/>
+        <circle cx="135" cy="60" r="2"  fill="#818cf8" className="tas5"/>
+        <circle cx="140" cy="100" r="2.5" fill="#a5b4fc" className="tas2"/>
+
+        {/* ══ AI TEAMMATE — left-center ══ */}
+        <g className="taf2">
+          {/* Glow */}
+          <circle cx="200" cy="90" r="46" fill="url(#ta-ally)" opacity="0.5"/>
+          <circle cx="200" cy="90" r="36" fill="none" stroke="#22c55e" strokeWidth="0.6" strokeDasharray="4 4" opacity="0.3" className="tap"/>
+          {/* Hexagon body */}
+          <polygon points="200,52 228,68 228,100 200,116 172,100 172,68"
+            fill="#0d1117" stroke="#22c55e" strokeWidth="2" filter="url(#ta-glow)"/>
+          <polygon points="200,60 222,74 222,98 200,112 178,98 178,74"
+            fill="none" stroke="#22c55e" strokeWidth="0.6" opacity="0.3"/>
+          {/* Bot icon */}
+          <rect x="189" y="70" width="22" height="16" rx="4" fill="#22c55e" opacity="0.9"/>
+          <circle cx="194" cy="76" r="3" fill="#0d1117"/>
+          <circle cx="206" cy="76" r="3" fill="#0d1117"/>
+          <rect x="193" y="82" width="14" height="2" rx="1" fill="#0d1117" opacity="0.7"/>
+          <line x1="200" y1="86" x2="200" y2="93" stroke="#22c55e" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="192" y1="90" x2="200" y2="93" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
+          <line x1="208" y1="90" x2="200" y2="93" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
+          {/* AI Ally label */}
+          <text x="200" y="130" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="900" letterSpacing="2" opacity="0.9">AI ALLY</text>
+          <text x="200" y="140" textAnchor="middle" fill="#22c55e" fontSize="6.5" fontWeight="700" letterSpacing="2" opacity="0.5">TEAMMATE</text>
+        </g>
+
+        {/* AI teammate sparks */}
+        <circle cx="165" cy="65" r="2" fill="#22c55e" className="tas2"/>
+        <circle cx="238" cy="70" r="2.5" fill="#22c55e" className="tas4"/>
+        <circle cx="240" cy="108" r="2" fill="#34d399" className="tas1"/>
+
+        {/* Team A connector line */}
+        <path d="M140 95 Q170 95 172 92" stroke="rgba(129,140,248,0.3)" strokeWidth="1.2" fill="none" strokeDasharray="3 3" className="tab"/>
+
+        {/* Team A bracket */}
+        <text x="147" y="172" textAnchor="middle" fill="rgba(129,140,248,0.55)" fontSize="7" fontWeight="700" letterSpacing="1">HUMAN + BOT</text>
+        <line x1="50" y1="163" x2="244" y2="163" stroke="rgba(129,140,248,0.2)" strokeWidth="1"/>
+        <line x1="50" y1="160" x2="50" y2="166" stroke="rgba(129,140,248,0.35)" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="244" y1="160" x2="244" y2="166" stroke="rgba(129,140,248,0.35)" strokeWidth="1.5" strokeLinecap="round"/>
+
+        {/* ══ CENTER — VS + 2v2 ══ */}
+        {/* Orbit rings */}
+        <circle cx="300" cy="90" r="44" fill="none" stroke="#7c3aed" strokeWidth="0.5" strokeDasharray="3 5" opacity="0.28" className="tap"/>
+        <circle cx="300" cy="90" r="28" fill="none" stroke="#7c3aed" strokeWidth="0.4" opacity="0.18" className="tap"/>
+
+        {/* Crossed swords */}
+        <g filter="url(#ta-glow)" opacity="0.85">
+          <line x1="278" y1="68" x2="322" y2="108" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round"/>
+          <line x1="322" y1="68" x2="278" y2="108" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round"/>
+          {/* Sword handles */}
+          <line x1="270" y1="62" x2="280" y2="72" stroke="#fbbf24" strokeWidth="3.5" strokeLinecap="round"/>
+          <line x1="330" y1="62" x2="320" y2="72" stroke="#fbbf24" strokeWidth="3.5" strokeLinecap="round"/>
+          <line x1="274" y1="74" x2="284" y2="64" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="316" y1="64" x2="326" y2="74" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round"/>
+          {/* Blade tips */}
+          <line x1="274" y1="112" x2="280" y2="106" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+          <line x1="320" y1="106" x2="326" y2="112" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+        </g>
+
+        {/* VS bloom + text */}
+        <text x="300" y="132" textAnchor="middle" fill="#7c3aed" fontSize="26" fontWeight="900" fontFamily="Arial Black,Arial" opacity="0.35" filter="url(#ta-bloom)">VS</text>
+        <text x="300" y="132" textAnchor="middle" fill="url(#ta-vs)" fontSize="26" fontWeight="900" fontFamily="Arial Black,Arial" letterSpacing="-1">VS</text>
+
+        {/* 2v2 badge */}
+        <rect x="272" y="140" width="56" height="14" rx="7" fill="rgba(109,40,217,0.22)" stroke="rgba(109,40,217,0.5)" strokeWidth="1"/>
+        <text x="300" y="150" textAnchor="middle" fill="#a78bfa" fontSize="7.5" fontWeight="800" letterSpacing="2">2v2 TEAM</text>
+
+        {/* Energy bolts left→right */}
+        <path d="M252 86 L272 98 L260 98 L278 110" stroke="#818cf8" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.5" filter="url(#ta-glow)" className="tab"/>
+        <path d="M348 86 L328 98 L340 98 L322 110" stroke="#ef4444" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.5" filter="url(#ta-glow)" className="tab"/>
+
+        {/* Center sparks */}
+        <circle cx="260" cy="74" r="2.5" fill="#a855f7" className="tas2"/>
+        <circle cx="340" cy="74" r="2.5" fill="#a855f7" className="tas4"/>
+        <circle cx="268" cy="116" r="2" fill="#60a5fa" className="tas1"/>
+        <circle cx="332" cy="116" r="2" fill="#f59e0b" className="tas3"/>
+
+        {/* ══ ENEMY BOT 1 — right ══ */}
+        <g className="taf3">
+          {/* Glow */}
+          <circle cx="400" cy="88" r="44" fill="url(#ta-e1)" opacity="0.5"/>
+          <circle cx="400" cy="88" r="34" fill="none" stroke="#ef4444" strokeWidth="0.6" strokeDasharray="4 4" opacity="0.28" className="tap"/>
+          {/* Diamond body */}
+          <polygon points="400,50 432,82 400,114 368,82"
+            fill="#0d1117" stroke="#ef4444" strokeWidth="2" filter="url(#ta-glow)"/>
+          <polygon points="400,58 426,82 400,106 374,82"
+            fill="none" stroke="#ef4444" strokeWidth="0.6" opacity="0.28"/>
+          {/* Skull icon */}
+          <circle cx="400" cy="74" r="10" fill="#ef4444" opacity="0.85"/>
+          <circle cx="396" cy="72" r="2.5" fill="#0d1117"/>
+          <circle cx="404" cy="72" r="2.5" fill="#0d1117"/>
+          <path d="M395 79 Q400 82 405 79" fill="none" stroke="#0d1117" strokeWidth="1.5"/>
+          <rect x="395" y="82" width="10" height="4" rx="2" fill="#ef4444" opacity="0.5"/>
+          <rect x="396" y="80" width="3" height="5" rx="1" fill="#0d1117"/>
+          <rect x="401" y="80" width="3" height="5" rx="1" fill="#0d1117"/>
+          {/* Enemy label */}
+          <text x="400" y="128" textAnchor="middle" fill="#ef4444" fontSize="9" fontWeight="900" letterSpacing="2" opacity="0.9">ENEMY</text>
+          <text x="400" y="138" textAnchor="middle" fill="#ef4444" fontSize="6.5" fontWeight="700" letterSpacing="2.5" opacity="0.5">BOT I</text>
+        </g>
+
+        {/* ══ ENEMY BOT 2 — far right ══ */}
+        <g className="taf2">
+          <circle cx="500" cy="88" r="42" fill="url(#ta-e2)" opacity="0.45"/>
+          <circle cx="500" cy="88" r="32" fill="none" stroke="#f59e0b" strokeWidth="0.6" strokeDasharray="4 4" opacity="0.28" className="tap"/>
+          {/* Octagon body */}
+          <polygon points="500,52 518,60 526,78 526,98 518,116 500,124 482,116 474,98 474,78 482,60"
+            fill="#0d1117" stroke="#f59e0b" strokeWidth="2" filter="url(#ta-glow)"/>
+          <polygon points="500,60 515,67 521,80 521,96 515,109 500,116 485,109 479,96 479,80 485,67"
+            fill="none" stroke="#f59e0b" strokeWidth="0.6" opacity="0.28"/>
+          {/* Lightning bolt */}
+          <path d="M504 64 L493 88 L501 88 L496 112 L511 84 L503 84 Z" fill="#f59e0b" opacity="0.9" filter="url(#ta-glow)"/>
+          {/* Label */}
+          <text x="500" y="136" textAnchor="middle" fill="#f59e0b" fontSize="9" fontWeight="900" letterSpacing="2" opacity="0.9">ENEMY</text>
+          <text x="500" y="146" textAnchor="middle" fill="#f59e0b" fontSize="6.5" fontWeight="700" letterSpacing="2.5" opacity="0.5">BOT II</text>
+        </g>
+
+        {/* Enemy sparks */}
+        <circle cx="365" cy="62" r="2.5" fill="#ef4444" className="tas1"/>
+        <circle cx="358" cy="96" r="2"   fill="#ef4444" className="tas3"/>
+        <circle cx="462" cy="62" r="2"   fill="#f59e0b" className="tas2"/>
+        <circle cx="548" cy="72" r="2.5" fill="#f59e0b" className="tas4"/>
+        <circle cx="544" cy="104" r="2"  fill="#ef4444" className="tas1"/>
+
+        {/* Enemy connector line */}
+        <path d="M444 84 Q472 84 474 82" stroke="rgba(239,68,68,0.3)" strokeWidth="1.2" fill="none" strokeDasharray="3 3" className="tab"/>
+
+        {/* Team B bracket */}
+        <text x="453" y="172" textAnchor="middle" fill="rgba(239,68,68,0.55)" fontSize="7" fontWeight="700" letterSpacing="1">BOT + BOT</text>
+        <line x1="356" y1="163" x2="550" y2="163" stroke="rgba(239,68,68,0.2)" strokeWidth="1"/>
+        <line x1="356" y1="160" x2="356" y2="166" stroke="rgba(239,68,68,0.35)" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="550" y1="160" x2="550" y2="166" stroke="rgba(239,68,68,0.35)" strokeWidth="1.5" strokeLinecap="round"/>
+
+        {/* Bottom tagline */}
+        <text x="300" y="196" textAnchor="middle" fill="rgba(255,255,255,0.18)" fontSize="8" fontWeight="700" letterSpacing="4">SURVIVE TOGETHER · 5 STAGES</text>
+      </svg>
+    </div>
+  );
+}
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -100,7 +384,8 @@ export function TeamArenaPage() {
   const { game, subscribeToEvents } = useGameStore();
 
   // Setup view state
-  const [view, setView] = useState<'lobby' | 'teammate_select' | 'ai_select' | 'entry_mode' | 'join_invite'>('lobby');
+  const [view, setView] = useState<'tiers' | 'lobby' | 'ai_select' | 'entry_mode' | 'join_invite'>('tiers');
+  const [selectedTierId, setSelectedTierId] = useState<string>('beginner');
   const [selectedTeammate, setSelectedTeammate] = useState<'ai' | 'human' | null>(null);
   const [selectedAI, setSelectedAI] = useState<string>('smart');
   const [selectedEntryMode, setSelectedEntryMode] = useState<'host_pays' | 'split'>('split');
@@ -182,9 +467,10 @@ export function TeamArenaPage() {
       teammateType: 'ai',
       aiPersonality: selectedAI,
       entryMode: 'host_pays',
+      tier: selectedTierId,
     });
     setTimeout(() => setStarting(false), 4000);
-  }, [selectedAI, starting]);
+  }, [selectedAI, selectedTierId, starting]);
 
   const startWithHuman = useCallback(() => {
     if (starting) return;
@@ -192,9 +478,10 @@ export function TeamArenaPage() {
     socketTeamArena.start({
       teammateType: 'human',
       entryMode: selectedEntryMode,
+      tier: selectedTierId,
     });
     setTimeout(() => setStarting(false), 4000);
-  }, [selectedEntryMode, starting]);
+  }, [selectedEntryMode, selectedTierId, starting]);
 
   const joinAsTeammate = useCallback(() => {
     if (!inviteInput.trim()) return;
@@ -220,10 +507,11 @@ export function TeamArenaPage() {
     });
   }, [inviteCode]);
 
-  // ── AI entry fee calculation
-  const aiEntryPoints = ENTRY_POINTS * 2;
+  // ── Tier-based entry fee calculation
+  const tierCfg = TEAM_ARENA_TIERS.find(t => t.id === selectedTierId) ?? TEAM_ARENA_TIERS[0];
+  const aiEntryPoints = tierCfg.entryPoints * 2;
   const aiEntryRupees = aiEntryPoints / POINTS_PER_RUPEE;
-  const humanEntryPoints = ENTRY_POINTS;
+  const humanEntryPoints = tierCfg.entryPoints;
   const hostPays = selectedEntryMode === 'host_pays' ? humanEntryPoints : Math.ceil(humanEntryPoints / 2);
   const hostPaysRupees = hostPays / POINTS_PER_RUPEE;
 
@@ -308,7 +596,7 @@ export function TeamArenaPage() {
                 <div className="flex justify-between text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>
                   <span>Teammate pays</span>
                   <span className="font-bold" style={{ color: '#e2e8f0' }}>
-                    {Math.floor(ENTRY_POINTS / 2)} pts
+                    {Math.floor(humanEntryPoints / 2)} pts
                   </span>
                 </div>
               )}
@@ -426,23 +714,19 @@ export function TeamArenaPage() {
 
           <AnimatePresence mode="wait">
 
-            {/* ── LOBBY ─────────────────────────────────────────────────────── */}
-            {view === 'lobby' && (
-              <motion.div key="lobby" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+            {/* ── TIER SELECTION ────────────────────────────────────────────── */}
+            {view === 'tiers' && (
+              <motion.div key="tiers" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
                 {/* Header */}
-                <div className="text-center mb-6">
+                <div className="text-center mb-5">
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <span style={{ fontSize: 32 }}>⚔️</span>
                     <div>
                       <h1 className="text-2xl font-black" style={{
                         background: 'linear-gradient(135deg,#818cf8,#a78bfa,#c084fc)',
                         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                      }}>
-                        TEAM ARENA
-                      </h1>
-                      <p className="text-xs tracking-widest" style={{ color: 'rgba(148,163,184,0.5)', letterSpacing: '0.2em' }}>
-                        SURVIVE TOGETHER
-                      </p>
+                      }}>TEAM ARENA</h1>
+                      <p className="text-xs tracking-widest" style={{ color: 'rgba(148,163,184,0.5)', letterSpacing: '0.2em' }}>SURVIVE TOGETHER</p>
                     </div>
                   </div>
                   <p className="text-sm" style={{ color: 'rgba(148,163,184,0.7)' }}>
@@ -450,16 +734,14 @@ export function TeamArenaPage() {
                   </p>
                 </div>
 
-                {/* Stage map preview */}
-                <div
-                  className="rounded-2xl p-4 mb-5"
-                  style={{
-                    background: 'rgba(15,18,40,0.8)',
-                    border: '1px solid rgba(99,102,241,0.2)',
-                  }}
-                >
-                  <p className="text-xs font-bold tracking-widest uppercase mb-3 text-center"
-                    style={{ color: 'rgba(165,180,252,0.6)' }}>
+                {/* Premium banner */}
+                <div className="mb-4">
+                  <TeamArenaBanner />
+                </div>
+
+                {/* Stage path preview */}
+                <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(15,18,40,0.8)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                  <p className="text-xs font-bold tracking-widest uppercase mb-3 text-center" style={{ color: 'rgba(165,180,252,0.6)' }}>
                     Tournament Path
                   </p>
                   <StageMapRow stageResults={[]} currentStage={1} active={false} />
@@ -470,10 +752,7 @@ export function TeamArenaPage() {
                         <span className="font-bold" style={{ color: 'rgba(226,232,240,0.7)' }}>{s.name}</span>
                         <span style={{ color: 'rgba(100,116,139,0.6)' }}>·</span>
                         <span style={{ color: 'rgba(100,116,139,0.6)' }}>{s.subtitle}</span>
-                        <span
-                          className="ml-auto px-1.5 py-0.5 rounded font-bold"
-                          style={{ background: `${s.color}18`, color: s.color, fontSize: 10 }}
-                        >
+                        <span className="ml-auto px-1.5 py-0.5 rounded font-bold" style={{ background: `${s.color}18`, color: s.color, fontSize: 10 }}>
                           {s.difficulty}
                         </span>
                       </div>
@@ -481,63 +760,114 @@ export function TeamArenaPage() {
                   </div>
                 </div>
 
-                {/* Rules card */}
-                <div
-                  className="rounded-xl p-4 mb-5"
-                  style={{ background: 'rgba(15,18,40,0.6)', border: '1px solid rgba(255,255,255,0.07)' }}
+                {/* Tier cards */}
+                <p className="text-[10px] text-center uppercase tracking-[0.2em] font-bold mb-3" style={{ color: 'rgba(165,180,252,0.5)' }}>
+                  Choose Your Entry Tier
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {TEAM_ARENA_TIERS.map((tier, idx) => {
+                    const totalReward = tier.stageRewards.reduce((a, b) => a + b, 0);
+                    const canAfford = walletBalance >= tier.entryPoints / POINTS_PER_RUPEE;
+                    return (
+                      <motion.div
+                        key={tier.id}
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.07 }}
+                        className="rounded-2xl p-4 flex flex-col"
+                        style={{ background: `radial-gradient(ellipse at top, ${tier.glow}, rgba(13,17,23,0.95) 70%)`, border: `1px solid ${tier.color}40` }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-black text-sm" style={{ color: tier.color }}>{tier.icon} {tier.label}</span>
+                          {!canAfford && <span className="text-[9px] text-red-400 font-semibold">Low balance</span>}
+                        </div>
+                        <div className="space-y-1 text-xs mb-3 flex-1">
+                          <div className="flex justify-between"><span className="text-dark-muted">Entry</span><span className="font-bold text-white">{tier.entryPoints.toLocaleString()} pts</span></div>
+                          <div className="h-px" style={{ background: `${tier.color}30` }} />
+                          {tier.stageRewards.map((r, i) => (
+                            <div key={i} className="flex justify-between items-center" style={{ opacity: 0.65 + i * 0.07 }}>
+                              <span className="text-dark-muted">S{i + 1} clear</span>
+                              <span style={{ color: tier.color }}>+{r.toLocaleString()}</span>
+                            </div>
+                          ))}
+                          <div className="h-px" style={{ background: `${tier.color}30` }} />
+                          <div className="flex justify-between font-bold">
+                            <span className="text-dark-text">Max</span>
+                            <span style={{ color: tier.color }}>+{totalReward.toLocaleString()} pts</span>
+                          </div>
+                        </div>
+                        <motion.button
+                          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                          onClick={() => { setSelectedTierId(tier.id); setView('lobby'); }}
+                          disabled={!canAfford || user?.isGuest}
+                          className="w-full py-2.5 rounded-xl font-bold text-xs mt-auto disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={{ background: tier.color, color: '#0d1117' }}
+                        >
+                          {user?.isGuest ? 'Sign in' : !canAfford ? 'Need more pts' : `Select →`}
+                        </motion.button>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* Join as teammate */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => setView('join_invite')}
+                  className="w-full py-3 rounded-xl text-sm font-bold mb-3"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(148,163,184,0.7)' }}
                 >
-                  <p className="text-xs font-black tracking-widest uppercase mb-2.5" style={{ color: 'rgba(165,180,252,0.6)' }}>
-                    How It Works
-                  </p>
-                  {[
-                    ['🎮', 'Each player plays independently with their own hand'],
-                    ['📊', 'Your team\'s combined score is compared to the enemy team'],
-                    ['🏆', 'Lower team total wins (same as standard 7-card rules)'],
-                    ['💺', 'Players alternate seats for balanced attack chains'],
-                    ['💰', `Stage rewards: ${STAGE_REWARDS.map((r, i) => `S${i+1}:${r}`).join(' · ')} pts`],
-                  ].map(([icon, text], i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs mb-1.5">
-                      <span style={{ flexShrink: 0 }}>{icon}</span>
-                      <span style={{ color: 'rgba(148,163,184,0.75)' }}>{text}</span>
+                  🔗 Join as Teammate (enter invite code)
+                </motion.button>
+
+                <button onClick={() => navigate('/lobby')} className="w-full py-2 text-xs" style={{ color: 'rgba(100,116,139,0.5)' }}>
+                  ← Back to Lobby
+                </button>
+              </motion.div>
+            )}
+
+            {/* ── LOBBY (teammate selection for selected tier) ───────────────── */}
+            {view === 'lobby' && (
+              <motion.div key="lobby" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+                {/* Header with tier badge */}
+                <div className="flex items-center gap-3 mb-5">
+                  <button
+                    onClick={() => setView('tiers')}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(148,163,184,0.7)' }}
+                  >←</button>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm" style={{ color: tierCfg.color }}>{tierCfg.icon} {tierCfg.label} Tier</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                        style={{ background: `${tierCfg.color}18`, color: tierCfg.color, border: `1px solid ${tierCfg.color}30` }}>
+                        {tierCfg.entryPoints.toLocaleString()} pts entry
+                      </span>
                     </div>
-                  ))}
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.5)' }}>Choose how you want to play</p>
+                  </div>
                 </div>
 
                 {/* Entry options */}
-                <div className="space-y-3 mb-6">
+                <div className="space-y-3 mb-5">
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                     onClick={() => setView('ai_select')}
                     className="w-full rounded-xl overflow-hidden"
-                    style={{
-                      background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.15))',
-                      border: '1px solid rgba(99,102,241,0.4)',
-                    }}
+                    style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.15))', border: '1px solid rgba(99,102,241,0.4)' }}
                   >
                     <div className="p-4 text-left">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-black text-sm" style={{ color: '#a5b4fc' }}>
-                            🤖 Play with AI Teammate
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>
-                            Solo entry, AI partner — starts instantly
-                          </p>
+                          <p className="font-black text-sm" style={{ color: '#a5b4fc' }}>🤖 Play with AI Teammate</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Solo entry, AI partner — starts instantly</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-black" style={{ color: '#818cf8' }}>
-                            {aiEntryPoints} pts
-                          </p>
-                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>
-                            ₹{aiEntryRupees.toFixed(2)}
-                          </p>
+                          <p className="text-sm font-black" style={{ color: '#818cf8' }}>{aiEntryPoints.toLocaleString()} pts</p>
+                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{aiEntryRupees.toFixed(2)}</p>
                         </div>
                       </div>
                       <div className="flex gap-1.5 mt-2.5 flex-wrap">
                         {AI_PROFILES.map((p) => (
-                          <span key={p.personality}
-                            className="text-xs px-2 py-0.5 rounded-full font-bold"
+                          <span key={p.personality} className="text-xs px-2 py-0.5 rounded-full font-bold"
                             style={{ background: `${p.color}18`, color: p.color, border: `1px solid ${p.color}40` }}>
                             {p.icon} {p.name}
                           </span>
@@ -547,49 +877,23 @@ export function TeamArenaPage() {
                   </motion.button>
 
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                     onClick={() => setView('entry_mode')}
                     className="w-full rounded-xl overflow-hidden"
-                    style={{
-                      background: 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(16,185,129,0.08))',
-                      border: '1px solid rgba(52,211,153,0.3)',
-                    }}
+                    style={{ background: 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(16,185,129,0.08))', border: '1px solid rgba(52,211,153,0.3)' }}
                   >
                     <div className="p-4 text-left">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-black text-sm" style={{ color: '#6ee7b7' }}>
-                            👤 Invite Human Teammate
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>
-                            Play with a friend — split or host pays
-                          </p>
+                          <p className="font-black text-sm" style={{ color: '#6ee7b7' }}>👤 Invite Human Teammate</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Play with a friend — split or host pays</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-black" style={{ color: '#34d399' }}>
-                            {ENTRY_POINTS} pts
-                          </p>
-                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>
-                            ₹{(ENTRY_POINTS / POINTS_PER_RUPEE).toFixed(2)}
-                          </p>
+                          <p className="text-sm font-black" style={{ color: '#34d399' }}>{humanEntryPoints.toLocaleString()} pts</p>
+                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{(humanEntryPoints / POINTS_PER_RUPEE).toFixed(2)}</p>
                         </div>
                       </div>
                     </div>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => setView('join_invite')}
-                    className="w-full py-3 rounded-xl text-sm font-bold"
-                    style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      color: 'rgba(148,163,184,0.7)',
-                    }}
-                  >
-                    🔗 Join as Teammate (enter invite code)
                   </motion.button>
                 </div>
 
@@ -710,7 +1014,7 @@ export function TeamArenaPage() {
                 </button>
                 <h2 className="text-xl font-black mb-1" style={{ color: '#e2e8f0' }}>Entry Payment</h2>
                 <p className="text-xs mb-5" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                  Choose how to handle the {ENTRY_POINTS} pts entry fee
+                  Choose how to handle the {humanEntryPoints.toLocaleString()} pts entry fee
                 </p>
 
                 <div className="space-y-3 mb-6">
@@ -718,13 +1022,13 @@ export function TeamArenaPage() {
                     {
                       mode: 'split' as const,
                       title: '⚖ Split Entry',
-                      desc: `You pay ${Math.ceil(ENTRY_POINTS / 2)} pts · Teammate pays ${Math.floor(ENTRY_POINTS / 2)} pts`,
+                      desc: `You pay ${Math.ceil(humanEntryPoints / 2)} pts · Teammate pays ${Math.floor(humanEntryPoints / 2)} pts`,
                       color: '#34d399',
                     },
                     {
                       mode: 'host_pays' as const,
                       title: '🎁 Host Pays Full',
-                      desc: `You pay all ${ENTRY_POINTS} pts · Teammate joins free`,
+                      desc: `You pay all ${humanEntryPoints.toLocaleString()} pts · Teammate joins free`,
                       color: '#fbbf24',
                     },
                   ].map((opt) => (

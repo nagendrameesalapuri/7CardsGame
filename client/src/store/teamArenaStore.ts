@@ -9,6 +9,22 @@ export interface TeamArenaScoreboardEntry {
   team: 'A' | 'B';
 }
 
+export interface RoundPlayerResult {
+  playerId: string;
+  username: string;
+  avatar: string;
+  isBot: boolean;
+  team: 'A' | 'B';
+  roundPoints: number;
+  totalScore: number;
+  hand: Array<{ id: string; suit: string; rank: string; value: number; isJoker: boolean }>;
+}
+
+export interface RoundHistoryEntry {
+  roundNumber: number;
+  playerResults: RoundPlayerResult[];
+}
+
 export interface TeamArenaStageResult {
   stage: number;
   totalStages: number;
@@ -32,6 +48,7 @@ export interface TeamArenaStageResult {
   nextStageSubtitle?: string;
   nextStageConfig?: any;
   newWalletBalance?: number;
+  roundHistory?: RoundHistoryEntry[];
 }
 
 interface TeamArenaStore {

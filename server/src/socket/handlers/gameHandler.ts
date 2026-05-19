@@ -33,6 +33,7 @@ import {
 import {
   handleTeamArenaMatchEnd,
   handleTeamArenaForceEnd,
+  recordTeamArenaRound,
 } from "./teamArenaHandler";
 import { awardXp } from "../../utils/progressionService";
 import {
@@ -905,6 +906,8 @@ function handleRoundEnd(io: Server, state: GameState) {
       },
     },
   ).catch(console.error);
+
+  recordTeamArenaRound(state.roomId, state.roundNumber, state.roundResult.playerResults, state.players);
 
   const matchResult = ScoreEngine.checkMatchOver(state);
   if (matchResult) {

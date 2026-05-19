@@ -1,7 +1,7 @@
-import React from 'react';
-import { Modal } from '../ui/Modal';
-import { Card } from './Card';
-import { Card as CardType, ClientPlayerState } from '../../types';
+import React from "react";
+import { Modal } from "../ui/Modal";
+import { Card } from "./Card";
+import { Card as CardType, ClientPlayerState } from "../../types";
 
 interface DiscardPileModalProps {
   isOpen: boolean;
@@ -10,14 +10,25 @@ interface DiscardPileModalProps {
   players: ClientPlayerState[];
 }
 
-export function DiscardPileModal({ isOpen, onClose, discardPile, players }: DiscardPileModalProps) {
+export function DiscardPileModal({
+  isOpen,
+  onClose,
+  discardPile,
+  players,
+}: DiscardPileModalProps) {
   const reversed = [...discardPile].reverse();
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Discard Pile · ${discardPile.length} cards`} size="md">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`Discard Pile · ${discardPile.length} cards`}
+      size="md"
+    >
       <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-[60vh] overflow-y-auto py-1">
         {reversed.map((card, idx) => {
           const discarder = card.discardedBy
-            ? players.find(p => p.userId === card.discardedBy)?.username ?? 'Unknown'
+            ? (players.find((p) => p.userId === card.discardedBy)?.username ??
+              "Unknown")
             : null;
 
           return (

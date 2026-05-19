@@ -5,11 +5,11 @@ const AVATARS = ['🎭', '🦁', '🐯', '🐻', '🦊', '🐺', '🦝', '🐼',
 
 // Premium bot avatars keyed by AI personality
 const BOT_AVATAR_CFG: Record<string, { emoji: string; bg: string; ring: string; label: string }> = {
-  boss:       { emoji: '💀', bg: 'linear-gradient(135deg, #450a0a 0%, #991b1b 100%)', ring: '#ef4444', label: 'BOSS' },
-  smart:      { emoji: '🧠', bg: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)', ring: '#60a5fa', label: 'AI'   },
-  aggressive: { emoji: '⚡', bg: 'linear-gradient(135deg, #78350f 0%, #d97706 100%)', ring: '#f59e0b', label: 'AI'   },
-  bluff:      { emoji: '🌀', bg: 'linear-gradient(135deg, #3b0764 0%, #7e22ce 100%)', ring: '#c084fc', label: 'AI'   },
-  safe:       { emoji: '🛡️', bg: 'linear-gradient(135deg, #052e16 0%, #15803d 100%)', ring: '#22c55e', label: 'AI'   },
+  boss:       { emoji: '💀', bg: 'linear-gradient(135deg, #0a0000 0%, #7f1d1d 55%, #b91c1c 100%)', ring: '#ef4444', label: 'BOSS' },
+  smart:      { emoji: '🔮', bg: 'linear-gradient(135deg, #020617 0%, #1e3a8a 55%, #4338ca 100%)', ring: '#818cf8', label: 'AI'   },
+  aggressive: { emoji: '🔥', bg: 'linear-gradient(135deg, #0c0200 0%, #9a3412 55%, #ea580c 100%)', ring: '#fb923c', label: 'AI'   },
+  bluff:      { emoji: '🎭', bg: 'linear-gradient(135deg, #100018 0%, #6b21a8 55%, #9333ea 100%)', ring: '#e879f9', label: 'AI'   },
+  safe:       { emoji: '⚔️', bg: 'linear-gradient(135deg, #001209 0%, #065f46 55%, #059669 100%)', ring: '#34d399', label: 'AI'   },
 };
 
 interface AvatarProps {

@@ -8,6 +8,7 @@ import {
   TEAM_ARENA_STAGES,
   TEAM_ARENA_ENTRY_POINTS,
   TEAM_ARENA_STAGE_REWARDS,
+  TEAM_ARENA_TIERS,
   AI_TEAMMATE_PROFILES,
   BotPersonality,
   TeammateType,
@@ -25,6 +26,45 @@ import { getBadge } from "../../utils/badgeCache";
 
 const POINTS_PER_RUPEE = 100;
 const TOTAL_STAGES = 5;
+
+type RoundSnapshot = {
+  roundNumber: number;
+  playerResults: Array<{
+    playerId: string;
+    username: string;
+    avatar: string;
+    isBot: boolean;
+    roundPoints: number;
+    totalScore: number;
+    hand: any[];
+  }>;
+};
+
+// In-memory per-round history for Team Arena stages (roomCode → rounds)
+const teamArenaRoundHistory = new Map<string, RoundSnapshot[]>();
+
+export function recordTeamArenaRound(
+  roomCode: string,
+  roundNumber: number,
+  playerResults: any[],
+  players: Array<{ id: string; avatar: string; isBot: boolean }>,
+) {
+  const enriched = playerResults.map((pr) => {
+    const p = players.find((pl) => pl.id === pr.playerId);
+    return {
+      playerId: pr.playerId,
+      username: pr.username,
+      avatar: p?.avatar ?? '',
+      isBot: p?.isBot ?? false,
+      roundPoints: pr.roundPoints,
+      totalScore: pr.totalScore,
+      hand: pr.hand ?? [],
+    };
+  });
+  const history = teamArenaRoundHistory.get(roomCode) ?? [];
+  history.push({ roundNumber, playerResults: enriched });
+  teamArenaRoundHistory.set(roomCode, history);
+}
 
 function pointsToRupees(points: number): number {
   return points / POINTS_PER_RUPEE;
@@ -226,7 +266,8 @@ export async function handleTeamArenaMatchEnd(
 
   const stageIdx = tournament.currentStage - 1;
   const stageConfig = TEAM_ARENA_STAGES.find((s) => s.stage === tournament.currentStage)!;
-  const stageReward = TEAM_ARENA_STAGE_REWARDS[stageIdx] ?? 0;
+  const rewardTable = tournament.stageRewards?.length === 5 ? tournament.stageRewards : TEAM_ARENA_STAGE_REWARDS;
+  const stageReward = rewardTable[stageIdx] ?? 0;
   const secondaryPersonality = pickRandom(stageConfig.secondaryPool);
 
   const { teamATotal, teamBTotal, scoreboard } = computeTeamScores(state, tournament.teammateType);
@@ -251,6 +292,20 @@ export async function handleTeamArenaMatchEnd(
     pointsEarned:         resolvedWon ? stageReward : 0,
   });
 
+  // Build per-round history with team labels
+  const isAIMode = tournament.teammateType === "ai";
+  const teamAIndices = isAIMode ? [0, 2] : [0, 1];
+  const rawRounds = teamArenaRoundHistory.get(state.roomId) ?? [];
+  teamArenaRoundHistory.delete(state.roomId);
+  const roundHistory = rawRounds.map((r) => ({
+    roundNumber: r.roundNumber,
+    playerResults: r.playerResults.map((pr) => {
+      const player = state.players.find((p) => p.id === pr.playerId);
+      const team = player && teamAIndices.includes(player.seatIndex) ? "A" : "B";
+      return { ...pr, team };
+    }),
+  }));
+
   const basePayload = {
     stage:               tournament.currentStage,
     totalStages:         TOTAL_STAGES,
@@ -265,6 +320,7 @@ export async function handleTeamArenaMatchEnd(
     stageResults:        tournament.stageResults,
     enemyBotNames:       stageConfig.enemyBotNames,
     teammateName:        tournament.teammateName,
+    roundHistory,
   };
 
   if (!resolvedWon) {
@@ -444,6 +500,7 @@ export async function handleTeamArenaMatchEnd(
 // ── Force-end hook (called by admin handler) ──────────────────────────────────
 
 export async function handleTeamArenaForceEnd(io: Server, roomCode: string) {
+  teamArenaRoundHistory.delete(roomCode);
   try {
     const t = await TeamArenaTournament.findOne({ currentRoomCode: roomCode, status: "active" });
     if (!t) return;
@@ -478,11 +535,16 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
     teammateType: TeammateType;
     aiPersonality?: BotPersonality;
     entryMode: EntryMode;
+    tier?: string;
   }) => {
     try {
       if (isGuest) return socket.emit("team-arena:error", "Guests cannot join tournaments. Please sign in.");
 
       const { teammateType, aiPersonality, entryMode } = data;
+      const tier = (data.tier && TEAM_ARENA_TIERS[data.tier]) ? data.tier : 'beginner';
+      const tierCfg = TEAM_ARENA_TIERS[tier];
+      const baseEntryPoints = tierCfg.entryPoints;
+      const tierStageRewards = tierCfg.stageRewards;
 
       // Block if active survival or team arena already running
       const existingTA = await TeamArenaTournament.findOne({
@@ -495,8 +557,8 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
 
       // Entry fee logic
       const entryPoints = teammateType === "ai"
-        ? TEAM_ARENA_ENTRY_POINTS * 2        // AI teammate = double entry
-        : TEAM_ARENA_ENTRY_POINTS;           // Human teammate = normal (split or host pays)
+        ? baseEntryPoints * 2        // AI teammate = double entry (covers both seats)
+        : baseEntryPoints;           // Human teammate = normal (split or host pays)
 
       const hostPays = teammateType === "ai" || entryMode === "host_pays"
         ? entryPoints
@@ -551,6 +613,8 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
           teammateUserId: null,
           status: teammateType === "ai" ? "active" : "waiting_teammate",
           currentStage: 1,
+          tier,
+          stageRewards: tierStageRewards,
           entryPoints,
           currentRoomCode: roomCode,
           inviteCode: inviteCode!,

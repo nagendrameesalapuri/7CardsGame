@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { TeamArenaStageResult } from '../../store/teamArenaStore';
+import type { TeamArenaStageResult, RoundHistoryEntry } from '../../store/teamArenaStore';
+import { Avatar } from '../ui/Avatar';
 
 interface TeamStageResultProps {
   result: TeamArenaStageResult;
@@ -34,6 +35,76 @@ function ConfettiPiece({ i }: { i: number }) {
         ease: 'easeIn',
       }}
     />
+  );
+}
+
+const SUIT_SYMBOL: Record<string, string> = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' };
+const SUIT_COLOR: Record<string, string> = { hearts: '#f87171', diamonds: '#fb923c', spades: '#94a3b8', clubs: '#a5b4fc' };
+
+function MiniCard({ card }: { card: any }) {
+  if (card.isJoker) return (
+    <span style={{ fontSize: 9, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 3, padding: '1px 3px', color: '#fbbf24', fontWeight: 700 }}>🃏</span>
+  );
+  return (
+    <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, padding: '1px 3px', color: SUIT_COLOR[card.suit] ?? '#94a3b8', fontWeight: 700 }}>
+      {card.rank}{SUIT_SYMBOL[card.suit] ?? '?'}
+    </span>
+  );
+}
+
+function RoundBreakdown({ rounds, myPlayerId }: { rounds: RoundHistoryEntry[]; myPlayerId?: string }) {
+  if (!rounds.length) return null;
+
+  return (
+    <div className="mt-4">
+      <div style={{ height: 1, background: 'linear-gradient(90deg,transparent,rgba(99,102,241,0.25),transparent)', marginBottom: 12 }} />
+      <p className="text-xs font-black uppercase tracking-widest mb-3 text-center" style={{ color: 'rgba(148,163,184,0.6)' }}>
+        ⚡ Round Breakdown
+      </p>
+      <div className="space-y-3">
+        {rounds.map((round) => {
+          const winner = [...round.playerResults].sort((a, b) => a.roundPoints - b.roundPoints)[0];
+          const teamAPlayers = round.playerResults.filter((p) => p.team === 'A');
+          const teamBPlayers = round.playerResults.filter((p) => p.team === 'B');
+          return (
+            <div key={round.roundNumber} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '8px 10px' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'rgba(165,180,252,0.9)' }}>
+                  Round {round.roundNumber}
+                </span>
+                {winner && (
+                  <span className="text-[9px] font-bold" style={{ color: '#fbbf24' }}>
+                    🏆 {winner.username === myPlayerId ? 'You' : winner.username}
+                  </span>
+                )}
+              </div>
+              {[
+                { players: teamAPlayers, color: '#818cf8', label: 'Your Team' },
+                { players: teamBPlayers, color: '#f87171', label: 'Enemy' },
+              ].map(({ players, color, label }, ti) => (
+                <React.Fragment key={ti}>
+                  {ti === 1 && <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '5px 0' }} />}
+                  {players.map((pr) => (
+                    <div key={pr.playerId} className="flex items-start gap-1.5 py-0.5">
+                      <Avatar avatar={pr.avatar} size="xs" isBot={pr.isBot} />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-semibold" style={{ color }}>{pr.username}</span>
+                        <div className="flex flex-wrap gap-0.5 mt-0.5">
+                          {pr.hand.map((c, ci) => <MiniCard key={ci} card={c} />)}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black flex-shrink-0" style={{ color: pr.roundPoints === 0 ? '#4ade80' : 'rgba(226,232,240,0.6)' }}>
+                        +{pr.roundPoints}
+                      </span>
+                    </div>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -73,6 +144,7 @@ function StageProgressPill({ stage, result, current }: {
 }
 
 export function TeamStageResult({ result, onContinue, onAbandon, stageResults }: TeamStageResultProps) {
+  const [showRounds, setShowRounds] = useState(false);
   const didWin = result.teamAWon;
   const isFinal = result.tournamentOver;
 
@@ -192,16 +264,16 @@ export function TeamStageResult({ result, onContinue, onAbandon, stageResults }:
                   {result.teamAScore} pts
                 </span>
               </div>
-              {result.scoreboard.filter((p) => p.team === 'A').map((p, i) => (
-                <div key={i} className="flex items-center justify-between py-0.5">
-                  <span className="text-xs" style={{ color: 'rgba(165,180,252,0.8)' }}>
-                    {p.isHuman ? '👤' : '🤖'} {p.name}
-                  </span>
-                  <span className="text-xs font-bold tabular-nums" style={{ color: '#a5b4fc' }}>
-                    {p.score} pts
-                  </span>
-                </div>
-              ))}
+              {result.scoreboard.filter((p) => p.team === 'A').map((p, i) => {
+                const roundEntry = result.roundHistory?.[result.roundHistory.length - 1]?.playerResults.find(r => r.username === p.name && r.team === 'A');
+                return (
+                  <div key={i} className="flex items-center gap-2 py-0.5">
+                    {roundEntry ? <Avatar avatar={roundEntry.avatar} size="xs" isBot={!p.isHuman} /> : <span className="text-xs">{p.isHuman ? '👤' : '🤖'}</span>}
+                    <span className="flex-1 text-xs" style={{ color: 'rgba(165,180,252,0.8)' }}>{p.name}</span>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: '#a5b4fc' }}>{p.score} pts</span>
+                  </div>
+                );
+              })}
             </div>
 
             {/* VS separator */}
@@ -228,18 +300,52 @@ export function TeamStageResult({ result, onContinue, onAbandon, stageResults }:
                   {result.teamBScore} pts
                 </span>
               </div>
-              {result.scoreboard.filter((p) => p.team === 'B').map((p, i) => (
-                <div key={i} className="flex items-center justify-between py-0.5">
-                  <span className="text-xs" style={{ color: 'rgba(248,113,113,0.8)' }}>
-                    🤖 {p.name}
-                  </span>
-                  <span className="text-xs font-bold tabular-nums" style={{ color: '#fca5a5' }}>
-                    {p.score} pts
-                  </span>
-                </div>
-              ))}
+              {result.scoreboard.filter((p) => p.team === 'B').map((p, i) => {
+                const roundEntry = result.roundHistory?.[result.roundHistory.length - 1]?.playerResults.find(r => r.username === p.name && r.team === 'B');
+                return (
+                  <div key={i} className="flex items-center gap-2 py-0.5">
+                    {roundEntry ? <Avatar avatar={roundEntry.avatar} size="xs" isBot /> : <span className="text-xs">🤖</span>}
+                    <span className="flex-1 text-xs" style={{ color: 'rgba(248,113,113,0.8)' }}>{p.name}</span>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: '#fca5a5' }}>{p.score} pts</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
+
+          {/* Round Breakdown toggle */}
+          {result.roundHistory && result.roundHistory.length > 0 && (
+            <div className="mb-4">
+              <button
+                onClick={() => setShowRounds((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors"
+                style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}
+              >
+                <span className="text-xs font-black uppercase tracking-widest" style={{ color: 'rgba(165,180,252,0.8)' }}>
+                  ⚡ Round Breakdown ({result.roundHistory.length} rounds)
+                </span>
+                <motion.span
+                  animate={{ rotate: showRounds ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-[10px]"
+                  style={{ color: 'rgba(99,102,241,0.7)' }}
+                >▼</motion.span>
+              </button>
+              <AnimatePresence>
+                {showRounds && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <RoundBreakdown rounds={result.roundHistory ?? []} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
           {/* Points earned */}
           {didWin && result.pointsEarned > 0 && (
