@@ -1,7 +1,7 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User";
-import { registerRoomHandlers } from "./handlers/roomHandler";
+import { registerRoomHandlers, cancelPendingAbandon } from "./handlers/roomHandler";
 import {
   registerGameHandlers,
   getActiveGame,
@@ -129,6 +129,9 @@ export function initSocketIO(io: Server) {
 
     // Reconnection: restore game state
     socket.on("game:reconnect", async (roomCode: string) => {
+      // Cancel any pending abandon timer — player is back within the grace window
+      cancelPendingAbandon(roomCode);
+
       const game = getActiveGame(roomCode);
       if (!game) {
         socket.emit("game:error", "Game not found or already finished");

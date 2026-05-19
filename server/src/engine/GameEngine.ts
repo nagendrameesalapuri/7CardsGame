@@ -30,6 +30,7 @@ export interface GameConfig {
   }>;
   roundCount: number;
   turnTimeLimit: number; // seconds
+  disableElimination?: boolean;
 }
 
 export interface ActionResult {
@@ -105,6 +106,7 @@ export class GameEngine {
       roundResult: null,
       chatMessages: [],
       consecutiveTimeouts: {},
+      disableElimination: config.disableElimination ?? false,
     };
   }
 
@@ -540,10 +542,10 @@ export class GameEngine {
   static processTimeout(state: GameState): ActionResult {
     const player = state.players[state.currentPlayerIndex];
     const newCount = (state.consecutiveTimeouts[player.id] ?? 0) + 1;
-    const timeouts = { ...state.consecutiveTimeouts, [player.id]: newCount };
+    let timeouts = { ...state.consecutiveTimeouts, [player.id]: newCount };
 
-    // After 3 consecutive timeouts, remove the player from the game
-    if (newCount >= 3 && !player.isBot) {
+    // After 3 consecutive timeouts, remove the player from the game (unless elimination is disabled)
+    if (newCount >= 3 && !player.isBot && !state.disableElimination) {
       const actions: GameAction[] = [
         {
           type: "system",
@@ -572,6 +574,11 @@ export class GameEngine {
 
       s = GameEngine.advanceTurn(s);
       return { success: true, state: s, actions };
+    }
+
+    // When elimination is disabled and threshold is reached, reset counter so messages stay sensible
+    if (newCount >= 3 && !player.isBot && state.disableElimination) {
+      timeouts = { ...timeouts, [player.id]: 0 };
     }
 
     const actions: GameAction[] = [

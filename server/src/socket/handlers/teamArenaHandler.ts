@@ -19,6 +19,7 @@ import {
   getActiveGame,
   assignBotPersonalities,
 } from "./gameHandler";
+import { getAdminConfig } from "../../models/AdminConfig";
 import { GameState } from "../../../../shared/src/types";
 import { awardXp } from "../../utils/progressionService";
 import { XP_REWARDS } from "../../utils/progression";
@@ -26,6 +27,17 @@ import { getBadge } from "../../utils/badgeCache";
 
 const POINTS_PER_RUPEE = 100;
 const TOTAL_STAGES = 5;
+
+async function getEffectiveTeamArenaConfig(tier: string): Promise<{ entryPoints: number; stageRewards: number[] }> {
+  try {
+    const cfg = await getAdminConfig();
+    const tac = (cfg.teamArenaConfig as any)?.[tier];
+    if (tac?.entryPoints && Array.isArray(tac.stageRewards) && tac.stageRewards.length === 5) {
+      return { entryPoints: tac.entryPoints, stageRewards: tac.stageRewards };
+    }
+  } catch { /* fall through to static defaults */ }
+  return TEAM_ARENA_TIERS[tier] ?? TEAM_ARENA_TIERS.beginner;
+}
 
 type RoundSnapshot = {
   roundNumber: number;
@@ -542,7 +554,7 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
 
       const { teammateType, aiPersonality, entryMode } = data;
       const tier = (data.tier && TEAM_ARENA_TIERS[data.tier]) ? data.tier : 'beginner';
-      const tierCfg = TEAM_ARENA_TIERS[tier];
+      const tierCfg = await getEffectiveTeamArenaConfig(tier);
       const baseEntryPoints = tierCfg.entryPoints;
       const tierStageRewards = tierCfg.stageRewards;
 
@@ -565,12 +577,6 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
         : Math.ceil(entryPoints / 2);       // split: host pays half
 
       const entryRupees = pointsToRupees(hostPays);
-      const user = await User.findById(userId).select("walletBalance");
-      if (!user) return socket.emit("team-arena:error", "User not found");
-      if ((user.walletBalance ?? 0) < entryRupees) {
-        return socket.emit("team-arena:error",
-          `Insufficient balance. Need ₹${entryRupees.toFixed(2)} (${hostPays} pts) to enter.`);
-      }
 
       // Determine teammate name
       const aiProfile = AI_TEAMMATE_PROFILES.find((p) => p.personality === aiPersonality);
@@ -578,8 +584,16 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
         ? (aiProfile?.name ?? "Oracle")
         : "Teammate";  // will be updated when human joins
 
-      // Deduct entry fee
-      await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryRupees } });
+      // Atomically deduct entry fee — prevents negative balance on concurrent starts
+      const deductedHost = await User.findOneAndUpdate(
+        { _id: userId, walletBalance: { $gte: entryRupees } },
+        { $inc: { walletBalance: -entryRupees } },
+        { new: true },
+      );
+      if (!deductedHost) {
+        return socket.emit("team-arena:error",
+          `Insufficient balance. Need ₹${entryRupees.toFixed(2)} (${hostPays} pts) to enter.`);
+      }
 
       let roomCode: string | undefined;
       let tournament: any;
@@ -635,7 +649,7 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
 
         if (teammateType === "ai") {
           // AI teammate: start immediately
-          await startRoomGame(io, roomCode);
+          await startRoomGame(io, roomCode, { disableElimination: true });
           const game = getActiveGame(roomCode);
           if (game) {
             const teammateBotPersonality = aiPersonality ?? "smart";
@@ -705,13 +719,15 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
       if (tournament.entryMode === "split") {
         teammatePays = Math.floor(tournament.entryPoints / 2);
         const entryRupees = pointsToRupees(teammatePays);
-        const user = await User.findById(userId).select("walletBalance");
-        if (!user) return socket.emit("team-arena:error", "User not found");
-        if ((user.walletBalance ?? 0) < entryRupees) {
+        const deductedMate = await User.findOneAndUpdate(
+          { _id: userId, walletBalance: { $gte: entryRupees } },
+          { $inc: { walletBalance: -entryRupees } },
+          { new: true },
+        );
+        if (!deductedMate) {
           return socket.emit("team-arena:error",
             `Insufficient balance. Need ₹${entryRupees.toFixed(2)} (${teammatePays} pts) to join.`);
         }
-        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryRupees } });
         await Transaction.create({
           userId,
           type: "entry_fee",
@@ -748,7 +764,7 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
 
         // Check if game is already running (shouldn't be for human mode)
         if (!getActiveGame(tournament.currentRoomCode)) {
-          await startRoomGame(io, tournament.currentRoomCode);
+          await startRoomGame(io, tournament.currentRoomCode, { disableElimination: true });
           const game = getActiveGame(tournament.currentRoomCode);
           if (game) {
             const stageConfig = TEAM_ARENA_STAGES[0];
@@ -813,7 +829,7 @@ export function registerTeamArenaHandlers(io: Server, socket: Socket) {
       socket.data.roomCode = tournament.currentRoomCode;
 
       if (!getActiveGame(tournament.currentRoomCode)) {
-        await startRoomGame(io, tournament.currentRoomCode);
+        await startRoomGame(io, tournament.currentRoomCode, { disableElimination: true });
         const game = getActiveGame(tournament.currentRoomCode);
         if (game && tournament.teammateType === "ai") {
           const stageConfig = TEAM_ARENA_STAGES.find((s) => s.stage === tournament.currentStage)!;

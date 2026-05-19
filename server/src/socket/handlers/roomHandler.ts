@@ -55,12 +55,9 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       // Cash game: creator must have enough balance to pay their own entry fee
       let creator = null;
       if (entryFee > 0) {
-        creator = await User.findById(userId).select('walletBalance isGuest');
-        if (!creator) return socket.emit('room:error', 'User not found');
-        if (creator.isGuest) return socket.emit('room:error', 'Guests cannot create cash game rooms');
-        if ((creator.walletBalance ?? 0) < entryFee) {
-          return socket.emit('room:error', `Insufficient balance. You need ₹${entryFee} to create this room.`);
-        }
+        const guestCheck = await User.findById(userId).select('isGuest');
+        if (!guestCheck) return socket.emit('room:error', 'User not found');
+        if (guestCheck.isGuest) return socket.emit('room:error', 'Guests cannot create cash game rooms');
       }
 
       let code: string;
@@ -70,9 +67,16 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         attempts++;
       } while (await Room.exists({ code }) && attempts < 10);
 
-      // Deduct entry fee now that we have the room code
-      if (entryFee > 0 && creator) {
-        await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
+      // Deduct entry fee now that we have the room code (atomic to prevent negative balance)
+      if (entryFee > 0) {
+        creator = await User.findOneAndUpdate(
+          { _id: userId, walletBalance: { $gte: entryFee } },
+          { $inc: { walletBalance: -entryFee } },
+          { new: true },
+        );
+        if (!creator) {
+          return socket.emit('room:error', `Insufficient balance. You need ₹${entryFee} to create this room.`);
+        }
         await Transaction.create({
           userId,
           type: 'entry_fee',
@@ -179,15 +183,20 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       // Cash room: deduct entry fee if player hasn't paid yet
       const entryFee = (room.config as any).entryFee ?? 0;
       if (!alreadyIn && entryFee > 0) {
-        const user = await User.findById(userId).select('walletBalance isGuest');
-        if (!user) return socket.emit('room:error', 'User not found');
-        if (user.isGuest) return socket.emit('room:error', 'Guests cannot join cash games');
-        if ((user.walletBalance ?? 0) < entryFee) {
-          return socket.emit('room:error', `Insufficient balance. Entry fee: ₹${entryFee}`);
-        }
+        const userCheck = await User.findById(userId).select('isGuest');
+        if (!userCheck) return socket.emit('room:error', 'User not found');
+        if (userCheck.isGuest) return socket.emit('room:error', 'Guests cannot join cash games');
         if (!room.paidPlayerIds) room.paidPlayerIds = [];
         if (!room.paidPlayerIds.includes(userId)) {
-          await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryFee } });
+          // Atomic conditional deduction — prevents double-deduction on concurrent joins
+          const deducted = await User.findOneAndUpdate(
+            { _id: userId, walletBalance: { $gte: entryFee } },
+            { $inc: { walletBalance: -entryFee } },
+            { new: true },
+          );
+          if (!deducted) {
+            return socket.emit('room:error', `Insufficient balance. Entry fee: ₹${entryFee}`);
+          }
           room.paidPlayerIds.push(userId);
           await Transaction.create({
             userId,
@@ -265,6 +274,15 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
   });
 }
 
+// Grace-period timers: roomCode → timer handle.
+// Started when all humans disconnect mid-game; cancelled on any reconnect.
+const pendingAbandon = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function cancelPendingAbandon(roomCode: string): void {
+  const t = pendingAbandon.get(roomCode);
+  if (t) { clearTimeout(t); pendingAbandon.delete(roomCode); }
+}
+
 /** Refund the entry fee to every player who paid in a cash game room. */
 export async function refundAbandonedGame(room: IRoom) {
   const entryFee = (room.config as any).entryFee ?? 0;
@@ -307,15 +325,45 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
   room.players = room.players.filter(p => p.userId !== userId);
   await socket.leave(room.code);
 
-  // If game was in progress and no human players remain → abandoned, refund everyone
+  // If game was in progress and no human players remain, give a 60s grace window
+  // before abandoning. Players closing/reopening the app reconnect via game:reconnect
+  // without needing room:join — if they return within 60s the timer is cancelled.
+  // This prevents the "refund on temporary disconnect" bug where all players briefly
+  // disconnect (app backgrounded) and the room is deleted before they can resume.
   const humanPlayersLeft = room.players.filter(p => !p.isBot).length;
-  if (room.status === 'playing' && humanPlayersLeft === 0) {
-    await refundAbandonedGame(room);
-    await Room.deleteOne({ _id: room._id });
-    io.to(room.code).emit('game:abandoned', {
-      message: 'All players left — entry fees have been refunded.',
+  if (
+    room.status === 'playing' &&
+    humanPlayersLeft === 0 &&
+    (room.paidPlayerIds?.length ?? 0) > 0 &&
+    !pendingAbandon.has(room.code)   // only start one timer per room
+  ) {
+    const roomCode = room.code;
+    io.to(roomCode).emit('game:reconnect_warning', {
+      message: 'All players disconnected. Game will be abandoned in 60 seconds if nobody reconnects.',
+      seconds: 60,
     });
-    return;
+    const timer = setTimeout(async () => {
+      pendingAbandon.delete(roomCode);
+      try {
+        const liveRoom = await Room.findOne({ code: roomCode });
+        if (!liveRoom) return;
+        if (liveRoom.status !== 'playing') return; // finished normally
+        if ((liveRoom.paidPlayerIds?.length ?? 0) === 0) return; // prize already paid
+        const stillNoHumans = liveRoom.players.filter((p: any) => !p.isBot).length === 0;
+        if (stillNoHumans) {
+          await refundAbandonedGame(liveRoom);
+          await liveRoom.save();
+          await Room.deleteOne({ _id: liveRoom._id });
+          io.to(roomCode).emit('game:abandoned', {
+            message: 'All players left — entry fees have been refunded.',
+          });
+        }
+      } catch (e) {
+        console.error('[Room] Delayed abandon error:', e);
+      }
+    }, 60_000);
+    pendingAbandon.set(roomCode, timer);
+    // Fall through — save the room below so it persists during the grace window
   }
 
   if (room.players.length === 0) {

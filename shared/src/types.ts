@@ -83,6 +83,7 @@ export interface GameState {
   roundResult: RoundResult | null;
   chatMessages: ChatMessage[];
   consecutiveTimeouts: Record<string, number>; // playerId → consecutive timeout count
+  disableElimination?: boolean; // when true, humans are never eliminated by timeouts (used in Team Arena / Survival)
 }
 
 export interface RoundResult {

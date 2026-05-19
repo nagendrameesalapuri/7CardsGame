@@ -69,13 +69,14 @@ interface TeamArenaStore {
 
   // UI state
   stageResult: TeamArenaStageResult | null;
-  showBossIntro: boolean;
+  showStageIntro: boolean;
+  introStage: number;
 
   // Actions
   subscribe: () => () => void;
   clearStageResult: () => void;
   continueToNextStage: () => void;
-  dismissBossIntro: () => void;
+  dismissStageIntro: () => void;
   reset: () => void;
 }
 
@@ -94,13 +95,13 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
   waitingForTeammate: false,
   isTeammate: false,
   stageResult: null,
-  showBossIntro: false,
+  showStageIntro: false,
+  introStage: 1,
 
   subscribe: () => {
     const unsubs: Array<() => void> = [];
 
     unsubs.push(on('team-arena:started', (data: any) => {
-      const isBossStage = data.currentStage === 5;
       set({
         active: true,
         tournamentId: data.tournamentId,
@@ -116,7 +117,8 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
         waitingForTeammate: data.waitingForTeammate ?? false,
         isTeammate: data.isTeammate ?? false,
         stageResult: null,
-        showBossIntro: isBossStage,
+        showStageIntro: true,
+        introStage: data.currentStage ?? 1,
       });
     }));
 
@@ -126,14 +128,16 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
     }));
 
     unsubs.push(on('team-arena:stage_result', (result: any) => {
-      const nextIsBoss = (result.nextStage ?? 0) === 5;
+      const hasNextStage = !result.tournamentOver && result.nextStage != null;
       set((s) => ({
         currentStage: result.nextStage ?? s.currentStage,
         stageResults: result.stageResults ?? s.stageResults,
         totalPointsEarned: result.totalPointsEarned ?? s.totalPointsEarned,
         stageResult: result,
         active: !result.tournamentOver,
-        showBossIntro: nextIsBoss && !result.tournamentOver,
+        // Show intro for the upcoming stage; shown before the stage result overlay
+        showStageIntro: hasNextStage,
+        introStage: result.nextStage ?? s.currentStage,
       }));
 
       if (result.tournamentOver && result.won) {
@@ -145,7 +149,7 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
     }));
 
     unsubs.push(on('team-arena:abandoned', (data: any) => {
-      set({ active: false, tournamentId: null, stageResult: null, waitingForTeammate: false });
+      set({ active: false, tournamentId: null, stageResult: null, waitingForTeammate: false, showStageIntro: false });
       if (data.forcedByAdmin) {
         notify.error('Your Team Arena tournament was ended by an admin.', { duration: 5000 });
       } else if (data.hostLeft) {
@@ -166,13 +170,14 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
       if (!data) return; // null = no active tournament
       const isActive = data.status === 'active' || data.status === 'waiting_teammate';
       if (!isActive) return;
+      // On resume, skip intro so the player goes straight to the game
       set((s) => ({
         active: true,
         tournamentId: data.tournamentId ?? s.tournamentId,
         inviteCode: data.inviteCode ?? s.inviteCode,
         teammateType: data.teammateType ?? s.teammateType,
         teammateName: data.teammateName ?? s.teammateName,
-        aiPersonality: s.aiPersonality, // not returned by status, keep existing
+        aiPersonality: s.aiPersonality,
         entryPoints: data.entryPoints ?? s.entryPoints,
         currentStage: data.currentStage ?? s.currentStage,
         totalStages: data.totalStages ?? s.totalStages,
@@ -180,6 +185,7 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
         stageResults: data.stageResults ?? s.stageResults,
         waitingForTeammate: data.status === 'waiting_teammate',
         isTeammate: !(data.isHost ?? true),
+        showStageIntro: false, // no intro on resume
       }));
     }));
 
@@ -195,7 +201,7 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
     socketTeamArena.continue();
   },
 
-  dismissBossIntro: () => set({ showBossIntro: false }),
+  dismissStageIntro: () => set({ showStageIntro: false }),
 
   reset: () => set({
     active: false,
@@ -212,6 +218,7 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
     waitingForTeammate: false,
     isTeammate: false,
     stageResult: null,
-    showBossIntro: false,
+    showStageIntro: false,
+    introStage: 1,
   }),
 }));

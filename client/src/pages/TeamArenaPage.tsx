@@ -8,7 +8,7 @@ import { socketTeamArena } from '../services/socket';
 import { teamArenaApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
 import { TeamStageResult } from '../components/team-arena/TeamStageResult';
-import { BossIntro } from '../components/team-arena/BossIntro';
+import { StageIntro } from '../components/team-arena/StageIntro';
 
 const AI_PROFILES = [
   { personality: 'safe',       name: 'Sentinel', icon: '🛡',  playstyle: 'Cautious Defender',       desc: 'Patient and methodical. Minimises risk, holds out for the perfect SHOW.', color: '#22c55e', difficulty: 'Easy' },
@@ -378,13 +378,14 @@ export function TeamArenaPage() {
     active, tournamentId, inviteCode, teammateType, teammateName,
     aiPersonality, entryPoints, currentStage, totalStages,
     totalPointsEarned, stageResults, waitingForTeammate, isTeammate,
-    stageResult, showBossIntro,
-    subscribe, clearStageResult, continueToNextStage, dismissBossIntro, reset,
+    stageResult, showStageIntro, introStage,
+    subscribe, clearStageResult, continueToNextStage, dismissStageIntro, reset,
   } = useTeamArenaStore();
   const { game, subscribeToEvents } = useGameStore();
 
-  // Setup view state
-  const [view, setView] = useState<'tiers' | 'lobby' | 'ai_select' | 'entry_mode' | 'join_invite'>('tiers');
+  // Setup view state — 'tiers' and 'join_invite' are full pages; selection flow is in modal
+  const [view, setView] = useState<'tiers' | 'join_invite'>('tiers');
+  const [modalStep, setModalStep] = useState<null | 'teammate_select' | 'ai_select' | 'entry_mode'>(null);
   const [selectedTierId, setSelectedTierId] = useState<string>('beginner');
   const [selectedTeammate, setSelectedTeammate] = useState<'ai' | 'human' | null>(null);
   const [selectedAI, setSelectedAI] = useState<string>('smart');
@@ -445,20 +446,22 @@ export function TeamArenaPage() {
       .catch(() => setStatusChecked(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Navigate to game when game state arrives
+  // Navigate to game when game state arrives — wait until intro is dismissed
   useEffect(() => {
-    if (game && active && !stageResult && !waitingForTeammate) {
+    if (game && active && !stageResult && !waitingForTeammate && !showStageIntro) {
       navigate('/game');
     }
-  }, [game, active, stageResult, waitingForTeammate, navigate]);
+  }, [game, active, stageResult, waitingForTeammate, showStageIntro, navigate]);
 
   // Auto-rejoin room when we have an active tournament but no game (e.g. after
-  // stage result is cleared or page is refreshed mid-tournament)
+  // stage result is cleared or page is refreshed mid-tournament).
+  // Also blocked while the stage intro is showing so the game room isn't
+  // created before the cinematic finishes.
   useEffect(() => {
-    if (active && !game && !stageResult && !waitingForTeammate && statusChecked) {
+    if (active && !game && !stageResult && !waitingForTeammate && statusChecked && !showStageIntro) {
       socketTeamArena.continue();
     }
-  }, [active, game, stageResult, waitingForTeammate, statusChecked]);
+  }, [active, game, stageResult, waitingForTeammate, statusChecked, showStageIntro]);
 
   const startWithAI = useCallback(() => {
     if (starting) return;
@@ -492,7 +495,7 @@ export function TeamArenaPage() {
   const handleAbandon = useCallback(() => {
     socketTeamArena.abandon();
     reset();
-    setView('lobby');
+    setView('tiers');
   }, [reset]);
 
   const handleContinue = useCallback(() => {
@@ -515,13 +518,14 @@ export function TeamArenaPage() {
   const hostPays = selectedEntryMode === 'host_pays' ? humanEntryPoints : Math.ceil(humanEntryPoints / 2);
   const hostPaysRupees = hostPays / POINTS_PER_RUPEE;
 
-  // ── BOSS INTRO ──────────────────────────────────────────────────────────────
-  if (showBossIntro) {
+  // ── STAGE INTRO ─────────────────────────────────────────────────────────────
+  if (showStageIntro) {
     return (
-      <BossIntro
-        onDismiss={dismissBossIntro}
-        enemyBotNames={STAGES[4].enemies}
+      <StageIntro
+        stage={introStage}
+        mode="teamarena"
         teammateName={teammateName ?? undefined}
+        onDismiss={dismissStageIntro}
       />
     );
   }
@@ -796,7 +800,7 @@ export function TeamArenaPage() {
                         </div>
                         <motion.button
                           whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                          onClick={() => { setSelectedTierId(tier.id); setView('lobby'); }}
+                          onClick={() => { setSelectedTierId(tier.id); setModalStep('teammate_select'); }}
                           disabled={!canAfford || user?.isGuest}
                           className="w-full py-2.5 rounded-xl font-bold text-xs mt-auto disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{ background: tier.color, color: '#0d1117' }}
@@ -824,287 +828,10 @@ export function TeamArenaPage() {
               </motion.div>
             )}
 
-            {/* ── LOBBY (teammate selection for selected tier) ───────────────── */}
-            {view === 'lobby' && (
-              <motion.div key="lobby" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
-                {/* Header with tier badge */}
-                <div className="flex items-center gap-3 mb-5">
-                  <button
-                    onClick={() => setView('tiers')}
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(148,163,184,0.7)' }}
-                  >←</button>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm" style={{ color: tierCfg.color }}>{tierCfg.icon} {tierCfg.label} Tier</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                        style={{ background: `${tierCfg.color}18`, color: tierCfg.color, border: `1px solid ${tierCfg.color}30` }}>
-                        {tierCfg.entryPoints.toLocaleString()} pts entry
-                      </span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.5)' }}>Choose how you want to play</p>
-                  </div>
-                </div>
-
-                {/* Entry options */}
-                <div className="space-y-3 mb-5">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setView('ai_select')}
-                    className="w-full rounded-xl overflow-hidden"
-                    style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.15))', border: '1px solid rgba(99,102,241,0.4)' }}
-                  >
-                    <div className="p-4 text-left">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-black text-sm" style={{ color: '#a5b4fc' }}>🤖 Play with AI Teammate</p>
-                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Solo entry, AI partner — starts instantly</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-black" style={{ color: '#818cf8' }}>{aiEntryPoints.toLocaleString()} pts</p>
-                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{aiEntryRupees.toFixed(2)}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 mt-2.5 flex-wrap">
-                        {AI_PROFILES.map((p) => (
-                          <span key={p.personality} className="text-xs px-2 py-0.5 rounded-full font-bold"
-                            style={{ background: `${p.color}18`, color: p.color, border: `1px solid ${p.color}40` }}>
-                            {p.icon} {p.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setView('entry_mode')}
-                    className="w-full rounded-xl overflow-hidden"
-                    style={{ background: 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(16,185,129,0.08))', border: '1px solid rgba(52,211,153,0.3)' }}
-                  >
-                    <div className="p-4 text-left">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-black text-sm" style={{ color: '#6ee7b7' }}>👤 Invite Human Teammate</p>
-                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Play with a friend — split or host pays</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-black" style={{ color: '#34d399' }}>{humanEntryPoints.toLocaleString()} pts</p>
-                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{(humanEntryPoints / POINTS_PER_RUPEE).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.button>
-                </div>
-
-                <button
-                  onClick={() => navigate('/lobby')}
-                  className="w-full py-2 text-xs"
-                  style={{ color: 'rgba(100,116,139,0.5)' }}
-                >
-                  ← Back to Lobby
-                </button>
-              </motion.div>
-            )}
-
-            {/* ── AI TEAMMATE SELECT ─────────────────────────────────────────── */}
-            {view === 'ai_select' && (
-              <motion.div key="ai_select" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-                <button onClick={() => setView('lobby')} className="flex items-center gap-1.5 mb-4 text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                  ← Back
-                </button>
-                <h2 className="text-xl font-black mb-1" style={{ color: '#e2e8f0' }}>Choose Your Teammate</h2>
-                <p className="text-xs mb-5" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                  Your AI partner plays independently — their score adds to your team total
-                </p>
-
-                <div className="space-y-3 mb-6">
-                  {AI_PROFILES.map((p) => (
-                    <motion.button
-                      key={p.personality}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setSelectedAI(p.personality)}
-                      className="w-full rounded-xl p-4 text-left transition-all"
-                      style={{
-                        background: selectedAI === p.personality
-                          ? `linear-gradient(135deg,${p.color}20,${p.color}10)`
-                          : 'rgba(15,18,40,0.7)',
-                        border: selectedAI === p.personality
-                          ? `2px solid ${p.color}80`
-                          : '1px solid rgba(255,255,255,0.08)',
-                        boxShadow: selectedAI === p.personality ? `0 0 20px ${p.color}25` : 'none',
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                          style={{ background: `${p.color}18`, border: `1px solid ${p.color}40` }}
-                        >
-                          {p.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="font-black text-sm" style={{ color: selectedAI === p.personality ? p.color : '#e2e8f0' }}>
-                              {p.name}
-                            </span>
-                            <span
-                              className="text-xs px-1.5 py-0.5 rounded font-bold"
-                              style={{ background: `${p.color}18`, color: p.color }}
-                            >
-                              {p.difficulty}
-                            </span>
-                            {selectedAI === p.personality && (
-                              <span className="ml-auto text-xs font-bold" style={{ color: p.color }}>✓ Selected</span>
-                            )}
-                          </div>
-                          <p className="text-xs font-bold mb-0.5" style={{ color: `${p.color}cc` }}>{p.playstyle}</p>
-                          <p className="text-xs" style={{ color: 'rgba(148,163,184,0.65)', lineHeight: 1.4 }}>{p.desc}</p>
-                        </div>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-
-                {/* Entry fee summary */}
-                <div
-                  className="rounded-xl p-4 mb-5"
-                  style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)' }}
-                >
-                  <div className="flex justify-between text-sm mb-1">
-                    <span style={{ color: 'rgba(148,163,184,0.7)' }}>Entry fee (AI teammate)</span>
-                    <span className="font-black" style={{ color: '#818cf8' }}>{aiEntryPoints} pts</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: 'rgba(148,163,184,0.5)' }}>Your balance</span>
-                    <span style={{ color: 'rgba(148,163,184,0.7)' }}>₹{walletBalance.toFixed(2)}</span>
-                  </div>
-                  {walletBalance < aiEntryRupees && (
-                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>
-                      ⚠ Insufficient balance (need ₹{aiEntryRupees.toFixed(2)})
-                    </p>
-                  )}
-                </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={startWithAI}
-                  disabled={starting || walletBalance < aiEntryRupees}
-                  className="w-full py-3.5 rounded-xl font-black text-sm tracking-wide"
-                  style={{
-                    background: starting || walletBalance < aiEntryRupees
-                      ? 'rgba(99,102,241,0.3)'
-                      : 'linear-gradient(135deg,#6366f1,#818cf8)',
-                    color: '#fff',
-                    opacity: starting || walletBalance < aiEntryRupees ? 0.6 : 1,
-                    boxShadow: starting || walletBalance < aiEntryRupees ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
-                  }}
-                >
-                  {starting ? 'Starting…' : `⚔ Enter Team Arena — ${aiEntryPoints} pts`}
-                </motion.button>
-              </motion.div>
-            )}
-
-            {/* ── HUMAN TEAMMATE ENTRY MODE ─────────────────────────────────── */}
-            {view === 'entry_mode' && (
-              <motion.div key="entry_mode" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-                <button onClick={() => setView('lobby')} className="flex items-center gap-1.5 mb-4 text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                  ← Back
-                </button>
-                <h2 className="text-xl font-black mb-1" style={{ color: '#e2e8f0' }}>Entry Payment</h2>
-                <p className="text-xs mb-5" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                  Choose how to handle the {humanEntryPoints.toLocaleString()} pts entry fee
-                </p>
-
-                <div className="space-y-3 mb-6">
-                  {[
-                    {
-                      mode: 'split' as const,
-                      title: '⚖ Split Entry',
-                      desc: `You pay ${Math.ceil(humanEntryPoints / 2)} pts · Teammate pays ${Math.floor(humanEntryPoints / 2)} pts`,
-                      color: '#34d399',
-                    },
-                    {
-                      mode: 'host_pays' as const,
-                      title: '🎁 Host Pays Full',
-                      desc: `You pay all ${humanEntryPoints.toLocaleString()} pts · Teammate joins free`,
-                      color: '#fbbf24',
-                    },
-                  ].map((opt) => (
-                    <motion.button
-                      key={opt.mode}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setSelectedEntryMode(opt.mode)}
-                      className="w-full rounded-xl p-4 text-left"
-                      style={{
-                        background: selectedEntryMode === opt.mode
-                          ? `${opt.color}14`
-                          : 'rgba(15,18,40,0.7)',
-                        border: selectedEntryMode === opt.mode
-                          ? `2px solid ${opt.color}60`
-                          : '1px solid rgba(255,255,255,0.08)',
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-black text-sm" style={{ color: selectedEntryMode === opt.mode ? opt.color : '#e2e8f0' }}>
-                            {opt.title}
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>{opt.desc}</p>
-                        </div>
-                        {selectedEntryMode === opt.mode && (
-                          <span className="text-sm font-black ml-3" style={{ color: opt.color }}>✓</span>
-                        )}
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-
-                <div
-                  className="rounded-xl p-4 mb-5"
-                  style={{ background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)' }}
-                >
-                  <div className="flex justify-between text-sm mb-1">
-                    <span style={{ color: 'rgba(148,163,184,0.7)' }}>You pay now</span>
-                    <span className="font-black" style={{ color: '#34d399' }}>{hostPays} pts</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: 'rgba(148,163,184,0.5)' }}>Your balance</span>
-                    <span style={{ color: 'rgba(148,163,184,0.7)' }}>₹{walletBalance.toFixed(2)}</span>
-                  </div>
-                  {walletBalance < hostPaysRupees && (
-                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>
-                      ⚠ Insufficient balance (need ₹{hostPaysRupees.toFixed(2)})
-                    </p>
-                  )}
-                </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={startWithHuman}
-                  disabled={starting || walletBalance < hostPaysRupees}
-                  className="w-full py-3.5 rounded-xl font-black text-sm tracking-wide"
-                  style={{
-                    background: starting || walletBalance < hostPaysRupees
-                      ? 'rgba(52,211,153,0.2)'
-                      : 'linear-gradient(135deg,#10b981,#34d399)',
-                    color: '#fff',
-                    opacity: starting || walletBalance < hostPaysRupees ? 0.6 : 1,
-                    boxShadow: starting || walletBalance < hostPaysRupees ? 'none' : '0 4px 20px rgba(16,185,129,0.35)',
-                  }}
-                >
-                  {starting ? 'Creating…' : `👥 Create Team — ${hostPays} pts`}
-                </motion.button>
-              </motion.div>
-            )}
-
             {/* ── JOIN AS TEAMMATE ───────────────────────────────────────────── */}
             {view === 'join_invite' && (
               <motion.div key="join_invite" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-                <button onClick={() => setView('lobby')} className="flex items-center gap-1.5 mb-4 text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>
+                <button onClick={() => setView('tiers')} className="flex items-center gap-1.5 mb-4 text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>
                   ← Back
                 </button>
                 <h2 className="text-xl font-black mb-1" style={{ color: '#e2e8f0' }}>Join as Teammate</h2>
@@ -1154,6 +881,277 @@ export function TeamArenaPage() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* ── SELECTION MODAL (teammate → ai_select / entry_mode) ──────────── */}
+      <AnimatePresence>
+        {modalStep !== null && (
+          <motion.div
+            key="modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+            style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(6px)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setModalStep(null); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 52 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 52 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+              className="w-full rounded-2xl overflow-hidden"
+              style={{
+                maxWidth: 460,
+                background: 'rgba(10,13,31,0.99)',
+                border: `1px solid ${tierCfg.color}40`,
+                boxShadow: `0 0 50px ${tierCfg.color}22, 0 24px 60px rgba(0,0,0,0.65)`,
+              }}
+            >
+              {/* ── Persistent modal header ── */}
+              <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                <div className="flex items-center gap-2">
+                  {modalStep !== 'teammate_select' && (
+                    <button
+                      onClick={() => setModalStep('teammate_select')}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-xs mr-1"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(148,163,184,0.7)' }}
+                    >←</button>
+                  )}
+                  <span className="font-black text-sm" style={{ color: tierCfg.color }}>{tierCfg.icon} {tierCfg.label} Tier</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: `${tierCfg.color}18`, color: tierCfg.color, border: `1px solid ${tierCfg.color}30` }}>
+                    {tierCfg.entryPoints.toLocaleString()} pts
+                  </span>
+                </div>
+                <button
+                  onClick={() => setModalStep(null)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(148,163,184,0.6)' }}
+                >✕</button>
+              </div>
+
+              {/* ── Step content with slide transitions ── */}
+              <AnimatePresence mode="wait">
+
+                {/* Step 1 — choose teammate type */}
+                {modalStep === 'teammate_select' && (
+                  <motion.div
+                    key="step-teammate"
+                    initial={{ opacity: 0, x: -30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -30 }}
+                    transition={{ duration: 0.18 }}
+                    className="px-5 pb-5"
+                  >
+                    <p className="text-xs mb-4" style={{ color: 'rgba(148,163,184,0.55)' }}>Choose how you want to play</p>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => setModalStep('ai_select')}
+                      className="w-full rounded-xl overflow-hidden mb-3 text-left"
+                      style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.15))', border: '1px solid rgba(99,102,241,0.4)' }}
+                    >
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-black text-sm" style={{ color: '#a5b4fc' }}>🤖 Play with AI Teammate</p>
+                            <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Solo entry, AI partner — starts instantly</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black" style={{ color: '#818cf8' }}>{aiEntryPoints.toLocaleString()} pts</p>
+                            <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{aiEntryRupees.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                          {AI_PROFILES.map((p) => (
+                            <span key={p.personality} className="text-xs px-2 py-0.5 rounded-full font-bold"
+                              style={{ background: `${p.color}18`, color: p.color, border: `1px solid ${p.color}40` }}>
+                              {p.icon} {p.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => setModalStep('entry_mode')}
+                      className="w-full rounded-xl overflow-hidden text-left"
+                      style={{ background: 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(16,185,129,0.08))', border: '1px solid rgba(52,211,153,0.3)' }}
+                    >
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-black text-sm" style={{ color: '#6ee7b7' }}>👤 Invite Human Teammate</p>
+                            <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>Play with a friend — split or host pays</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black" style={{ color: '#34d399' }}>{humanEntryPoints.toLocaleString()} pts</p>
+                            <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>₹{(humanEntryPoints / POINTS_PER_RUPEE).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.button>
+                  </motion.div>
+                )}
+
+                {/* Step 2A — AI teammate picker */}
+                {modalStep === 'ai_select' && (
+                  <motion.div
+                    key="step-ai"
+                    initial={{ opacity: 0, x: 30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 30 }}
+                    transition={{ duration: 0.18 }}
+                    className="px-5 pb-5"
+                  >
+                    <p className="text-xs mb-4" style={{ color: 'rgba(148,163,184,0.55)' }}>
+                      Your AI partner plays independently — their score adds to your team total
+                    </p>
+
+                    <div className="space-y-2.5 mb-4 max-h-72 overflow-y-auto pr-1">
+                      {AI_PROFILES.map((p) => (
+                        <motion.button
+                          key={p.personality}
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setSelectedAI(p.personality)}
+                          className="w-full rounded-xl p-3.5 text-left"
+                          style={{
+                            background: selectedAI === p.personality
+                              ? `linear-gradient(135deg,${p.color}20,${p.color}10)`
+                              : 'rgba(255,255,255,0.03)',
+                            border: selectedAI === p.personality
+                              ? `2px solid ${p.color}80`
+                              : '1px solid rgba(255,255,255,0.07)',
+                            boxShadow: selectedAI === p.personality ? `0 0 18px ${p.color}22` : 'none',
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                              style={{ background: `${p.color}18`, border: `1px solid ${p.color}40` }}
+                            >
+                              {p.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-sm" style={{ color: selectedAI === p.personality ? p.color : '#e2e8f0' }}>
+                                  {p.name}
+                                </span>
+                                <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: `${p.color}18`, color: p.color }}>
+                                  {p.difficulty}
+                                </span>
+                                {selectedAI === p.personality && (
+                                  <span className="ml-auto text-xs font-bold" style={{ color: p.color }}>✓</span>
+                                )}
+                              </div>
+                              <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.6)', lineHeight: 1.4 }}>{p.desc}</p>
+                            </div>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+
+                    <div className="rounded-xl px-4 py-3 mb-4 flex justify-between items-center"
+                      style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.22)' }}>
+                      <span className="text-xs" style={{ color: 'rgba(148,163,184,0.7)' }}>Entry fee</span>
+                      <span className="font-black text-sm" style={{ color: '#818cf8' }}>{aiEntryPoints.toLocaleString()} pts</span>
+                    </div>
+                    {walletBalance < aiEntryRupees && (
+                      <p className="text-xs mb-3 text-center" style={{ color: '#f87171' }}>
+                        ⚠ Insufficient balance — need ₹{aiEntryRupees.toFixed(2)}
+                      </p>
+                    )}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={startWithAI}
+                      disabled={starting || walletBalance < aiEntryRupees}
+                      className="w-full py-3.5 rounded-xl font-black text-sm"
+                      style={{
+                        background: starting || walletBalance < aiEntryRupees ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg,#6366f1,#818cf8)',
+                        color: '#fff',
+                        opacity: starting || walletBalance < aiEntryRupees ? 0.6 : 1,
+                        boxShadow: starting || walletBalance < aiEntryRupees ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
+                      }}
+                    >
+                      {starting ? 'Starting…' : `⚔ Enter Team Arena — ${aiEntryPoints.toLocaleString()} pts`}
+                    </motion.button>
+                  </motion.div>
+                )}
+
+                {/* Step 2B — Human teammate entry mode */}
+                {modalStep === 'entry_mode' && (
+                  <motion.div
+                    key="step-entry"
+                    initial={{ opacity: 0, x: 30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 30 }}
+                    transition={{ duration: 0.18 }}
+                    className="px-5 pb-5"
+                  >
+                    <p className="text-xs mb-4" style={{ color: 'rgba(148,163,184,0.55)' }}>
+                      Choose how to handle the {humanEntryPoints.toLocaleString()} pts entry fee
+                    </p>
+
+                    <div className="space-y-2.5 mb-4">
+                      {([
+                        { mode: 'split' as const, title: '⚖ Split Entry', desc: `You pay ${Math.ceil(humanEntryPoints / 2)} pts · Teammate pays ${Math.floor(humanEntryPoints / 2)} pts`, color: '#34d399' },
+                        { mode: 'host_pays' as const, title: '🎁 Host Pays Full', desc: `You pay all ${humanEntryPoints.toLocaleString()} pts · Teammate joins free`, color: '#fbbf24' },
+                      ]).map((opt) => (
+                        <motion.button
+                          key={opt.mode}
+                          whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                          onClick={() => setSelectedEntryMode(opt.mode)}
+                          className="w-full rounded-xl p-4 text-left"
+                          style={{
+                            background: selectedEntryMode === opt.mode ? `${opt.color}14` : 'rgba(255,255,255,0.03)',
+                            border: selectedEntryMode === opt.mode ? `2px solid ${opt.color}60` : '1px solid rgba(255,255,255,0.07)',
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-black text-sm" style={{ color: selectedEntryMode === opt.mode ? opt.color : '#e2e8f0' }}>{opt.title}</p>
+                              <p className="text-xs mt-0.5" style={{ color: 'rgba(148,163,184,0.65)' }}>{opt.desc}</p>
+                            </div>
+                            {selectedEntryMode === opt.mode && <span className="text-sm font-black ml-3" style={{ color: opt.color }}>✓</span>}
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+
+                    <div className="rounded-xl px-4 py-3 mb-4 flex justify-between items-center"
+                      style={{ background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                      <span className="text-xs" style={{ color: 'rgba(148,163,184,0.7)' }}>You pay now</span>
+                      <span className="font-black text-sm" style={{ color: '#34d399' }}>{hostPays.toLocaleString()} pts</span>
+                    </div>
+                    {walletBalance < hostPaysRupees && (
+                      <p className="text-xs mb-3 text-center" style={{ color: '#f87171' }}>
+                        ⚠ Insufficient balance — need ₹{hostPaysRupees.toFixed(2)}
+                      </p>
+                    )}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={startWithHuman}
+                      disabled={starting || walletBalance < hostPaysRupees}
+                      className="w-full py-3.5 rounded-xl font-black text-sm"
+                      style={{
+                        background: starting || walletBalance < hostPaysRupees ? 'rgba(52,211,153,0.2)' : 'linear-gradient(135deg,#10b981,#34d399)',
+                        color: '#fff',
+                        opacity: starting || walletBalance < hostPaysRupees ? 0.6 : 1,
+                        boxShadow: starting || walletBalance < hostPaysRupees ? 'none' : '0 4px 20px rgba(16,185,129,0.35)',
+                      }}
+                    >
+                      {starting ? 'Creating…' : `👥 Create Team — ${hostPays.toLocaleString()} pts`}
+                    </motion.button>
+                  </motion.div>
+                )}
+
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Layout>
   );
 }

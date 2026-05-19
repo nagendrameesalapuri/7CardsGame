@@ -242,6 +242,15 @@ export const admin = {
       summary: any;
     }>("/tournaments", { params }),
 
+  getTeamArenaChampionship: (params?: { page?: number; tier?: string; status?: string }) =>
+    adminApi.get<{
+      records: any[];
+      total: number;
+      page: number;
+      pages: number;
+      summary: any;
+    }>("/team-arena-tournaments", { params }),
+
   getUsers: (params?: { page?: number; search?: string }) =>
     adminApi.get<{ users: any[]; total: number; page: number; pages: number }>(
       "/users",

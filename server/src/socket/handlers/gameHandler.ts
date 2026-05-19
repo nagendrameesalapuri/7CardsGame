@@ -7,6 +7,7 @@
 
 import { Server, Socket } from "socket.io";
 import { Room } from "../../models/Room";
+import { cancelPendingAbandon } from "./roomHandler";
 import { Game } from "../../models/Game";
 import { User } from "../../models/User";
 import { PlayerProgress } from "../../models/PlayerProgress";
@@ -312,6 +313,7 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
 export async function startRoomGame(
   io: Server,
   roomCode: string,
+  options?: { disableElimination?: boolean },
 ): Promise<void> {
   const room = await Room.findOne({ code: roomCode });
   if (!room) return;
@@ -352,6 +354,7 @@ export async function startRoomGame(
     players: allPlayers,
     roundCount: room.config.roundCount,
     turnTimeLimit: room.config.turnTimeLimit,
+    disableElimination: options?.disableElimination ?? false,
   };
 
   const gameState = GameEngine.initializeGame(config);
@@ -1027,12 +1030,17 @@ async function handleMatchEnd(io: Server, state: GameState) {
     })
     .catch(console.error);
 
-  Room.findOneAndUpdate({ code: state.roomId }, { status: "finished" }).catch(
+  // Cancel any grace-period abandon timer — game finished normally before timeout.
+  cancelPendingAbandon(state.roomId);
+
+  // Await the status update FIRST so any concurrent handleLeave sees 'finished'
+  // and does NOT trigger the abandon-refund path (race-condition fix).
+  await Room.findOneAndUpdate({ code: state.roomId }, { status: "finished" }).catch(
     console.error,
   );
 
-  // Cash game prize distribution
-  distributePrize(io, state, matchResult, winnerPlayer ?? null).catch(
+  // Cash game prize distribution (runs after status is persisted)
+  await distributePrize(io, state, matchResult, winnerPlayer ?? null).catch(
     console.error,
   );
 
@@ -1106,10 +1114,11 @@ async function distributePrize(
 
     const paidIds: string[] = (room as any).paidPlayerIds ?? [];
     const pot = entryFee * paidIds.length;
-    if (pot <= 0 || !winnerPlayer || winnerPlayer.isBot) return;
+    if (pot <= 0) return;
 
-    // Handle ties — split the pot evenly
-    const winnerIds: string[] = matchResult.winnerIds ?? [matchResult.winnerId];
+    // Collect all winner IDs (supports ties). Filter to human paid players only —
+    // bots never receive prize money regardless of whether they won or tied.
+    const winnerIds: string[] = matchResult.winnerIds ?? (matchResult.winnerId ? [matchResult.winnerId] : []);
     const winnerPlayerIds = state.players
       .filter(
         (p) =>
@@ -1119,6 +1128,13 @@ async function distributePrize(
 
     if (winnerPlayerIds.length === 0) return;
     const share = Math.floor(pot / winnerPlayerIds.length);
+
+    // Clear paidPlayerIds in DB first so a concurrent abandon-refund cannot
+    // double-pay even if the status update races against a disconnect.
+    await Room.findOneAndUpdate(
+      { code: state.roomId },
+      { $set: { paidPlayerIds: [] } },
+    ).catch(console.error);
 
     for (const uid of winnerPlayerIds) {
       const updated = await User.findByIdAndUpdate(

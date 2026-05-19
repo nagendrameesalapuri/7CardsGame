@@ -428,15 +428,15 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
         }
       }
 
-      // Validate balance
-      const user = await User.findById(userId).select('walletBalance');
-      if (!user) return socket.emit('survival:error', 'User not found');
-      if ((user.walletBalance ?? 0) < entryRupees) {
+      // Atomically deduct entry fee — prevents negative balance on concurrent starts
+      const deducted = await User.findOneAndUpdate(
+        { _id: userId, walletBalance: { $gte: entryRupees } },
+        { $inc: { walletBalance: -entryRupees } },
+        { new: true },
+      );
+      if (!deducted) {
         return socket.emit('survival:error', `Insufficient balance. Need ₹${entryRupees} (${tierCfg.entryPoints} pts) to enter.`);
       }
-
-      // Deduct entry fee
-      await User.findByIdAndUpdate(userId, { $inc: { walletBalance: -entryRupees } });
 
       let roomCode: string | undefined;
       let survival: any;

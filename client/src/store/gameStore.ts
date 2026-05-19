@@ -359,6 +359,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (isMyTurn && !prevIsMyTurn && incoming.status === "playing") {
             soundService.playBeep();
           }
+          // Alert when the user first comes under attack (transition false → true)
+          if (underAttack && !state.underAttack) {
+            const attackChain = incoming.attackChain;
+            const penaltyCount = attackChain?.penaltyCards ?? 2;
+            notify.warning(
+              `⚔️ You're under 7 attack! Counter with a 7 or take ${penaltyCount} penalty cards.`,
+              { duration: 8000, id: 'attack-alert' },
+            );
+          }
           return {
             game,
             isMyTurn,

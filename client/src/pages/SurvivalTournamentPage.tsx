@@ -6,6 +6,7 @@ import { useSurvivalStore } from '../store/survivalStore';
 import { useGameStore } from '../store/gameStore';
 import { socketSurvival, on } from '../services/socket';
 import { survivalApi, walletApi, configApi } from '../services/api';
+import { StageIntro } from '../components/team-arena/StageIntro';
 
 function loadSurvivalStatus(setActiveStatus: (v: any) => void, setStatusChecked: (v: boolean) => void) {
   survivalApi.status()
@@ -539,8 +540,8 @@ function TiebreakerOverlay() {
 
 // ── Stage Result Overlay ──────────────────────────────────────────────────────
 
-function StageResultOverlay({ onEnterFinalArena }: { onEnterFinalArena: () => void }) {
-  const { stageResult, continueToNextStage, reset } = useSurvivalStore();
+function StageResultOverlay({ onContinue }: { onContinue: (nextStageNum: number) => void }) {
+  const { stageResult, reset } = useSurvivalStore();
   const { reset: resetGame } = useGameStore();
   const navigate = useNavigate();
 
@@ -558,8 +559,7 @@ function StageResultOverlay({ onEnterFinalArena }: { onEnterFinalArena: () => vo
 
   const handleAction = () => {
     if (tournamentOver) { resetGame(); reset(); navigate('/survival'); }
-    else if (playerWon && goingToFinalArena) { onEnterFinalArena(); }
-    else if (playerWon) { continueToNextStage(); }
+    else if (playerWon) { onContinue(nextStage ?? (stage + 1)); }
     else { resetGame(); reset(); navigate('/survival'); }
   };
 
@@ -1047,7 +1047,7 @@ export function SurvivalTournamentPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const { subscribe, active, currentStage, stageResults, stageResult, tiebreakerResult,
-    totalPointsEarned, clearStageResult, continueToNextStage } = useSurvivalStore();
+    totalPointsEarned, clearStageResult } = useSurvivalStore();
   const { subscribeToEvents } = useGameStore();
   const [balance, setBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
@@ -1059,7 +1059,9 @@ export function SurvivalTournamentPage() {
   const [survivalCfg, setSurvivalCfg] = useState<Record<string, { entryPoints: number; stageRewards: number[] }>>({});
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [quitting, setQuitting] = useState(false);
-  const [showBossCinematic, setShowBossCinematic] = useState(false);
+  const [showStageIntro, setShowStageIntro] = useState(false);
+  const [introStageNum, setIntroStageNum] = useState(1);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const refreshBalance = useCallback(() => {
     walletApi.get().then(r => setBalance(r.data.balance)).catch(() => {});
@@ -1098,16 +1100,30 @@ export function SurvivalTournamentPage() {
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents, refreshBalance]);
 
+  // Show stage intro then execute deferred action
+  const handleIntroDismiss = useCallback(() => {
+    setShowStageIntro(false);
+    setPendingAction((current) => {
+      current?.();
+      return null;
+    });
+  }, []);
+
   const handleStart = (tier: string) => {
     if (starting) return;
-    setStarting(true);
     setSelectedTier(tier);
-    socketSurvival.start(tier);
-    const unsub = on('survival:error', () => { setStarting(false); setSelectedTier(null); unsub(); });
+    setIntroStageNum(1);
+    setPendingAction(() => () => {
+      setStarting(true);
+      socketSurvival.start(tier);
+      const unsub = on('survival:error', () => { setStarting(false); setSelectedTier(null); unsub(); });
+    });
+    setShowStageIntro(true);
   };
 
   const handleResume = () => {
     if (!activeStatus || starting) return;
+    // Resume skips the intro — player already knows what stage they're on
     setStarting(true);
     socketSurvival.start(activeStatus.tier);
     const unsub = on('survival:error', () => { setStarting(false); unsub(); });
@@ -1119,14 +1135,12 @@ export function SurvivalTournamentPage() {
     socketSurvival.abandon();
   };
 
-  const handleEnterFinalArena = useCallback(() => {
-    clearStageResult();
-    setShowBossCinematic(true);
-  }, [clearStageResult]);
-
-  const handleCinematicComplete = useCallback(() => {
-    setShowBossCinematic(false);
-    socketSurvival.continue();
+  // Called from StageResultOverlay when the player wins a stage
+  const handleResultContinue = useCallback((nextStageNum: number) => {
+    useSurvivalStore.setState({ stageResult: null });
+    setIntroStageNum(nextStageNum);
+    setPendingAction(() => () => socketSurvival.continue());
+    setShowStageIntro(true);
   }, []);
 
   if (!isAuthenticated) return null;
@@ -1136,9 +1150,15 @@ export function SurvivalTournamentPage() {
 
   return (
     <Layout>
-      {/* Boss cinematic overlay */}
+      {/* Stage intro cinematic — shown before each stage */}
       <AnimatePresence>
-        {showBossCinematic && <BossCinematic onComplete={handleCinematicComplete} />}
+        {showStageIntro && (
+          <StageIntro
+            stage={introStageNum}
+            mode="survival"
+            onDismiss={handleIntroDismiss}
+          />
+        )}
       </AnimatePresence>
 
       {/* Tiebreaker overlay */}
@@ -1146,7 +1166,7 @@ export function SurvivalTournamentPage() {
 
       {/* Stage result overlay */}
       <AnimatePresence>
-        {stageResult && <StageResultOverlay onEnterFinalArena={handleEnterFinalArena} />}
+        {stageResult && <StageResultOverlay onContinue={handleResultContinue} />}
       </AnimatePresence>
 
       {/* Danger atmosphere — subtle red pulse for stages 4 & 5 */}

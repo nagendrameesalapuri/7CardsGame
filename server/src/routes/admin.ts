@@ -7,6 +7,7 @@ import { User } from "../models/User";
 import { Room } from "../models/Room";
 import { Game } from "../models/Game";
 import { SurvivalTournament } from "../models/SurvivalTournament";
+import { TeamArenaTournament } from "../models/TeamArenaTournament";
 import {
   getAllActiveRoomInfos,
   forceEndGame,
@@ -66,6 +67,7 @@ export default function createAdminRouter(io: Server) {
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
         survivalConfig: cfg.survivalConfig,
+        teamArenaConfig: cfg.teamArenaConfig,
       });
     } catch {
       res.status(500).json({ error: "Failed to load config" });
@@ -88,7 +90,7 @@ export default function createAdminRouter(io: Server) {
   // ── Update config ───────────────────────────────────────────────────────────
   router.patch("/config", async (req: Request, res: Response) => {
     try {
-      const { featureFlags, gameConfig, walletConfig, survivalConfig } =
+      const { featureFlags, gameConfig, walletConfig, survivalConfig, teamArenaConfig } =
         req.body;
       const cfg = await getAdminConfig();
 
@@ -129,6 +131,20 @@ export default function createAdminRouter(io: Server) {
             cfg.featureFlags.survivalTiers.elite = st.elite;
           if (typeof st.boss_arena === "boolean")
             cfg.featureFlags.survivalTiers.boss_arena = st.boss_arena;
+        }
+        if (typeof featureFlags.teamArenaEnabled === "boolean") {
+          (cfg.featureFlags as any).teamArenaEnabled = featureFlags.teamArenaEnabled;
+        }
+        if (featureFlags.teamArenaTiers && typeof featureFlags.teamArenaTiers === "object") {
+          const tat = featureFlags.teamArenaTiers;
+          if (!(cfg.featureFlags as any).teamArenaTiers) {
+            (cfg.featureFlags as any).teamArenaTiers = { beginner: true, pro: true, elite: true, legend: true };
+          }
+          const existing = (cfg.featureFlags as any).teamArenaTiers;
+          if (typeof tat.beginner === "boolean") existing.beginner = tat.beginner;
+          if (typeof tat.pro === "boolean") existing.pro = tat.pro;
+          if (typeof tat.elite === "boolean") existing.elite = tat.elite;
+          if (typeof tat.legend === "boolean") existing.legend = tat.legend;
         }
       }
 
@@ -215,6 +231,32 @@ export default function createAdminRouter(io: Server) {
         cfg.markModified("survivalConfig");
       }
 
+      if (teamArenaConfig && typeof teamArenaConfig === "object") {
+        const TA_TIERS = ["beginner", "pro", "elite", "legend"] as const;
+        const TA_DEFAULTS: Record<string, { entryPoints: number; stageRewards: number[] }> = {
+          beginner: { entryPoints: 1000,  stageRewards: [150, 300, 550, 900, 1600] },
+          pro:      { entryPoints: 2000,  stageRewards: [400, 800, 1400, 2400, 5000] },
+          elite:    { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000, 12500] },
+          legend:   { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+        };
+        for (const tier of TA_TIERS) {
+          const tc = teamArenaConfig[tier];
+          if (!tc) continue;
+          const tac = (cfg.teamArenaConfig as any)[tier] ?? TA_DEFAULTS[tier];
+          if (tc.reset) {
+            tac.entryPoints = TA_DEFAULTS[tier].entryPoints;
+            tac.stageRewards = [...TA_DEFAULTS[tier].stageRewards];
+          } else {
+            if (typeof tc.entryPoints === "number" && tc.entryPoints > 0)
+              tac.entryPoints = Math.max(1, Math.round(tc.entryPoints));
+            if (Array.isArray(tc.stageRewards) && tc.stageRewards.length === 5)
+              tac.stageRewards = tc.stageRewards.map((r: any) => Math.max(0, Math.round(Number(r) || 0)));
+          }
+          (cfg.teamArenaConfig as any)[tier] = tac;
+        }
+        cfg.markModified("teamArenaConfig");
+      }
+
       await cfg.save();
 
       // Notify all connected clients of the updated config
@@ -223,6 +265,7 @@ export default function createAdminRouter(io: Server) {
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
         survivalConfig: cfg.survivalConfig,
+        teamArenaConfig: cfg.teamArenaConfig,
       });
 
       res.json(cfg);
@@ -702,15 +745,12 @@ export default function createAdminRouter(io: Server) {
           .json({ error: "Status must be approved or rejected" });
       }
 
-      const wr = await WithdrawalRequest.findById(req.params.id);
-      if (!wr) return res.status(404).json({ error: "Request not found" });
-      if (wr.status !== "pending")
-        return res.status(400).json({ error: "Already processed" });
-
-      wr.status = status;
-      wr.adminNote = adminNote;
-      wr.processedAt = new Date();
-      await wr.save();
+      const wr = await WithdrawalRequest.findOneAndUpdate(
+        { _id: req.params.id, status: "pending" },
+        { $set: { status, adminNote, processedAt: new Date() } },
+        { new: true },
+      );
+      if (!wr) return res.status(400).json({ error: "Not found or already processed" });
 
       // If rejected → refund the held amount back to user
       if (status === "rejected") {
@@ -756,15 +796,12 @@ export default function createAdminRouter(io: Server) {
           .json({ error: "Status must be approved or rejected" });
       }
 
-      const dr = await DepositRequest.findById(req.params.id);
-      if (!dr) return res.status(404).json({ error: "Request not found" });
-      if (dr.status !== "pending")
-        return res.status(400).json({ error: "Already processed" });
-
-      dr.status = status;
-      dr.adminNote = adminNote;
-      dr.processedAt = new Date();
-      await dr.save();
+      const dr = await DepositRequest.findOneAndUpdate(
+        { _id: req.params.id, status: "pending" },
+        { $set: { status, adminNote, processedAt: new Date() } },
+        { new: true },
+      );
+      if (!dr) return res.status(400).json({ error: "Not found or already processed" });
 
       if (status === "approved") {
         // Credit wallet
@@ -934,6 +971,80 @@ export default function createAdminRouter(io: Server) {
       res
         .status(500)
         .json({ error: "Failed to load survival championship data" });
+    }
+  });
+
+  // ── Team Arena tournaments ──────────────────────────────────────────────────
+  router.get("/team-arena-tournaments", async (req: Request, res: Response) => {
+    try {
+      const page = Math.max(1, parseInt((req.query.page as string) ?? "1"));
+      const limit = 50;
+      const tier = req.query.tier as string | undefined;
+      const status = req.query.status as string | undefined;
+      const filter: Record<string, any> = {};
+      if (tier && ["beginner", "pro", "elite", "legend"].includes(tier)) filter.tier = tier;
+      if (status && ["active", "waiting_teammate", "won", "lost", "abandoned"].includes(status)) filter.status = status;
+
+      const [records, total] = await Promise.all([
+        TeamArenaTournament.find(filter)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        TeamArenaTournament.countDocuments(filter),
+      ]);
+
+      const userIds = [...new Set(records.flatMap((r) => [String(r.hostUserId), r.teammateUserId ? String(r.teammateUserId) : null].filter(Boolean) as string[]))];
+      const users = await User.find({ _id: { $in: userIds } }).select("username avatar email").lean();
+      const userMap = Object.fromEntries(users.map((u) => [String(u._id), u]));
+
+      const [totalWon, totalLost, totalActive, totalWaiting, totalAbandoned, totalPointsPaid] = await Promise.all([
+        TeamArenaTournament.countDocuments({ status: "won" }),
+        TeamArenaTournament.countDocuments({ status: "lost" }),
+        TeamArenaTournament.countDocuments({ status: "active" }),
+        TeamArenaTournament.countDocuments({ status: "waiting_teammate" }),
+        TeamArenaTournament.countDocuments({ status: "abandoned" }),
+        TeamArenaTournament.aggregate([
+          { $match: { status: "won" } },
+          { $group: { _id: null, total: { $sum: "$totalPointsEarned" } } },
+        ]).then((r) => r[0]?.total ?? 0),
+      ]);
+
+      const tierCounts = await TeamArenaTournament.aggregate([
+        { $group: { _id: "$tier", count: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ["$status", "won"] }, 1, 0] } } } },
+      ]);
+
+      const aiVsHuman = await TeamArenaTournament.aggregate([
+        { $group: { _id: "$teammateType", count: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ["$status", "won"] }, 1, 0] } } } },
+      ]);
+
+      res.json({
+        records: records.map((r) => ({
+          id: r._id,
+          hostUserId: String(r.hostUserId),
+          hostUsername: (userMap[String(r.hostUserId)] as any)?.username ?? "Unknown",
+          hostAvatar: (userMap[String(r.hostUserId)] as any)?.avatar ?? "",
+          teammateType: r.teammateType,
+          teammateName: r.teammateName,
+          teammateUserId: r.teammateUserId ? String(r.teammateUserId) : null,
+          teammateUsername: r.teammateUserId ? ((userMap[String(r.teammateUserId)] as any)?.username ?? null) : null,
+          tier: r.tier,
+          status: r.status,
+          currentStage: r.currentStage,
+          stagesCompleted: r.stageResults?.length ?? 0,
+          entryPoints: r.entryPoints,
+          totalPointsEarned: r.totalPointsEarned,
+          stageResults: r.stageResults,
+          createdAt: r.createdAt,
+          completedAt: (r as any).completedAt ?? null,
+        })),
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        summary: { totalWon, totalLost, totalActive, totalWaiting, totalAbandoned, totalPointsPaid, tierBreakdown: tierCounts, modeBreakdown: aiVsHuman },
+      });
+    } catch {
+      res.status(500).json({ error: "Failed to load Team Arena data" });
     }
   });
 

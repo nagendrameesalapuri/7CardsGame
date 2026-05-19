@@ -41,6 +41,8 @@ type Section =
   | "notify"
   | "announcements"
   | "survivalconfig"
+  | "teamarenaconfig"
+  | "teamarena"
   | "analytics"
   | "aiguide";
 
@@ -1053,6 +1055,14 @@ function FeaturesSection({
             setFlags((f: any) => ({ ...f, survivalEnabled: v }))
           }
         />
+        <Toggle
+          label="Team Arena"
+          desc="Enable the Team Arena 2v2 tournament mode"
+          value={flags.teamArenaEnabled ?? true}
+          onChange={(v) =>
+            setFlags((f: any) => ({ ...f, teamArenaEnabled: v }))
+          }
+        />
       </div>
 
       <div className="pt-2">
@@ -1075,6 +1085,33 @@ function FeaturesSection({
                 setFlags((f: any) => ({
                   ...f,
                   survivalTiers: { ...(f.survivalTiers ?? { beginner: true, pro: true, elite: true, boss_arena: true }), [key]: v },
+                }))
+              }
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">Team Arena Tiers</p>
+        <div className="space-y-3">
+          {(
+            [
+              { key: "beginner", label: "Beginner Tier", desc: "1,000 pts entry · 2v2 team battles" },
+              { key: "pro",      label: "Pro Tier",      desc: "2,000 pts entry · 2v2 team battles" },
+              { key: "elite",    label: "Elite Tier",    desc: "5,000 pts entry · 2v2 team battles" },
+              { key: "legend",   label: "Legend Tier",   desc: "10,000 pts entry · 2v2 team battles" },
+            ] as const
+          ).map(({ key, label, desc }) => (
+            <Toggle
+              key={key}
+              label={label}
+              desc={desc}
+              value={flags.teamArenaTiers?.[key] ?? true}
+              onChange={(v) =>
+                setFlags((f: any) => ({
+                  ...f,
+                  teamArenaTiers: { ...(f.teamArenaTiers ?? { beginner: true, pro: true, elite: true, legend: true }), [key]: v },
                 }))
               }
             />
@@ -3865,6 +3902,477 @@ function SurvivalConfigSection({
   );
 }
 
+// ── Team Arena Config Section ─────────────────────────────────────────────────
+
+const TA_TIER_DEFAULTS = {
+  beginner: { entryPoints: 1000,  stageRewards: [150, 300, 550, 900, 1600] },
+  pro:      { entryPoints: 2000,  stageRewards: [400, 800, 1400, 2400, 5000] },
+  elite:    { entryPoints: 5000,  stageRewards: [1000, 2000, 3500, 6000, 12500] },
+  legend:   { entryPoints: 10000, stageRewards: [2000, 4000, 7000, 12000, 25000] },
+} as const;
+
+const TA_TIER_LABELS: Record<string, string> = {
+  beginner: "Beginner",
+  pro: "Pro",
+  elite: "Elite",
+  legend: "Legend",
+};
+const TA_TIER_ICONS: Record<string, string> = {
+  beginner: "🌱",
+  pro: "⚡",
+  elite: "🔥",
+  legend: "👑",
+};
+const TA_TIER_COLORS: Record<string, string> = {
+  beginner: "#4ade80",
+  pro: "#60a5fa",
+  elite: "#a78bfa",
+  legend: "#f97316",
+};
+
+const TA_STAGE_NAMES = ["Warmup", "Tactical", "Mind Games", "Expert", "Final Boss"];
+const TA_STAGE_ICONS = ["🛡️", "🔥", "🎭", "⚡", "👑"];
+
+function TeamArenaConfigSection({ config, onSave }: { config: any; onSave: (data: any) => Promise<void> }) {
+  const buildState = (cfg: any) => {
+    const tac = cfg.teamArenaConfig ?? {};
+    const keys = ["beginner", "pro", "elite", "legend"] as const;
+    const out: any = {};
+    for (const k of keys) {
+      const def = TA_TIER_DEFAULTS[k];
+      const src = tac[k] ?? {};
+      out[k] = {
+        entryPoints: typeof src.entryPoints === "number" ? src.entryPoints : def.entryPoints,
+        stageRewards: Array.isArray(src.stageRewards) && src.stageRewards.length === 5
+          ? [...src.stageRewards]
+          : [...def.stageRewards],
+      };
+    }
+    return out;
+  };
+
+  const [tiers, setTiers] = useState<any>(() => buildState(config));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setTiers(buildState(config)); }, [config]);
+
+  const setEntry = (tier: string, v: number) =>
+    setTiers((t: any) => ({ ...t, [tier]: { ...t[tier], entryPoints: Math.max(1, v) } }));
+
+  const setReward = (tier: string, idx: number, v: number) =>
+    setTiers((t: any) => {
+      const rewards = [...t[tier].stageRewards];
+      rewards[idx] = Math.max(1, v);
+      return { ...t, [tier]: { ...t[tier], stageRewards: rewards } };
+    });
+
+  const resetTier = async (tier: string) => {
+    await onSave({ teamArenaConfig: { [tier]: { reset: true } } });
+  };
+
+  const saveAll = async () => {
+    setSaving(true);
+    await onSave({ teamArenaConfig: tiers });
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.1),rgba(245,158,11,0.08))", border: "1px solid rgba(99,102,241,0.2)" }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)" }}>⚔️</div>
+          <div>
+            <h2 className="text-base font-black text-white">Team Arena Configuration</h2>
+            <p className="text-xs text-dark-muted">Configure entry points & stage rewards for all Team Arena tiers · 100 pts = ₹1</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tier cards */}
+      {(["beginner", "pro", "elite", "legend"] as const).map((tier) => {
+        const color = TA_TIER_COLORS[tier];
+        const t = tiers[tier];
+        const totalReward = (t.stageRewards as number[]).reduce((a: number, b: number) => a + b, 0);
+        const net = totalReward - t.entryPoints;
+        return (
+          <div key={tier} className="rounded-2xl p-5 space-y-4" style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${color}22` }}>
+            {/* Tier header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ background: `${color}18`, border: `1px solid ${color}35` }}>
+                  {TA_TIER_ICONS[tier]}
+                </div>
+                <div>
+                  <p className="font-black text-white">{TA_TIER_LABELS[tier]}</p>
+                  <p className="text-[10px]" style={{ color: "rgba(148,163,184,0.55)" }}>
+                    Max payout: <span style={{ color }}>{totalReward.toLocaleString()} pts (₹{(totalReward / 100).toFixed(0)})</span>
+                    {" · "}Net: <span style={{ color: net >= 0 ? "#34d399" : "#f87171" }}>{net >= 0 ? "+" : ""}{net.toLocaleString()} pts</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => resetTier(tier)}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all"
+                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
+              >
+                Reset
+              </button>
+            </div>
+
+            {/* Entry points */}
+            <div>
+              <p className="text-[11px] font-semibold mb-1.5" style={{ color: "rgba(148,163,184,0.7)" }}>Entry Points per player</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  value={t.entryPoints}
+                  onChange={(e) => setEntry(tier, parseInt(e.target.value) || 1)}
+                  className="w-32 px-3 py-1.5 rounded-lg text-sm font-bold text-white"
+                  style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${color}44`, outline: "none" }}
+                />
+                <span className="text-xs text-dark-muted">= ₹{(t.entryPoints / 100).toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Stage rewards */}
+            <div>
+              <p className="text-[11px] font-semibold mb-2" style={{ color: "rgba(148,163,184,0.7)" }}>Stage Rewards</p>
+              <div className="grid grid-cols-5 gap-2">
+                {(t.stageRewards as number[]).map((reward: number, idx: number) => (
+                  <div key={idx} className="rounded-xl p-2.5" style={{ background: `${color}0d`, border: `1px solid ${color}25` }}>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <span className="text-xs">{TA_STAGE_ICONS[idx]}</span>
+                      <p className="text-[9px] font-bold" style={{ color: "rgba(148,163,184,0.5)" }}>S{idx + 1} · {TA_STAGE_NAMES[idx]}</p>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      value={reward}
+                      onChange={(e) => setReward(tier, idx, parseInt(e.target.value) || 1)}
+                      className="w-full px-1.5 py-1 rounded-lg text-xs font-black text-white"
+                      style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${color}33`, outline: "none" }}
+                    />
+                    <p className="text-[9px] mt-1 font-semibold text-center" style={{ color: "rgba(52,211,153,0.65)" }}>₹{(reward / 100).toFixed(0)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <button
+        onClick={saveAll}
+        disabled={saving}
+        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+        style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.9),rgba(245,158,11,0.7))", color: "white", boxShadow: "0 4px 20px rgba(99,102,241,0.3)" }}
+      >
+        {saving ? "Saving Changes…" : "💾 Save Team Arena Config"}
+      </button>
+    </div>
+  );
+}
+
+// ── Team Arena Tournaments Section ────────────────────────────────────────────
+
+const TA_TIER_META: Record<string, { label: string; color: string; icon: string }> = {
+  beginner: { label: "Beginner", color: "#4ade80", icon: "🌱" },
+  pro:      { label: "Pro",      color: "#60a5fa", icon: "⚡" },
+  elite:    { label: "Elite",    color: "#a78bfa", icon: "🔥" },
+  legend:   { label: "Legend",   color: "#f97316", icon: "👑" },
+};
+
+function TeamArenaTournamentSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [tierFilter, setTierFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = useCallback((p = 1, t = tierFilter, s = statusFilter) => {
+    setLoading(true);
+    admin
+      .getTeamArenaChampionship({ page: p, tier: t || undefined, status: s || undefined })
+      .then((r) => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [tierFilter, statusFilter]);
+
+  useEffect(() => { load(1); }, []);
+
+  const applyTier = (t: string) => { setTierFilter(t); setPage(1); load(1, t, statusFilter); };
+  const applyStatus = (s: string) => { setStatusFilter(s); setPage(1); load(1, tierFilter, s); };
+  const changePage = (p: number) => { setPage(p); load(p); };
+
+  const TIER_FILTERS = [
+    { value: "", label: "All Tiers" },
+    { value: "beginner", label: "🌱 Beginner" },
+    { value: "pro", label: "⚡ Pro" },
+    { value: "elite", label: "🔥 Elite" },
+    { value: "legend", label: "👑 Legend" },
+  ];
+  const STATUS_FILTERS = [
+    { value: "", label: "All Status" },
+    { value: "active", label: "🔵 Active" },
+    { value: "waiting_teammate", label: "⏳ Waiting" },
+    { value: "won", label: "✅ Won" },
+    { value: "lost", label: "❌ Lost" },
+    { value: "abandoned", label: "🚫 Abandoned" },
+  ];
+  const STATUS_COLOR: Record<string, string> = {
+    active: "#60a5fa",
+    waiting_teammate: "#fbbf24",
+    won: "#00ff88",
+    lost: "#ff6b6b",
+    abandoned: "#6b7280",
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.12),rgba(245,158,11,0.08))", border: "1px solid rgba(99,102,241,0.2)" }}>
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">⚔️</span>
+          <div>
+            <h2 className="text-base font-black text-white">Team Arena Championship</h2>
+            <p className="text-xs text-dark-muted">2v2 team battles · 5 stages · Beginner → Legend</p>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-3 flex-wrap">
+          {["Warmup", "Tactical", "Mind Games", "Expert", "Final Boss"].map((s, i) => (
+            <span key={s} className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "#8b949e" }}>
+              Stage {i + 1}: {s}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {data?.summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { label: "Active",    value: data.summary.totalActive,    color: "#60a5fa" },
+            { label: "Waiting",   value: data.summary.totalWaiting,   color: "#fbbf24" },
+            { label: "Won",       value: data.summary.totalWon,       color: "#00ff88" },
+            { label: "Lost",      value: data.summary.totalLost,      color: "#ff6b6b" },
+            { label: "Abandoned", value: data.summary.totalAbandoned, color: "#6b7280" },
+            { label: "Pts Paid",  value: (data.summary.totalPointsPaid ?? 0).toLocaleString(), color: "#ffd700" },
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl p-3 text-center" style={cardStyle}>
+              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">{s.label}</p>
+              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Tier breakdown + mode breakdown */}
+      {data?.summary && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Tier breakdown */}
+          {data.summary.tierBreakdown?.length > 0 && (
+            <div className="rounded-2xl p-4 space-y-2" style={cardStyle}>
+              <p className="text-xs font-bold text-white mb-3">Tier Breakdown</p>
+              {data.summary.tierBreakdown.map((tb: any) => {
+                const meta = TA_TIER_META[tb._id] ?? { label: tb._id, color: "#8b949e", icon: "🎮" };
+                const winRate = tb.count > 0 ? Math.round((tb.won / tb.count) * 100) : 0;
+                return (
+                  <div key={tb._id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{ background: `${meta.color}0d`, border: `1px solid ${meta.color}22` }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{meta.icon}</span>
+                      <span className="text-xs font-bold" style={{ color: meta.color }}>{meta.label}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-white">{tb.count}</span>
+                      <span className="text-[10px] text-dark-muted ml-2">{tb.won} won · {winRate}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* AI vs Human mode */}
+          {data.summary.modeBreakdown?.length > 0 && (
+            <div className="rounded-2xl p-4 space-y-2" style={cardStyle}>
+              <p className="text-xs font-bold text-white mb-3">AI vs Human Teammate</p>
+              {data.summary.modeBreakdown.map((mb: any) => {
+                const isAI = mb._id === "ai";
+                const color = isAI ? "#a78bfa" : "#34d399";
+                const icon = isAI ? "🤖" : "👥";
+                const label = isAI ? "AI Teammate" : "Human Teammate";
+                const winRate = mb.count > 0 ? Math.round((mb.won / mb.count) * 100) : 0;
+                return (
+                  <div key={mb._id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{ background: `${color}0d`, border: `1px solid ${color}22` }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-bold" style={{ color }}>{label}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-white">{mb.count}</span>
+                      <span className="text-[10px] text-dark-muted ml-2">{mb.won} won · {winRate}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap">
+        {TIER_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => applyTier(f.value)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl transition-all"
+            style={{
+              background: tierFilter === f.value ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${tierFilter === f.value ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+              color: tierFilter === f.value ? "#a5b4fc" : "#8b949e",
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+        <div className="w-px bg-dark-border mx-1 self-stretch" />
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => applyStatus(f.value)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl transition-all"
+            style={{
+              background: statusFilter === f.value ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${statusFilter === f.value ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+              color: statusFilter === f.value ? "#a5b4fc" : "#8b949e",
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Records table */}
+      {loading ? (
+        <div className="text-dark-muted text-sm animate-pulse text-center py-8">Loading Team Arena data…</div>
+      ) : !data?.records?.length ? (
+        <div className="text-dark-muted text-sm text-center py-8">No tournaments found</div>
+      ) : (
+        <div className="space-y-2">
+          {data.records.map((r: any) => {
+            const meta = TA_TIER_META[r.tier] ?? { label: r.tier, color: "#8b949e", icon: "🎮" };
+            const isExpanded = expandedId === r.id;
+            return (
+              <motion.div
+                key={r.id}
+                layout
+                className="rounded-2xl overflow-hidden"
+                style={cardStyle}
+              >
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                  className="w-full text-left p-4"
+                >
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Avatar avatar={r.hostAvatar} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-white truncate">{r.hostUsername}</span>
+                        <span className="text-[10px] text-dark-muted">+</span>
+                        <span className="text-xs font-semibold" style={{ color: r.teammateType === "ai" ? "#a78bfa" : "#34d399" }}>
+                          {r.teammateType === "ai" ? "🤖" : "👥"} {r.teammateName}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${meta.color}18`, color: meta.color }}>
+                          {meta.icon} {meta.label}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: STATUS_COLOR[r.status] ?? "#8b949e", background: `${STATUS_COLOR[r.status] ?? "#8b949e"}18` }}>
+                          {r.status.replace("_", " ")}
+                        </span>
+                        <span className="text-[10px] text-dark-muted">Stage {r.currentStage}/5</span>
+                        {r.totalPointsEarned > 0 && (
+                          <span className="text-[10px] font-bold" style={{ color: "#ffd700" }}>+{r.totalPointsEarned.toLocaleString()} pts</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[10px] text-dark-muted">{new Date(r.createdAt).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-dark-muted">{r.stagesCompleted} stage{r.stagesCompleted !== 1 ? "s" : ""} done</p>
+                    </div>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-3">
+                          <div className="rounded-xl p-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
+                            <p className="text-[10px] text-dark-muted">Entry</p>
+                            <p className="text-sm font-bold text-white">{r.entryPoints?.toLocaleString() ?? "—"} pts</p>
+                          </div>
+                          <div className="rounded-xl p-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
+                            <p className="text-[10px] text-dark-muted">Earned</p>
+                            <p className="text-sm font-bold" style={{ color: "#ffd700" }}>{r.totalPointsEarned?.toLocaleString() ?? 0} pts</p>
+                          </div>
+                          <div className="rounded-xl p-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
+                            <p className="text-[10px] text-dark-muted">Teammate</p>
+                            <p className="text-sm font-bold" style={{ color: r.teammateType === "ai" ? "#a78bfa" : "#34d399" }}>
+                              {r.teammateType === "ai" ? "AI Bot" : r.teammateUsername ?? "Human"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {r.stageResults?.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-bold text-dark-muted uppercase tracking-wider mb-2">Stage Results</p>
+                            <div className="grid grid-cols-5 gap-1.5">
+                              {r.stageResults.map((sr: any) => (
+                                <div key={sr.stage} className="rounded-xl p-2 text-center" style={{ background: sr.teamAWon ? "rgba(0,255,136,0.08)" : "rgba(255,107,107,0.08)", border: `1px solid ${sr.teamAWon ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)"}` }}>
+                                  <p className="text-[9px] font-bold text-dark-muted">S{sr.stage}</p>
+                                  <p className="text-[10px] font-black" style={{ color: sr.teamAWon ? "#00ff88" : "#ff6b6b" }}>{sr.teamAWon ? "Win" : "Loss"}</p>
+                                  {sr.pointsEarned > 0 && <p className="text-[9px]" style={{ color: "#ffd700" }}>+{sr.pointsEarned}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data?.pages > 1 && (
+        <div className="flex justify-center gap-2 pt-1">
+          <button disabled={page <= 1} onClick={() => changePage(page - 1)}
+            className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+            style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>← Prev</button>
+          <span className="text-xs text-dark-muted self-center">{page} / {data.pages}</span>
+          <button disabled={page >= data.pages} onClick={() => changePage(page + 1)}
+            className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+            style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>Next →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Analytics Section ─────────────────────────────────────────────────────────
 
 function AnalyticsSection() {
@@ -4765,8 +5273,10 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "rooms",         icon: "🎮", label: "Live Rooms" },
       { key: "tournaments",   icon: "🤖", label: "AI Championship" },
       { key: "gameconfig",    icon: "🎯", label: "Game Config" },
-      { key: "survivalconfig",icon: "🛡️", label: "Survival Config" },
-      { key: "analytics",     icon: "📈", label: "Analytics" },
+      { key: "survivalconfig",  icon: "🛡️", label: "Survival Config" },
+      { key: "teamarena",       icon: "⚔️", label: "Team Arena Results" },
+      { key: "teamarenaconfig", icon: "🤝", label: "Team Arena Config" },
+      { key: "analytics",       icon: "📈", label: "Analytics" },
       { key: "aiguide",       icon: "🧬", label: "AI Strategy Guide" },
     ],
   },
@@ -5009,6 +5519,8 @@ export function AdminPage() {
               {section === "notify" && <NotifySection />}
               {section === "announcements" && <AnnouncementsSection />}
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
+              {section === "teamarenaconfig" && <TeamArenaConfigSection config={config} onSave={saveConfig} />}
+              {section === "teamarena" && <TeamArenaTournamentSection />}
               {section === "analytics" && <AnalyticsSection />}
               {section === "aiguide" && <AiGuideSection />}
             </motion.div>

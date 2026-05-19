@@ -16,12 +16,25 @@ export interface IAdminConfig extends Document {
       elite: boolean;
       boss_arena: boolean;
     };
+    teamArenaEnabled: boolean;
+    teamArenaTiers: {
+      beginner: boolean;
+      pro: boolean;
+      elite: boolean;
+      legend: boolean;
+    };
   };
   survivalConfig: {
     beginner: SurvivalTierCfg;
     pro: SurvivalTierCfg;
     elite: SurvivalTierCfg;
     boss_arena: SurvivalTierCfg;
+  };
+  teamArenaConfig: {
+    beginner: SurvivalTierCfg;
+    pro: SurvivalTierCfg;
+    elite: SurvivalTierCfg;
+    legend: SurvivalTierCfg;
   };
   gameConfig: {
     minPlayers: number;
@@ -55,6 +68,13 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
         elite: { type: Boolean, default: true },
         boss_arena: { type: Boolean, default: true },
       },
+      teamArenaEnabled: { type: Boolean, default: true },
+      teamArenaTiers: {
+        beginner: { type: Boolean, default: true },
+        pro: { type: Boolean, default: true },
+        elite: { type: Boolean, default: true },
+        legend: { type: Boolean, default: true },
+      },
     },
     gameConfig: {
       minPlayers: { type: Number, default: 2, min: 2, max: 10 },
@@ -83,6 +103,24 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
           type: [Number],
           default: [1200, 1800, 2600, 4200, 7600],
         },
+      },
+    },
+    teamArenaConfig: {
+      beginner: {
+        entryPoints: { type: Number, default: 1000 },
+        stageRewards: { type: [Number], default: [150, 300, 550, 900, 1600] },
+      },
+      pro: {
+        entryPoints: { type: Number, default: 2000 },
+        stageRewards: { type: [Number], default: [400, 800, 1400, 2400, 5000] },
+      },
+      elite: {
+        entryPoints: { type: Number, default: 5000 },
+        stageRewards: { type: [Number], default: [1000, 2000, 3500, 6000, 12500] },
+      },
+      legend: {
+        entryPoints: { type: Number, default: 10000 },
+        stageRewards: { type: [Number], default: [2000, 4000, 7000, 12000, 25000] },
       },
     },
     walletConfig: {

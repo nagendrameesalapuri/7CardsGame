@@ -275,12 +275,12 @@ router.post('/redeem', async (req: Request, res: Response) => {
     if (amount > REDEEM_MAX)            return res.status(400).json({ error: `Maximum redemption is ₹${REDEEM_MAX}` });
     if (!ALLOWED_BRANDS.includes(voucherBrand)) return res.status(400).json({ error: 'Select a valid voucher brand' });
 
-    const user = await User.findById(req.user!.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.walletBalance < amount) return res.status(400).json({ error: 'Insufficient Reward Balance' });
-
-    user.walletBalance -= amount;
-    await user.save();
+    const user = await User.findOneAndUpdate(
+      { _id: req.user!.id, walletBalance: { $gte: amount } },
+      { $inc: { walletBalance: -amount } },
+      { new: true },
+    );
+    if (!user) return res.status(400).json({ error: 'Insufficient Reward Balance' });
 
     const wr = await WithdrawalRequest.create({
       userId: req.user!.id,
@@ -317,11 +317,12 @@ router.post('/withdraw', async (req: Request, res: Response) => {
     const { amount, upiId, bankDetails } = req.body as { amount: number; upiId?: string; bankDetails?: any };
     if (!amount || amount < 10) return res.status(400).json({ error: 'Minimum withdrawal is ₹10' });
     if (!upiId && !bankDetails?.accountNumber) return res.status(400).json({ error: 'Provide UPI ID or bank details' });
-    const user = await User.findById(req.user!.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.walletBalance < amount) return res.status(400).json({ error: 'Insufficient Reward Balance' });
-    user.walletBalance -= amount;
-    await user.save();
+    const user = await User.findOneAndUpdate(
+      { _id: req.user!.id, walletBalance: { $gte: amount } },
+      { $inc: { walletBalance: -amount } },
+      { new: true },
+    );
+    if (!user) return res.status(400).json({ error: 'Insufficient Reward Balance' });
     const wr = await WithdrawalRequest.create({ userId: req.user!.id, username: req.user!.username, amount, upiId, bankDetails, redemptionType: 'bank', status: 'pending' });
     await Transaction.create({ userId: req.user!.id, type: 'withdrawal', amount, status: 'pending', description: `Reward redemption of ₹${amount}`, metadata: { withdrawalRequestId: wr.id } });
     res.json({ balance: user.walletBalance, message: 'Reward redemption request submitted. Admin will process within 24 hours.' });
