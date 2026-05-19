@@ -143,6 +143,29 @@ export const useTeamArenaStore = create<TeamArenaStore>((set, get) => ({
       }
     }));
 
+    // Restore active tournament state when the server sends a status response
+    // (e.g. on page load when player already has an ongoing tournament)
+    unsubs.push(on('team-arena:status_result', (data: any) => {
+      if (!data) return; // null = no active tournament
+      const isActive = data.status === 'active' || data.status === 'waiting_teammate';
+      if (!isActive) return;
+      set((s) => ({
+        active: true,
+        tournamentId: data.tournamentId ?? s.tournamentId,
+        inviteCode: data.inviteCode ?? s.inviteCode,
+        teammateType: data.teammateType ?? s.teammateType,
+        teammateName: data.teammateName ?? s.teammateName,
+        aiPersonality: s.aiPersonality, // not returned by status, keep existing
+        entryPoints: data.entryPoints ?? s.entryPoints,
+        currentStage: data.currentStage ?? s.currentStage,
+        totalStages: data.totalStages ?? s.totalStages,
+        totalPointsEarned: data.totalPointsEarned ?? s.totalPointsEarned,
+        stageResults: data.stageResults ?? s.stageResults,
+        waitingForTeammate: data.status === 'waiting_teammate',
+        isTeammate: !(data.isHost ?? true),
+      }));
+    }));
+
     unsubs.push(on('team-arena:error', (msg: any) => notify.error(msg)));
 
     return () => unsubs.forEach((u) => u());

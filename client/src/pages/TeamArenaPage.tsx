@@ -128,11 +128,31 @@ export function TeamArenaPage() {
     });
   }, []);
 
-  // Check for active tournament on mount
+  // Restore any active tournament on mount.
+  // The REST call gives us the data immediately; the socket status call
+  // fills in isHost and triggers auto-continue via team-arena:status_result.
   useEffect(() => {
     teamArenaApi.status()
       .then((r) => {
-        if (r.data.tournament && (r.data.tournament.status === 'active' || r.data.tournament.status === 'waiting_teammate')) {
+        const t = r.data.tournament;
+        if (t && (t.status === 'active' || t.status === 'waiting_teammate')) {
+          // Restore store state directly from REST response so UI updates immediately
+          useTeamArenaStore.setState({
+            active: true,
+            tournamentId: String(t._id),
+            inviteCode: t.inviteCode,
+            teammateType: t.teammateType,
+            teammateName: t.teammateName,
+            aiPersonality: t.teamAiPersonality ?? null,
+            entryPoints: t.entryPoints ?? 1000,
+            currentStage: t.currentStage ?? 1,
+            totalStages: 5,
+            totalPointsEarned: t.totalPointsEarned ?? 0,
+            stageResults: t.stageResults ?? [],
+            waitingForTeammate: t.status === 'waiting_teammate',
+            isTeammate: t.hostUserId !== user?.id,
+          });
+          // Also emit socket status to get server-side isHost and sync currentRoomCode
           socketTeamArena.status();
         }
         setStatusChecked(true);
