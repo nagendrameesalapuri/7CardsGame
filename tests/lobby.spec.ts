@@ -11,7 +11,7 @@ test.describe('Lobby', () => {
   });
 
   test('navigation header is visible', async ({ page }) => {
-    await expect(page.getByText(/7 Cards Show/i).first()).toBeVisible();
+    await expect(page.getByText(/Arena of Sevens/i).first()).toBeVisible();
   });
 
   test('create room button is visible', async ({ page }) => {
