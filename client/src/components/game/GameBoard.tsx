@@ -16,7 +16,6 @@ import { ShowDeclaredOverlay } from "./ShowDeclaredOverlay";
 import { ActionButtons } from "./ActionButtons";
 import { VoiceChat } from "./VoiceChat";
 import { useSurvivalStore } from "../../store/survivalStore";
-import { useTeamArenaStore } from "../../store/teamArenaStore";
 import { useNetworkQuality } from "../../hooks/useNetworkQuality";
 import { notify } from "../../services/notify";
 
@@ -191,10 +190,6 @@ export function GameBoard() {
     currentStage: survivalStage,
     tier: survivalTier,
   } = useSurvivalStore();
-  const {
-    active: isTeamArena,
-    teammateType,
-  } = useTeamArenaStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
   const networkQuality = useNetworkQuality();
 
@@ -356,29 +351,7 @@ export function GameBoard() {
           borderBottom: "1px solid rgba(255,255,255,0.04)",
         }}
       >
-        {isTeamArena ? (() => {
-          const taSeats = teammateType === 'human' ? [[0,1],[2,3]] : [[0,2],[1,3]];
-          const myPlayer = game.players.find(p => p.id === game.myPlayerId);
-          const myTeamIdx = myPlayer && taSeats[0].includes(myPlayer.seatIndex) ? 0 : 1;
-          return taSeats.map((seats, idx) => {
-            const tp = game.players.filter(p => seats.includes(p.seatIndex));
-            const ts = tp.reduce((s, p) => s + p.totalScore, 0);
-            const isMyTeam = idx === myTeamIdx;
-            return (
-              <div
-                key={idx}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0"
-                style={isMyTeam
-                  ? { background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.25)", color: '#4ade80' }
-                  : { background: "rgba(255,255,255,0.05)", color: 'rgba(148,163,184,0.7)' }}
-              >
-                <span>{isMyTeam ? '⚡' : '⚔'}</span>
-                <span>{isMyTeam ? 'Your Team' : 'Enemy'}</span>
-                <span className="font-black">{ts}pt</span>
-              </div>
-            );
-          });
-        })() : [...game.players]
+        {[...game.players]
           .sort((a, b) => a.totalScore - b.totalScore)
           .map((p, rank) => (
             <div
@@ -412,8 +385,6 @@ export function GameBoard() {
             myPlayerId={game.myPlayerId}
             roundNumber={game.roundNumber}
             roundCount={game.roundCount}
-            isTeamArena={isTeamArena}
-            teammateType={teammateType ?? undefined}
           />
         </div>
 
@@ -585,15 +556,13 @@ export function GameBoard() {
               myUserId={user?.id ?? ""}
               roundReadyUpdate={roundReadyUpdate}
               onReady={readyForNextRound}
-              isTeamArena={isTeamArena}
-              teammateType={teammateType ?? undefined}
             />
           )}
       </AnimatePresence>
 
-      {/* ── Match winner (suppressed in Team Arena — stage_result handles it) ── */}
+      {/* ── Match winner ── */}
       <AnimatePresence>
-        {matchResult && !isTeamArena && (
+        {matchResult && (
           <WinnerCelebration
             key="winner"
             result={matchResult}

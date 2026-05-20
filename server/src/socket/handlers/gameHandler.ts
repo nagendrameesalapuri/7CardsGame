@@ -31,11 +31,6 @@ import {
   handleSurvivalMatchEnd,
   handleSurvivalForceEnd,
 } from "./survivalHandler";
-import {
-  handleTeamArenaMatchEnd,
-  handleTeamArenaForceEnd,
-  recordTeamArenaRound,
-} from "./teamArenaHandler";
 import { awardXp } from "../../utils/progressionService";
 import {
   XP_REWARDS,
@@ -308,7 +303,6 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
     console.error,
   );
   handleSurvivalForceEnd(io, roomCode).catch(console.error);
-  handleTeamArenaForceEnd(io, roomCode).catch(console.error);
   return true;
 }
 
@@ -915,8 +909,6 @@ function handleRoundEnd(io: Server, state: GameState) {
     },
   ).catch(console.error);
 
-  recordTeamArenaRound(state.roomId, state.roundNumber, state.roundResult.playerResults, state.players);
-
   const matchResult = ScoreEngine.checkMatchOver(state);
   if (matchResult) {
     // 15 seconds: ShowDeclaredOverlay runs 3s, then ScoreBoard visible for ~12s before winner screen
@@ -1119,7 +1111,6 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
-  handleTeamArenaMatchEnd(io, state, matchResult).catch(console.error);
 }
 
 

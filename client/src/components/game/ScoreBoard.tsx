@@ -12,8 +12,6 @@ interface ScoreBoardProps {
   myUserId: string;
   roundReadyUpdate: { readyUserIds: string[]; total: number } | null;
   onReady: () => void;
-  isTeamArena?: boolean;
-  teammateType?: 'ai' | 'human';
 }
 
 const SUIT_SYMBOL: Record<string, string> = {
@@ -82,7 +80,6 @@ const NEXT_ROUND_DELAY_S = 10;
 export function ScoreBoard({
   roundResult, players, roundNumber, roundCount,
   myUserId, roundReadyUpdate, onReady,
-  isTeamArena = false, teammateType,
 }: ScoreBoardProps) {
   const winner = players.find(p => p.id === roundResult.winnerId);
   const winnerIds = roundResult.winnerIds ?? [roundResult.winnerId];
@@ -121,15 +118,6 @@ export function ScoreBoard({
 
   const myPlayer = players.find(p => p.userId === myUserId); // eslint-disable-line @typescript-eslint/no-unused-vars
   const readyCount = roundReadyUpdate?.readyUserIds.length ?? 0;
-
-  // ── Team Arena grouping ────────────────────────────────────────────────────
-  const teamAIndices = teammateType === 'human' ? [0, 1] : [0, 2];
-  const teamBIndices = teammateType === 'human' ? [2, 3] : [1, 3];
-
-  const getTeam = (playerId: string): 'A' | 'B' => {
-    const seat = players.find(p => p.id === playerId)?.seatIndex ?? -1;
-    return teamAIndices.includes(seat) ? 'A' : 'B';
-  };
 
   const sorted = [...roundResult.playerResults].sort((a, b) => {
     const aWins = winnerIds.includes(a.playerId);
@@ -322,74 +310,6 @@ export function ScoreBoard({
           )}
         </div>
 
-        {/* ── Team Arena: team score banner ── */}
-        {isTeamArena && (() => {
-          const teamAResults = roundResult.playerResults.filter(r => getTeam(r.playerId) === 'A');
-          const teamBResults = roundResult.playerResults.filter(r => getTeam(r.playerId) === 'B');
-          const teamARound = teamAResults.reduce((s, r) => s + r.roundPoints, 0);
-          const teamBRound = teamBResults.reduce((s, r) => s + r.roundPoints, 0);
-          const teamATotal = teamAResults.reduce((s, r) => s + r.totalScore, 0);
-          const teamBTotal = teamBResults.reduce((s, r) => s + r.totalScore, 0);
-          const teamAWins = teamARound < teamBRound || (teamARound === teamBRound && teamATotal <= teamBTotal);
-          const isDraw = teamARound === teamBRound && teamATotal === teamBTotal;
-          return (
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="mx-4 mt-4 mb-1 rounded-2xl overflow-hidden"
-              style={{ border: '1px solid rgba(129,140,248,0.2)', background: 'rgba(15,20,50,0.6)' }}
-            >
-              <div className="px-3 py-1.5 text-center text-[9px] font-black uppercase tracking-widest"
-                style={{ background: 'rgba(129,140,248,0.08)', color: 'rgba(165,180,252,0.5)', borderBottom: '1px solid rgba(129,140,248,0.1)' }}>
-                Team Scores — Round {roundNumber}
-              </div>
-              <div className="flex items-stretch">
-                {/* Team A */}
-                <div className={`flex-1 p-3 flex flex-col items-center gap-1 ${teamAWins && !isDraw ? 'bg-emerald-500/5' : ''}`}>
-                  <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: teamAWins && !isDraw ? '#00ff88' : 'rgba(129,140,248,0.7)' }}>
-                    {teamAWins && !isDraw ? '🏆 ' : ''}TEAM A
-                  </span>
-                  <div className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>
-                    {teamAResults.map(r => r.username).join(' + ')}
-                  </div>
-                  <div className="font-black text-2xl" style={{ color: teamAWins && !isDraw ? '#00ff88' : '#a5b4fc' }}>
-                    {teamATotal}
-                    <span className="text-xs font-semibold ml-1" style={{ color: 'rgba(255,255,255,0.3)' }}>pts</span>
-                  </div>
-                  <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    this round: <span style={{ color: teamARound === 0 ? '#00ff88' : '#f87171' }}>{teamARound === 0 ? '+0' : `+${teamARound}`}</span>
-                  </div>
-                </div>
-                {/* VS divider */}
-                <div className="flex flex-col items-center justify-center px-2 gap-1">
-                  <div className="w-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
-                  <span className="text-xs font-black" style={{ color: isDraw ? '#fbbf24' : 'rgba(255,255,255,0.25)' }}>
-                    {isDraw ? '=' : 'vs'}
-                  </span>
-                  <div className="w-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
-                </div>
-                {/* Team B */}
-                <div className={`flex-1 p-3 flex flex-col items-center gap-1 ${!teamAWins && !isDraw ? 'bg-red-500/5' : ''}`}>
-                  <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: !teamAWins && !isDraw ? '#f87171' : 'rgba(239,68,68,0.7)' }}>
-                    {!teamAWins && !isDraw ? '🏆 ' : ''}TEAM B
-                  </span>
-                  <div className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>
-                    {teamBResults.map(r => r.username).join(' + ')}
-                  </div>
-                  <div className="font-black text-2xl" style={{ color: !teamAWins && !isDraw ? '#f87171' : 'rgba(239,68,68,0.8)' }}>
-                    {teamBTotal}
-                    <span className="text-xs font-semibold ml-1" style={{ color: 'rgba(255,255,255,0.3)' }}>pts</span>
-                  </div>
-                  <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    this round: <span style={{ color: teamBRound === 0 ? '#00ff88' : '#f87171' }}>{teamBRound === 0 ? '+0' : `+${teamBRound}`}</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })()}
-
         {/* Player results */}
         <div className="p-4 space-y-2.5 max-h-[48vh] overflow-y-auto">
           {sorted.map((result, i) => {
@@ -397,7 +317,6 @@ export function ScoreBoard({
             const isWinner = winnerIds.includes(result.playerId);
             const isShowPlayer = result.playerId === roundResult.showPlayerId;
             const handTotal = result.hand.reduce((s, c) => s + (c.isJoker ? 0 : c.value), 0);
-            const playerTeam = isTeamArena ? getTeam(result.playerId) : null;
 
             return (
               <motion.div
@@ -468,18 +387,6 @@ export function ScoreBoard({
                       >
                         {result.username}
                       </span>
-                      {isTeamArena && playerTeam && (
-                        <span
-                          className="text-[9px] px-1.5 py-0.5 rounded font-black"
-                          style={{
-                            background: playerTeam === 'A' ? 'rgba(129,140,248,0.15)' : 'rgba(239,68,68,0.15)',
-                            color: playerTeam === 'A' ? '#818cf8' : '#f87171',
-                            border: `1px solid ${playerTeam === 'A' ? 'rgba(129,140,248,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                          }}
-                        >
-                          T{playerTeam}
-                        </span>
-                      )}
                       {isWinner && (
                         <span
                           className="text-[10px] px-2 py-0.5 rounded-full font-black"

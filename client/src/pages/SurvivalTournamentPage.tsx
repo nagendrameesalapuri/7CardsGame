@@ -6,7 +6,7 @@ import { useSurvivalStore } from '../store/survivalStore';
 import { useGameStore } from '../store/gameStore';
 import { socketSurvival, on } from '../services/socket';
 import { survivalApi, walletApi, configApi } from '../services/api';
-import { StageIntro } from '../components/team-arena/StageIntro';
+import { StageIntro } from '../components/survival/StageIntro';
 
 function loadSurvivalStatus(setActiveStatus: (v: any) => void, setStatusChecked: (v: boolean) => void) {
   survivalApi.status()
@@ -1155,7 +1155,6 @@ export function SurvivalTournamentPage() {
         {showStageIntro && (
           <StageIntro
             stage={introStageNum}
-            mode="survival"
             onDismiss={handleIntroDismiss}
           />
         )}

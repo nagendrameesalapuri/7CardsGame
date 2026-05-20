@@ -176,13 +176,6 @@ export const walletApi = {
     }),
 };
 
-export const teamArenaApi = {
-  status:  () => api.get<{ tournament: any }>("/team-arena/status"),
-  history: (page = 1) => api.get<{ history: any[]; total: number; pages: number }>(`/team-arena/history?page=${page}`),
-  stats:   () => api.get<{ wins: number; losses: number; totalPointsEarned: number; bossClears: number; aiRuns: number; humanRuns: number }>("/team-arena/stats"),
-  meta:    () => api.get<{ stages: any[]; aiTeammateProfiles: any[]; entryPoints: number; stageRewards: number[] }>("/team-arena/meta"),
-};
-
 export const admin = {
   getDeposits: () => adminApi.get<{ deposits: any[] }>("/deposits"),
   processDeposit: (
@@ -241,15 +234,6 @@ export const admin = {
       pages: number;
       summary: any;
     }>("/tournaments", { params }),
-
-  getTeamArenaChampionship: (params?: { page?: number; tier?: string; status?: string }) =>
-    adminApi.get<{
-      records: any[];
-      total: number;
-      page: number;
-      pages: number;
-      summary: any;
-    }>("/team-arena-tournaments", { params }),
 
   getUsers: (params?: { page?: number; search?: string }) =>
     adminApi.get<{ users: any[]; total: number; page: number; pages: number }>(

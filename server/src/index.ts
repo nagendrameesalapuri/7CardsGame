@@ -23,7 +23,6 @@ import walletRoutes from './routes/wallet';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
 import survivalRoutes from './routes/survival';
-import teamArenaRoutes from './routes/teamArena';
 import progressionRoutes from './routes/progression';
 import notificationRoutes from './routes/notifications';
 
@@ -104,7 +103,6 @@ async function bootstrap() {
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/survival', survivalRoutes);
-  app.use('/api/team-arena', teamArenaRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/progression', progressionRoutes);
   app.use('/api/notifications', notificationRoutes);

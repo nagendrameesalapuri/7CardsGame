@@ -18,7 +18,6 @@ type StageCfg = {
   bgRadial: string;
   dismissMs: number;
   survivalEnemies: EnemyEntry[];
-  teamArenaEnemies: EnemyEntry[];
 };
 
 const STAGE_CFG: StageCfg[] = [
@@ -35,7 +34,6 @@ const STAGE_CFG: StageCfg[] = [
     bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(22,101,52,0.45) 0%, transparent 68%)',
     dismissMs: 4500,
     survivalEnemies: [{ icon: '🛡️', name: 'Iron Fist' }],
-    teamArenaEnemies: [{ icon: '⚔️', name: 'Iron Guard' }, { icon: '🌑', name: 'Shadow Strike' }],
   },
   {
     label: 'STAGE 2 · TACTICAL',
@@ -50,7 +48,6 @@ const STAGE_CFG: StageCfg[] = [
     bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(146,64,14,0.5) 0%, transparent 68%)',
     dismissMs: 4500,
     survivalEnemies: [{ icon: '🔥', name: 'Blaze' }],
-    teamArenaEnemies: [{ icon: '🔥', name: 'Blaze' }, { icon: '🧩', name: 'Tactician' }],
   },
   {
     label: 'STAGE 3 · MIND GAMES',
@@ -65,7 +62,6 @@ const STAGE_CFG: StageCfg[] = [
     bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(88,28,135,0.55) 0%, transparent 68%)',
     dismissMs: 4500,
     survivalEnemies: [{ icon: '🌀', name: 'Phantom' }],
-    teamArenaEnemies: [{ icon: '🎭', name: 'Phantom' }, { icon: '🪞', name: 'Mirror' }],
   },
   {
     label: 'STAGE 4 · EXPERT',
@@ -80,7 +76,6 @@ const STAGE_CFG: StageCfg[] = [
     bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(29,78,216,0.5) 0%, transparent 68%)',
     dismissMs: 4500,
     survivalEnemies: [{ icon: '🧠', name: 'Smart AI' }, { icon: '⚔️', name: 'Aggressive' }],
-    teamArenaEnemies: [{ icon: '💎', name: 'Apex' }, { icon: '🔨', name: 'Crusher' }],
   },
   {
     label: '⚔ FINAL ARENA ⚔',
@@ -95,7 +90,6 @@ const STAGE_CFG: StageCfg[] = [
     bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(185,28,28,0.55) 0%, transparent 68%)',
     dismissMs: 5500,
     survivalEnemies: [{ icon: '💀', name: 'Boss' }, { icon: '🧠', name: 'Smart AI' }, { icon: '⚔️', name: 'Aggressive' }],
-    teamArenaEnemies: [{ icon: '👑', name: 'The Overlord' }, { icon: '👾', name: 'Nemesis' }],
   },
 ];
 
@@ -130,18 +124,16 @@ function SunRays({ color }: { color: string }) {
 
 export interface StageIntroProps {
   stage: number;
-  mode: 'survival' | 'teamarena';
-  teammateName?: string;
   onDismiss: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function StageIntro({ stage, mode, teammateName, onDismiss }: StageIntroProps) {
+export function StageIntro({ stage, onDismiss }: StageIntroProps) {
   const idx = Math.max(0, Math.min(4, stage - 1));
   const cfg = STAGE_CFG[idx];
 
-  const enemies = mode === 'survival' ? cfg.survivalEnemies : cfg.teamArenaEnemies;
+  const enemies = cfg.survivalEnemies;
 
   // Stable particle list
   const particles = useMemo(
@@ -322,25 +314,6 @@ export function StageIntro({ stage, mode, teammateName, onDismiss }: StageIntroP
           >
             {cfg.quote}
           </motion.p>
-
-          {/* Teammate line */}
-          {teammateName && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.25 }}
-              className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl"
-              style={{
-                background: 'rgba(99,102,241,0.14)',
-                border: '1px solid rgba(99,102,241,0.32)',
-              }}
-            >
-              <span style={{ fontSize: 15 }}>🤝</span>
-              <span className="text-sm font-bold" style={{ color: '#a5b4fc' }}>
-                {teammateName} stands with you
-              </span>
-            </motion.div>
-          )}
 
           {/* Tap to skip */}
           <motion.p
