@@ -8,7 +8,7 @@ test.describe('Authentication', () => {
 
   test('home page loads with correct title', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/7 Cards Show/i);
+    await expect(page).toHaveTitle(/Arena of Sevens/i);
   });
 
   test('home page shows Google and Guest buttons', async ({ page }) => {

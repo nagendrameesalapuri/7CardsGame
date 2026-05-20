@@ -23,7 +23,7 @@ test.describe('Authentication Flows', () => {
 
   test('home page has correct title', async ({ page }) => {
     await home.goto();
-    await expect(page).toHaveTitle(/7 Cards Show/i);
+    await expect(page).toHaveTitle(/Arena of Sevens/i);
   });
 
   test('home page shows Google and Guest sign-in options', async ({ page }) => {
