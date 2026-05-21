@@ -949,19 +949,22 @@ async function handleMatchEnd(io: Server, state: GameState) {
     })),
   };
 
-  // Attach prize info to match result if this is a cash game
-  const roomForPrize = await Room.findOne({ code: state.roomId })
-    .lean()
-    .catch(() => null);
+  // Atomically read-and-clear paidPlayerIds before emitting match_end.
+  // This prevents the race where both players disconnect immediately after receiving
+  // game:match_end, causing handleLeave to delete the room before distributePrize
+  // can read paidPlayerIds — which resulted in the winner never being credited.
+  // { new: false } returns the pre-update document so we capture the original paid list.
+  const roomForPrize = await Room.findOneAndUpdate(
+    { code: state.roomId },
+    { $set: { paidPlayerIds: [] } },
+    { new: false },
+  ).lean().catch(() => null);
   const entryFeeForResult: number = roomForPrize
     ? ((roomForPrize.config as any).entryFee ?? 0)
     : 0;
-  const paidCountForResult: number = roomForPrize
-    ? ((roomForPrize as any).paidPlayerIds?.length ?? 0)
-    : 0;
-  const prizePoolForResult = entryFeeForResult * paidCountForResult;
-  const winnerCountForResult = (matchResult.winnerIds ?? [matchResult.winnerId])
-    .length;
+  const capturedPaidIds: string[] = (roomForPrize as any)?.paidPlayerIds ?? [];
+  const prizePoolForResult = entryFeeForResult * capturedPaidIds.length;
+  const winnerCountForResult = (matchResult.winnerIds ?? [matchResult.winnerId]).length;
   const matchResultWithPrize = {
     ...matchResult,
     ...(prizePoolForResult > 0
@@ -1015,8 +1018,8 @@ async function handleMatchEnd(io: Server, state: GameState) {
     console.error,
   );
 
-  // Cash game prize distribution
-  distributePrize(io, state, matchResult, winnerPlayer ?? null).catch(
+  // Cash game prize distribution — await so prize is settled before cleanup runs
+  await distributePrize(io, state, matchResult, entryFeeForResult, capturedPaidIds).catch(
     console.error,
   );
 
@@ -1080,53 +1083,64 @@ async function distributePrize(
   io: Server,
   state: GameState,
   matchResult: any,
-  winnerPlayer: any,
+  entryFee: number,
+  paidIds: string[],
 ) {
   try {
-    const room = await Room.findOne({ code: state.roomId }).lean();
-    if (!room) return;
-    const entryFee: number = (room.config as any).entryFee ?? 0;
+    // entryFee and paidIds were atomically captured (and cleared in DB) in handleMatchEnd,
+    // so this function is immune to the room-deletion race in handleLeave.
     if (entryFee <= 0) return;
-
-    const paidIds: string[] = (room as any).paidPlayerIds ?? [];
     const pot = entryFee * paidIds.length;
-    if (pot <= 0 || !winnerPlayer || winnerPlayer.isBot) return;
+    if (pot <= 0) return;
 
-    // Handle ties — split the pot evenly
-    const winnerIds: string[] = matchResult.winnerIds ?? [matchResult.winnerId];
-    const winnerPlayerIds = state.players
-      .filter(
-        (p) =>
-          winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId),
-      )
+    // Collect all winner IDs (supports ties). Filter to human paid players only —
+    // bots never receive prize money regardless of whether they won or tied.
+    const winnerIds: string[] = matchResult.winnerIds ?? (matchResult.winnerId ? [matchResult.winnerId] : []);
+    let winnerPlayerIds = state.players
+      .filter((p) => winnerIds.includes(p.id) && !p.isBot && paidIds.includes(p.userId))
       .map((p) => p.userId);
 
-    if (winnerPlayerIds.length === 0) return;
-    const share = Math.floor(pot / winnerPlayerIds.length);
+    // Bot won the match: fall back to the best-performing human paid player(s).
+    // Without this the pot is lost forever — nobody credited, nobody refunded.
+    if (winnerPlayerIds.length === 0) {
+      const humanPaid = state.players.filter((p) => !p.isBot && paidIds.includes(p.userId));
+      if (humanPaid.length === 0) return;
+      const scores: Array<{ playerId: string; totalScore: number }> =
+        matchResult.finalScores ?? state.players.map((p: any) => ({ playerId: p.id, totalScore: p.totalScore }));
+      const humanScored = humanPaid.map((p) => ({
+        userId: p.userId,
+        score: scores.find((s) => s.playerId === p.id)?.totalScore ?? p.totalScore,
+      }));
+      const minScore = Math.min(...humanScored.map((h) => h.score));
+      winnerPlayerIds = humanScored.filter((h) => h.score === minScore).map((h) => h.userId);
+      if (winnerPlayerIds.length === 0) return;
+    }
 
-    for (const uid of winnerPlayerIds) {
+    // Distribute evenly; give any remainder (from floor division) to the first winner
+    const share = Math.floor(pot / winnerPlayerIds.length);
+    const remainder = pot - share * winnerPlayerIds.length;
+
+    for (let i = 0; i < winnerPlayerIds.length; i++) {
+      const uid = winnerPlayerIds[i];
+      const payout = i === 0 ? share + remainder : share;
       const updated = await User.findByIdAndUpdate(
         uid,
-        { $inc: { walletBalance: share } },
+        { $inc: { walletBalance: payout } },
         { new: true },
       );
       await Transaction.create({
         userId: uid,
         type: "winning",
-        amount: share,
+        amount: payout,
         status: "completed",
         description: `Prize won — room ${state.roomId}${winnerPlayerIds.length > 1 ? " (split)" : ""}`,
         metadata: { roomCode: state.roomId },
       });
-      // Notify winner's connected socket
-      for (const [, s] of io.sockets.sockets) {
-        if ((s as any).userId === uid) {
-          s.emit("wallet:prize_won", {
-            amount: share,
-            balance: updated?.walletBalance ?? 0,
-          });
-        }
-      }
+      // Notify winner via their personal socket room (joined on auth)
+      io.to(`user:${uid}`).emit("wallet:prize_won", {
+        amount: payout,
+        balance: updated?.walletBalance ?? 0,
+      });
     }
   } catch (err) {
     console.error("[Prize] Distribution error:", err);
