@@ -205,7 +205,7 @@ const SHOW_HARD_MAX: Record<BotPersonality, number> = {
   aggressive: 7,
   bluff:      9,
   smart:      6,
-  boss:       5,
+  boss:       7,
 };
 
 // Low-value cards that are extremely useful to opponents if discarded
@@ -440,12 +440,12 @@ export class BotPlayer {
     botPlayerId: string,
     opponents?: OpponentProfile[],
   ): ThreatLevel {
-    const humanOpps = state.players.filter(
-      (p) => !p.isBot && !p.isEliminated && p.id !== botPlayerId,
+    const allOpps = state.players.filter(
+      (p) => !p.isEliminated && p.id !== botPlayerId,
     );
-    if (humanOpps.length === 0) return "low";
+    if (allOpps.length === 0) return "low";
 
-    const minCards = Math.min(...humanOpps.map((p) => p.handCount));
+    const minCards = Math.min(...allOpps.map((p) => p.handCount));
     const showPressure = BotPlayer.estimateOpponentShowPressure(opponents);
     const showThreat = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
 
@@ -462,41 +462,37 @@ export class BotPlayer {
     botPlayerId: string,
     opponents?: OpponentProfile[],
   ): number {
-    const humanOpps = state.players.filter(
-      (p) => !p.isBot && !p.isEliminated && p.id !== botPlayerId,
+    // Consider ALL players (including bots) — in Stage 5, smart/aggressive bots
+    // can also be about to show, so boss must react to them too.
+    const allOpps = state.players.filter(
+      (p) => !p.isEliminated && p.id !== botPlayerId,
     );
-    if (humanOpps.length === 0 || !opponents) return 0;
+    if (allOpps.length === 0) return 0;
 
     let maxThreat = 0;
-    for (const opp of opponents) {
-      const player = humanOpps.find((p) => p.userId === opp.userId);
-      if (!player) continue;
-
+    for (const player of allOpps) {
       let threat = 0;
       // Very few cards = close to SHOW
       if (player.handCount <= 2)  threat += 0.5;
       else if (player.handCount <= 3) threat += 0.35;
       else if (player.handCount <= 4) threat += 0.2;
 
-      // Has shown before = knows how to play
-      threat += opp.recentShows * 0.12;
-
-      // High cut rate = efficiently trimming hand
-      if (opp.recentCuts >= 3) threat += 0.2;
-      else if (opp.recentCuts >= 2) threat += 0.12;
-
-      // Low draw rate = hand already structured (not searching)
-      if (opp.recentDraws <= 1 && opp.recentCuts >= 2) threat += 0.15;
-
-      // fast_show archetype is always dangerous
-      if (opp.archetype === "fast_show") threat += 0.25;
-      if (opp.archetype === "combo_hoarder") threat += 0.1;
-
-      // Hand shrinking consistently = show build-up
-      const hist = opp.handCountHistory;
-      if (hist.length >= 3) {
-        const shrinking = hist[hist.length - 1] < hist[0];
-        if (shrinking) threat += 0.1;
+      // Behavior profile is only tracked for human players
+      if (!player.isBot && opponents) {
+        const opp = opponents.find((o) => o.userId === player.userId);
+        if (opp) {
+          threat += opp.recentShows * 0.12;
+          if (opp.recentCuts >= 3) threat += 0.2;
+          else if (opp.recentCuts >= 2) threat += 0.12;
+          if (opp.recentDraws <= 1 && opp.recentCuts >= 2) threat += 0.15;
+          if (opp.archetype === "fast_show") threat += 0.25;
+          if (opp.archetype === "combo_hoarder") threat += 0.1;
+          const hist = opp.handCountHistory;
+          if (hist.length >= 3) {
+            const shrinking = hist[hist.length - 1] < hist[0];
+            if (shrinking) threat += 0.1;
+          }
+        }
       }
 
       maxThreat = Math.max(maxThreat, Math.min(1, threat));
@@ -804,8 +800,9 @@ export class BotPlayer {
     const botTotal = DeckManager.calculateHandTotal(bot.hand);
     const showThreat = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
     const pressureState = BotPlayer.detectPressureState(opponents);
+    // Include all opponents (not just humans) so boss reacts when smart/aggressive bots close in
     const bestOpp = state.players
-      .filter((p) => !p.isBot && !p.isEliminated)
+      .filter((p) => p.id !== botPlayerId && !p.isEliminated)
       .reduce((min, p) => Math.min(min, p.handCount), Infinity);
 
     // Cooldown / bait phases reduce aggression — creates pacing windows

@@ -297,6 +297,9 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
   const rat = roundAutoAdvanceTimers.get(gameId);
   if (rat) { clearTimeout(rat); roundAutoAdvanceTimers.delete(gameId); }
   gameDifficultyBoost.delete(gameId);
+  gameBotPersonality.delete(gameId);
+  gameBotPersonalitiesMap.delete(gameId);
+  if (state) state.players.filter(p => p.isBot).forEach(b => BotPlayer.cleanupBotContext(b.id));
   cancelTurnTimer(gameId);
 
   Room.findOneAndUpdate({ code: roomCode }, { status: "finished" }).catch(
@@ -1108,6 +1111,8 @@ async function handleMatchEnd(io: Server, state: GameState) {
   });
 
   gameBotPersonality.delete(state.id);
+  gameBotPersonalitiesMap.delete(state.id);
+  state.players.filter(p => p.isBot).forEach(b => BotPlayer.cleanupBotContext(b.id));
 
   // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
