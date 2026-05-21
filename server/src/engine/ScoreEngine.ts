@@ -123,6 +123,26 @@ export class ScoreEngine {
       !state.players.find(p => p.id === r.playerId)?.isEliminated
     );
 
+    // Guard: if playerResults is missing (e.g. roundResult was not yet set), fall back
+    // to the in-memory player totals to avoid Math.min(...[]) === Infinity and a crash.
+    if (activeResults.length === 0) {
+      const activePlayers = state.players.filter(p => !p.isEliminated);
+      if (activePlayers.length === 0) return null;
+      const minTotal = Math.min(...activePlayers.map(p => p.totalScore));
+      const winners = activePlayers.filter(p => p.totalScore === minTotal);
+      const primary = winners[0];
+      return {
+        winnerId: primary.id,
+        winnerIds: winners.map(p => p.id),
+        winnerUsername: winners.map(p => p.username).join(' & '),
+        finalScores: state.players.map(p => ({
+          playerId: p.id,
+          username: p.username,
+          totalScore: p.totalScore,
+        })),
+      };
+    }
+
     const minScore = Math.min(...activeResults.map(r => r.totalScore));
     const matchWinners = activeResults.filter(r => r.totalScore === minScore);
     const primary = matchWinners[0];
