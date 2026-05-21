@@ -17,7 +17,7 @@ async function performGuestLogin(page: Page, username: string): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await page.getByRole('button', { name: /play as guest/i }).click();
   await page.getByPlaceholder(/your display name/i).fill(username);
-  await page.getByRole('button', { name: /start playing/i }).click();
+  await page.getByRole('button', { name: /enter the arena/i }).click();
   await page.waitForURL('**/lobby', { timeout: 20_000 });
 }
 

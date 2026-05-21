@@ -15,7 +15,7 @@ export class HomePage {
     this.googleBtn      = page.getByRole('button', { name: /continue with google/i });
     this.guestBtn       = page.getByRole('button', { name: /play as guest/i });
     this.usernameInput  = page.getByPlaceholder(/your display name/i);
-    this.startPlayingBtn = page.getByRole('button', { name: /start playing/i });
+    this.startPlayingBtn = page.getByRole('button', { name: /enter the arena/i });
     this.backBtn        = page.getByText(/← back|back/i).first();
   }
 

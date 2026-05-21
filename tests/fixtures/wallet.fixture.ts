@@ -23,7 +23,7 @@ async function createFundedUser(page: Page, balance: number): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await page.getByRole('button', { name: /play as guest/i }).click();
   await page.getByPlaceholder(/your display name/i).fill(username);
-  await page.getByRole('button', { name: /start playing/i }).click();
+  await page.getByRole('button', { name: /enter the arena/i }).click();
   await page.waitForURL('**/lobby', { timeout: 20_000 });
   // Note: Guest users cannot use dev/add — wallet tests for guests check the restriction message.
 }

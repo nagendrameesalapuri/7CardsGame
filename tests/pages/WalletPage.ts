@@ -12,7 +12,7 @@ export class WalletPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.balanceDisplay   = page.getByText(/wallet balance/i).first();
+    this.balanceDisplay   = page.getByText(/tournament wallet|reward balance/i).first();
     this.addMoneyBtn      = page.getByRole('button', { name: /add money/i });
     this.withdrawBtn      = page.getByRole('button', { name: /withdraw/i }).first();
     this.guestRestriction = page.getByText(/guest accounts cannot/i);

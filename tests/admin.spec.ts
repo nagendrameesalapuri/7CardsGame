@@ -41,31 +41,32 @@ test.describe('Admin Panel', () => {
 
   test('admin panel shows navigation sections', async ({ page }) => {
     await adminLogin(page, ADMIN_PASS);
-    await expect(page.getByText(/deposit/i).first()).toBeVisible();
-    await expect(page.getByText(/withdrawal/i).first()).toBeVisible();
+    // Nav labels: "Voucher Queue" (deposits), "Reward Delivery" (withdrawals), "Players" (users)
+    await expect(page.getByText(/voucher queue/i).first()).toBeVisible();
+    await expect(page.getByText(/reward delivery/i).first()).toBeVisible();
   });
 
   test('deposits section loads', async ({ page }) => {
     await adminLogin(page, ADMIN_PASS);
-    await clickAdminSection(page, 'deposits');
+    await clickAdminSection(page, 'Voucher Queue');
     await page.waitForLoadState('networkidle');
     await expect(
-      page.getByText(/pending|utr|no deposit|approve/i).first()
+      page.getByText(/pending|utr|no deposit|approve|voucher/i).first()
     ).toBeVisible({ timeout: 8000 });
   });
 
   test('withdrawals section loads', async ({ page }) => {
     await adminLogin(page, ADMIN_PASS);
-    await clickAdminSection(page, 'withdrawals');
+    await clickAdminSection(page, 'Reward Delivery');
     await page.waitForLoadState('networkidle');
     await expect(
-      page.getByText(/pending|upi|no withdrawal|approve/i).first()
+      page.getByText(/pending|upi|no withdrawal|approve|reward/i).first()
     ).toBeVisible({ timeout: 8000 });
   });
 
   test('users section loads', async ({ page }) => {
     await adminLogin(page, ADMIN_PASS);
-    await clickAdminSection(page, 'users');
+    await clickAdminSection(page, 'Players');
     await page.waitForLoadState('networkidle');
     await expect(
       page.getByText(/username|email|guest|ban/i).first()
