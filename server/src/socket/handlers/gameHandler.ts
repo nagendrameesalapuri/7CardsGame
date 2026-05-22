@@ -79,6 +79,13 @@ export function getActiveGame(roomCode: string): GameState | undefined {
   return gid ? activeGames.get(gid) : undefined;
 }
 
+// Used by team survival handler to force a fixed high difficulty for enemy bots.
+// Does NOT affect solo/individual tournament games.
+export function overrideGameDifficultyBoost(roomCode: string, boost: number): void {
+  const gid = roomToGame.get(roomCode);
+  if (gid) gameDifficultyBoost.set(gid, Math.min(0.35, Math.max(0, boost)));
+}
+
 export function getActiveGameByUserId(
   userId: string,
 ): { game: GameState; roomCode: string } | undefined {

@@ -15,6 +15,7 @@ import {
   getActiveGame,
   setBotPersonality,
   assignBotPersonalities,
+  overrideGameDifficultyBoost,
 } from './gameHandler';
 import { GameState } from '../../../../shared/src/types';
 import { getBadge } from '../../utils/badgeCache';
@@ -169,6 +170,10 @@ async function startTeamRoom(io: Server, team: any, roomCode: string, stageConfi
   const teamMemberUserIds = (team.members as any[]).map((m: any) => m.userId);
   const opponentBotUserIds = opponentBots.map((b: any) => b.userId);
   (game as any).teamGroups = [teamMemberUserIds, opponentBotUserIds];
+
+  // Force maximum difficulty for enemy bots in team mode — they face 3 opponents so need to be harder.
+  // This only affects this game; solo tournament difficulty is untouched.
+  overrideGameDifficultyBoost(roomCode, 0.32);
 
   // Assign personalities: ally bots get their chosen personality; opponent bots get stage personality
   assignBotPersonalities(game.id, [
