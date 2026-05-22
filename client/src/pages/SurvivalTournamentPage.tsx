@@ -1656,6 +1656,81 @@ function TeamStageResultOverlay({ onContinue }: { onContinue: (nextStage: number
   );
 }
 
+// ── Quick Join Team Modal ─────────────────────────────────────────────────────
+
+function QuickJoinTeamModal({ onClose }: { onClose: () => void }) {
+  const { teamError, clearTeamError } = useSurvivalStore();
+  const [code, setCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 120);
+    return () => clearTeamError?.();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleJoin = () => {
+    const trimmed = code.trim().toUpperCase();
+    if (trimmed.length < 4 || joining) return;
+    setJoining(true);
+    clearTeamError?.();
+    socketTeam.join(trimmed);
+    const unsub = on('survival:team_updated', () => { setJoining(false); onClose(); unsub(); unsub2(); });
+    const unsub2 = on('survival:team_error', () => { setJoining(false); unsub(); unsub2(); });
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)' }}
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.88, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 0.99, y: 0 }}
+        exit={{ scale: 0.88, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        className="rounded-2xl p-6 w-full max-w-xs space-y-5"
+        style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)', border: '1px solid rgba(168,85,247,0.45)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="text-center space-y-1.5">
+          <div className="text-4xl mb-1">🔗</div>
+          <h2 className="text-xl font-black text-white">Join a Team</h2>
+          <p className="text-xs text-dark-muted">Enter the invite code shared by your teammate</p>
+        </div>
+
+        <div className="space-y-2">
+          <input
+            ref={inputRef}
+            value={code}
+            onChange={e => { setCode(e.target.value.toUpperCase().slice(0, 6)); clearTeamError?.(); }}
+            onKeyDown={e => e.key === 'Enter' && handleJoin()}
+            placeholder="ABCD12"
+            maxLength={6}
+            className="w-full px-4 py-3.5 rounded-xl text-center text-2xl font-black tracking-[0.35em] bg-transparent border outline-none focus:ring-1 transition-all"
+            style={{
+              border: `1.5px solid ${code.length >= 4 ? '#a855f7' : 'rgba(255,255,255,0.15)'}`,
+              color: '#a855f7',
+            }}
+          />
+          {teamError && (
+            <p className="text-xs text-red-400 text-center">{teamError}</p>
+          )}
+        </div>
+
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={handleJoin}
+          disabled={code.trim().length < 4 || joining}
+          className="w-full py-3.5 rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' }}>
+          {joining ? '⏳ Joining…' : '🔗 Join Team'}
+        </motion.button>
+
+        <button onClick={onClose} className="w-full text-xs text-dark-muted py-1 hover:text-dark-text transition-colors">
+          Cancel
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function SurvivalTournamentPage() {
@@ -1683,6 +1758,7 @@ export function SurvivalTournamentPage() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [showModeSelect, setShowModeSelect] = useState(false);
   const [showTeamFlow, setShowTeamFlow] = useState(false);
+  const [showQuickJoinTeam, setShowQuickJoinTeam] = useState(false);
   const [pendingTier, setPendingTier] = useState<string | null>(null);
 
   const refreshBalance = useCallback(() => {
@@ -1863,6 +1939,13 @@ export function SurvivalTournamentPage() {
             />
           ) : null;
         })()}
+      </AnimatePresence>
+
+      {/* Quick join team modal */}
+      <AnimatePresence>
+        {showQuickJoinTeam && (
+          <QuickJoinTeamModal onClose={() => setShowQuickJoinTeam(false)} />
+        )}
       </AnimatePresence>
 
       {/* Tiebreaker overlay */}
@@ -2144,6 +2227,28 @@ export function SurvivalTournamentPage() {
 
               {/* Live battles spectator strip */}
               <LiveBattlesStrip />
+
+              {/* Join a Friend's Team — quick entry point so user doesn't have to pick a tier first */}
+              {!user?.isGuest && !teamState && !activeStatus && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+                  className="rounded-2xl p-4 flex items-center gap-4"
+                  style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.28)' }}>
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                    style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)' }}>
+                    🔗
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black" style={{ color: '#a855f7' }}>Join a Friend's Team</p>
+                    <p className="text-[11px] text-dark-muted leading-tight">Got an invite code? Join directly — no tier selection needed</p>
+                  </div>
+                  <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                    onClick={() => setShowQuickJoinTeam(true)}
+                    className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black"
+                    style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' }}>
+                    Join Team
+                  </motion.button>
+                </motion.div>
+              )}
 
               {/* Tier cards */}
               <div className="grid sm:grid-cols-2 gap-4">
