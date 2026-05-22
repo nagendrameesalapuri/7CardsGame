@@ -335,6 +335,7 @@ export function GameBoard() {
               survivalStage={survivalStage}
               survivalTier={survivalTier}
               entryFee={entryFee}
+              teamState={teamState}
             />
           </div>
         </div>
