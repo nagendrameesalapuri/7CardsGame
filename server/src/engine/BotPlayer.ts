@@ -31,7 +31,7 @@ export interface BotDecision {
   cardIds?: string[];
 }
 
-export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss";
+export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss" | "care";
 export type PlayerArchetype =
   | "aggressive"
   | "defensive"
@@ -192,6 +192,27 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
     sevenSaveThreshold: 5,
     jackUseBias: 0.8,
   },
+  // Hyper-defensive: builds the lowest possible hand, never attacks, waits out opponents
+  care: {
+    thinkBaseMs: 950,
+    thinkJitterMs: 420,
+    showBias: -0.38,
+    riskTolerance: 0.88,
+    bluffFactor: 0.04,
+    attackAllAt: 0,
+    attackOneAt: 0,
+    skipAt: 0,
+    randomPlayChance: 0.12,
+    alwaysAttack: false,
+    comboPreservation: 0.97,
+    pressureBias: 0.06,
+    tacticalVariance: 0.10,
+    denialWeight: 0.12,
+    killerInstinct: 0.04,
+    showInterruptBias: 0.12,
+    sevenSaveThreshold: 2,
+    jackUseBias: 0.08,
+  },
 };
 
 const SHOW_CONFIDENCE_MIN = 0.28;
@@ -206,6 +227,7 @@ const SHOW_HARD_MAX: Record<BotPersonality, number> = {
   bluff:      9,
   smart:      6,
   boss:       7,
+  care:       4,   // only shows when hand is extremely clean
 };
 
 // Low-value cards that are extremely useful to opponents if discarded

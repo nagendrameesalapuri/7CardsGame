@@ -25,20 +25,42 @@ function GameModeBadge({
   survivalStage,
   survivalTier,
   entryFee,
+  teamState,
 }: {
   isSurvival: boolean;
   survivalStage: number;
   survivalTier: string | null;
   entryFee: number;
+  teamState: import('../../store/survivalStore').TeamState | null;
 }) {
+  const STAGE_COLORS = ["#22c55e", "#f59e0b", "#a855f7", "#3b82f6", "#ef4444"];
+
+  if (teamState?.status === 'playing') {
+    const stage = teamState.currentStage;
+    const color = STAGE_COLORS[(stage - 1) % 5];
+    const tierLabel = teamState.tier.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    return (
+      <div
+        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
+        style={{
+          background: `linear-gradient(135deg,${color}22,rgba(168,85,247,0.12))`,
+          border: `1px solid ${color}55`,
+        }}
+      >
+        <span className="text-sm">👥</span>
+        <div className="flex flex-col leading-none">
+          <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: `${color}cc` }}>
+            Team · {tierLabel}
+          </span>
+          <span className="text-[11px] font-black text-white">
+            Stage <span style={{ color }}>{stage}</span>/5
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (isSurvival) {
-    const STAGE_COLORS = [
-      "#22c55e",
-      "#f59e0b",
-      "#a855f7",
-      "#3b82f6",
-      "#ef4444",
-    ];
     const color = STAGE_COLORS[(survivalStage - 1) % 5];
     const tierLabel = survivalTier
       ? survivalTier.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
@@ -189,6 +211,7 @@ export function GameBoard() {
     active: isSurvival,
     currentStage: survivalStage,
     tier: survivalTier,
+    teamState,
   } = useSurvivalStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
   const networkQuality = useNetworkQuality();
@@ -385,6 +408,7 @@ export function GameBoard() {
             myPlayerId={game.myPlayerId}
             roundNumber={game.roundNumber}
             roundCount={game.roundCount}
+            teamState={teamState}
           />
         </div>
 
@@ -556,6 +580,11 @@ export function GameBoard() {
               myUserId={user?.id ?? ""}
               roundReadyUpdate={roundReadyUpdate}
               onReady={readyForNextRound}
+              teamMemberUserIds={
+                teamState?.status === 'playing'
+                  ? new Set(teamState.members.map(m => m.userId))
+                  : undefined
+              }
             />
           )}
       </AnimatePresence>

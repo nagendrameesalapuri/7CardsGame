@@ -59,6 +59,34 @@ export function GamePage() {
     return unsub;
   }, [leaveRoom, navigate]);
 
+  // When a team survival stage ends, update store and navigate to /survival so the result overlay can show
+  useEffect(() => {
+    const unsub = on('survival:team_stage_result', (result: any) => {
+      useSurvivalStore.setState((state) => ({
+        teamState: state.teamState ? {
+          ...state.teamState,
+          currentStage: result.nextStage ?? state.teamState.currentStage,
+          currentRoomCode: result.tournamentOver ? null : (result.nextRoomCode ?? state.teamState.currentRoomCode),
+          stageResults: [...(state.teamState.stageResults ?? []), {
+            stage: result.stage,
+            teamScore: result.teamScore,
+            botTotalScore: result.botTotalScore,
+            botScores: result.botScores,
+            botNames: result.botNames,
+            teamWon: result.teamWon,
+            pointsEarned: result.pointsEarned,
+            isTeamMode: true as const,
+          }],
+          totalPointsEarned: result.totalPointsEarned ?? state.teamState.totalPointsEarned,
+        } : state.teamState,
+        teamStageResult: result,
+      }));
+      leaveRoom();
+      navigate('/survival', { replace: true });
+    });
+    return unsub;
+  }, [leaveRoom, navigate]);
+
   if (!isAuthenticated) return null;
 
   if (!game && !room && !isSurvival) {

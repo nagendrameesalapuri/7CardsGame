@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export type SurvivalTier = "beginner" | "pro" | "elite" | "boss_arena";
-export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss";
+export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss" | "care";
 
 export const SURVIVAL_STAGES: Array<{
   stage: number;
@@ -16,6 +16,22 @@ export const SURVIVAL_STAGES: Array<{
   { stage: 3, botCount: 1, personalities: ["bluff"],                       botNames: ["Phantom"],                                name: "Mind Games",        description: "1v1 · Deceptive AI"               },
   { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Smart AI", "Aggressive AI"],              name: "Survival Clash",    description: "1v2 · Smart + Aggressive AI"       },
   { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Boss AI", "Smart AI", "Aggressive AI"],   name: "Final Arena",       description: "1v3 · Boss + Smart + Aggressive AI" },
+];
+
+// Team-mode stages: always 2 opponent bots per stage with varied personality pairs
+export const TEAM_SURVIVAL_STAGES: Array<{
+  stage: number;
+  botCount: number;
+  personalities: BotPersonality[];
+  botNames: string[];
+  name: string;
+  description: string;
+}> = [
+  { stage: 1, botCount: 2, personalities: ["safe",       "aggressive"], botNames: ["Iron Wall",  "Blaze"],      name: "Guardian Clash",  description: "Team vs 2 · Defender + Attacker"  },
+  { stage: 2, botCount: 2, personalities: ["aggressive", "smart"],      botNames: ["Inferno",    "Oracle"],     name: "Force & Mind",    description: "Team vs 2 · Aggression + Strategy" },
+  { stage: 3, botCount: 2, personalities: ["bluff",      "smart"],      botNames: ["Phantom",    "Sage"],       name: "Shadow Minds",    description: "Team vs 2 · Deception + Strategy"  },
+  { stage: 4, botCount: 2, personalities: ["bluff",      "aggressive"], botNames: ["Mirage",     "Cyclone"],    name: "Chaos Duo",       description: "Team vs 2 · Bluff + Relentless"    },
+  { stage: 5, botCount: 2, personalities: ["boss",       "care"],       botNames: ["Overlord",   "Warden"],     name: "Final Overlords", description: "Team vs Boss + Warden · Last Stand" },
 ];
 
 export const TIER_CONFIG: Record<

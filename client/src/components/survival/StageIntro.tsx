@@ -20,6 +20,83 @@ type StageCfg = {
   survivalEnemies: EnemyEntry[];
 };
 
+// ── Team-mode cinematic configs (2 enemies per stage) ─────────────────────────
+
+const TEAM_STAGE_CFG: StageCfg[] = [
+  {
+    label: 'STAGE 1 · TEAM ASSAULT',
+    icon: '⚔️',
+    title: 'Guardian Clash',
+    subtitle: 'A Defender and an Attacker Await Your Team',
+    quote: '"One holds the line, the other breaks it."',
+    color: '#22c55e',
+    titleGrad: 'linear-gradient(135deg, #4ade80 0%, #22c55e 55%, #16a34a 100%)',
+    diffBadge: 'TEAM · EASY',
+    diffColor: '#4ade80',
+    bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(22,101,52,0.45) 0%, transparent 68%)',
+    dismissMs: 5000,
+    survivalEnemies: [{ icon: '🛡️', name: 'Iron Wall' }, { icon: '🔥', name: 'Blaze' }],
+  },
+  {
+    label: 'STAGE 2 · TEAM ASSAULT',
+    icon: '💥',
+    title: 'Force & Mind',
+    subtitle: 'Raw Power Meets Cold Strategy',
+    quote: '"One overwhelms. The other outthinks. Both are lethal."',
+    color: '#f59e0b',
+    titleGrad: 'linear-gradient(135deg, #fcd34d 0%, #f59e0b 55%, #d97706 100%)',
+    diffBadge: 'TEAM · MEDIUM',
+    diffColor: '#fcd34d',
+    bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(146,64,14,0.5) 0%, transparent 68%)',
+    dismissMs: 5000,
+    survivalEnemies: [{ icon: '💥', name: 'Inferno' }, { icon: '🧠', name: 'Oracle' }],
+  },
+  {
+    label: 'STAGE 3 · TEAM ASSAULT',
+    icon: '🎭',
+    title: 'Shadow Minds',
+    subtitle: 'Phantom Tricks. Sage Outthinks.',
+    quote: '"Can your team see through deception and brilliance at once?"',
+    color: '#a855f7',
+    titleGrad: 'linear-gradient(135deg, #e9d5ff 0%, #a855f7 55%, #7e22ce 100%)',
+    diffBadge: 'TEAM · HARD',
+    diffColor: '#d8b4fe',
+    bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(88,28,135,0.55) 0%, transparent 68%)',
+    dismissMs: 5000,
+    survivalEnemies: [{ icon: '🌀', name: 'Phantom' }, { icon: '🧠', name: 'Sage' }],
+  },
+  {
+    label: 'STAGE 4 · TEAM ASSAULT',
+    icon: '🌪️',
+    title: 'Chaos Duo',
+    subtitle: 'Misdirection Meets Relentless Force',
+    quote: '"They confuse your mind and crush your resolve — simultaneously."',
+    color: '#3b82f6',
+    titleGrad: 'linear-gradient(135deg, #bfdbfe 0%, #3b82f6 55%, #1d4ed8 100%)',
+    diffBadge: 'TEAM · EXPERT',
+    diffColor: '#93c5fd',
+    bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(29,78,216,0.5) 0%, transparent 68%)',
+    dismissMs: 5000,
+    survivalEnemies: [{ icon: '🌀', name: 'Mirage' }, { icon: '🌪️', name: 'Cyclone' }],
+  },
+  {
+    label: '⚔ FINAL OVERLORDS ⚔',
+    icon: '👑',
+    title: 'The Last Stand',
+    subtitle: 'The Overlord & the Warden — Unstoppable Pair',
+    quote: '"The Overlord destroys. The Warden endures. Together they are unbreakable."',
+    color: '#ef4444',
+    titleGrad: 'linear-gradient(135deg, #fbbf24 0%, #ef4444 55%, #dc2626 100%)',
+    diffBadge: 'TEAM · BOSS',
+    diffColor: '#fca5a5',
+    bgRadial: 'radial-gradient(ellipse at 50% 50%, rgba(185,28,28,0.55) 0%, transparent 68%)',
+    dismissMs: 6000,
+    survivalEnemies: [{ icon: '💀', name: 'Overlord' }, { icon: '🔒', name: 'Warden' }],
+  },
+];
+
+// ── Solo-mode cinematic configs ────────────────────────────────────────────────
+
 const STAGE_CFG: StageCfg[] = [
   {
     label: 'STAGE 1 · WARMUP',
@@ -124,14 +201,15 @@ function SunRays({ color }: { color: string }) {
 
 export interface StageIntroProps {
   stage: number;
+  isTeamMode?: boolean;
   onDismiss: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function StageIntro({ stage, onDismiss }: StageIntroProps) {
+export function StageIntro({ stage, isTeamMode, onDismiss }: StageIntroProps) {
   const idx = Math.max(0, Math.min(4, stage - 1));
-  const cfg = STAGE_CFG[idx];
+  const cfg = isTeamMode ? TEAM_STAGE_CFG[idx] : STAGE_CFG[idx];
 
   const enemies = cfg.survivalEnemies;
 

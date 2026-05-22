@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { on, socketSurvival } from '../services/socket';
+import { on, socketSurvival, socketTeam } from '../services/socket';
 import { notify } from '../services/notify';
 
 export interface StageResult {
@@ -60,7 +60,57 @@ export interface SurvivalTiebreakerResult {
   stageResults: StageResult[];
 }
 
+// ── Team types ────────────────────────────────────────────────────────────────
+
+export interface TeamMember {
+  userId: string;
+  username: string;
+  avatar: string;
+  isBot?: boolean;
+  personality?: string | null;
+}
+
+export interface TeamState {
+  teamCode: string;
+  hostId: string;
+  tier: string;
+  entryFeeMode: 'split' | 'host_pays';
+  maxSize: number;
+  members: TeamMember[];
+  status: 'forming' | 'playing' | 'completed' | 'abandoned';
+  currentStage: number;
+  currentRoomCode: string | null;
+  stageResults: TeamStageResult[];
+  totalPointsEarned: number;
+  entryPoints: number;
+}
+
+export interface TeamStageResult {
+  stage: number;
+  teamScore: number;
+  botTotalScore: number;
+  botScores: number[];
+  botNames: string[];
+  teamWon: boolean;
+  pointsEarned: number;
+  stageName?: string;
+  stageDesc?: string;
+  scoreboard?: { name: string; score: number; isTeam: boolean }[];
+  tournamentOver?: boolean;
+  won?: boolean;
+  totalPointsEarned?: number;
+  nextStage?: number;
+  nextRoomCode?: string;
+  nextStageName?: string;
+  nextStageDesc?: string;
+  nextBotNames?: string[];
+  isTeamMode: true;
+  entryFeeMode?: 'split' | 'host_pays';
+  prizeNote?: string;
+}
+
 interface SurvivalStore {
+  // Individual tournament state
   active: boolean;
   survivalId: string | null;
   tier: string | null;
@@ -72,9 +122,16 @@ interface SurvivalStore {
   stageResult: SurvivalStageResult | null;
   tiebreakerResult: SurvivalTiebreakerResult | null;
 
+  // Team tournament state
+  teamState: TeamState | null;
+  teamStageResult: TeamStageResult | null;
+  teamError: string | null;
+
   subscribe: () => () => void;
   clearStageResult: () => void;
   clearTiebreakerResult: () => void;
+  clearTeamStageResult: () => void;
+  clearTeamError: () => void;
   continueToNextStage: () => void;
   playTiebreaker: () => void;
   reset: () => void;
@@ -92,9 +149,14 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
   stageResult: null,
   tiebreakerResult: null,
 
+  teamState: null,
+  teamStageResult: null,
+  teamError: null,
+
   subscribe: () => {
     const unsubs: Array<() => void> = [];
 
+    // ── Individual ────────────────────────────────────────────────────────────
     unsubs.push(on('survival:started', (data: any) => {
       set({
         active: true,
@@ -156,12 +218,79 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
       }
     }));
 
+    // ── Team ──────────────────────────────────────────────────────────────────
+    unsubs.push(on('survival:team_updated', (data: any) => {
+      set({ teamState: data ?? null, teamError: null });
+    }));
+
+    unsubs.push(on('survival:team_started', (data: any) => {
+      set(s => ({
+        teamState: s.teamState ? { ...s.teamState, status: 'playing', currentStage: 1 } : s.teamState,
+        teamStageResult: null,
+        teamError: null,
+      }));
+    }));
+
+    unsubs.push(on('survival:team_stage_result', (result: any) => {
+      set(s => ({
+        teamState: s.teamState ? {
+          ...s.teamState,
+          currentStage: result.nextStage ?? s.teamState.currentStage,
+          stageResults: [...(s.teamState.stageResults ?? []), {
+            stage: result.stage,
+            teamScore: result.teamScore,
+            botTotalScore: result.botTotalScore,
+            botScores: result.botScores,
+            botNames: result.botNames,
+            teamWon: result.teamWon,
+            pointsEarned: result.pointsEarned,
+            isTeamMode: true,
+          }],
+          totalPointsEarned: result.totalPointsEarned ?? (s.teamState.totalPointsEarned + (result.teamWon ? result.pointsEarned : 0)),
+        } : s.teamState,
+        teamStageResult: result,
+        teamError: null,
+      }));
+
+      if (result.tournamentOver && result.won) {
+        notify.success(`Team Champion! All 5 stages cleared! +${result.totalPointsEarned} pts each!`, { duration: 6000 });
+      } else if (result.tournamentOver && !result.won) {
+        notify.error(`Team eliminated at Stage ${result.stage}. Better luck next time!`, { duration: 5000 });
+      } else if (result.teamWon) {
+        notify.success(`Stage ${result.stage} cleared! +${result.pointsEarned} pts each!`, { duration: 3000 });
+      }
+    }));
+
+    unsubs.push(on('survival:team_stage_started', () => {
+      set({ teamStageResult: null });
+    }));
+
+    unsubs.push(on('survival:team_disbanded', () => {
+      set({ teamState: null, teamStageResult: null });
+      notify.error('Team was disbanded by the host.', { duration: 4000 });
+    }));
+
+    unsubs.push(on('survival:team_quit_result', (data: { refunded: boolean; refundAmount: number }) => {
+      set({ teamState: null, teamStageResult: null });
+      if (data.refunded && data.refundAmount > 0) {
+        notify.success(`Tournament quit. Entry fee refunded: +${data.refundAmount.toLocaleString()} pts`, { duration: 5000 });
+      } else {
+        notify.info('Tournament quit. No refund (rounds already played).', { duration: 4000 });
+      }
+    }));
+
+    unsubs.push(on('survival:team_error', (msg: string) => {
+      set({ teamError: msg });
+      notify.error(msg, { duration: 5000 });
+    }));
+
     return () => unsubs.forEach(u => u());
   },
 
   clearStageResult: () => set({ stageResult: null }),
-
   clearTiebreakerResult: () => set({ tiebreakerResult: null }),
+  clearTeamStageResult: () => set({ teamStageResult: null }),
+  clearTeamError: () => set({ teamError: null }),
 
   continueToNextStage: () => {
     set({ stageResult: null });
@@ -184,5 +313,8 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
     stageResults: [],
     stageResult: null,
     tiebreakerResult: null,
+    teamState: null,
+    teamStageResult: null,
+    teamError: null,
   }),
 }));

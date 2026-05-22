@@ -12,6 +12,7 @@ interface ScoreBoardProps {
   myUserId: string;
   roundReadyUpdate: { readyUserIds: string[]; total: number } | null;
   onReady: () => void;
+  teamMemberUserIds?: Set<string>;
 }
 
 const SUIT_SYMBOL: Record<string, string> = {
@@ -79,7 +80,7 @@ const NEXT_ROUND_DELAY_S = 10;
 
 export function ScoreBoard({
   roundResult, players, roundNumber, roundCount,
-  myUserId, roundReadyUpdate, onReady,
+  myUserId, roundReadyUpdate, onReady, teamMemberUserIds,
 }: ScoreBoardProps) {
   const winner = players.find(p => p.id === roundResult.winnerId);
   const winnerIds = roundResult.winnerIds ?? [roundResult.winnerId];
@@ -457,6 +458,51 @@ export function ScoreBoard({
             );
           })}
         </div>
+
+        {/* Team score summary (team survival only) */}
+        {teamMemberUserIds && teamMemberUserIds.size > 0 && (() => {
+          const teamResults   = roundResult.playerResults.filter(r => {
+            const p = players.find(pl => pl.id === r.playerId);
+            return p && teamMemberUserIds.has(p.userId);
+          });
+          const enemyResults  = roundResult.playerResults.filter(r => {
+            const p = players.find(pl => pl.id === r.playerId);
+            return p && !teamMemberUserIds.has(p.userId);
+          });
+          const teamTotal  = teamResults.reduce((s, r)  => s + r.totalScore, 0);
+          const enemyTotal = enemyResults.reduce((s, r) => s + r.totalScore, 0);
+          const teamWinning = teamTotal <= enemyTotal;
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+              className="mx-4 mb-3 rounded-2xl overflow-hidden"
+              style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+              <div className="px-4 py-2 text-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Team Score After Round {roundNumber} · Lower Wins
+                </p>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-white/5">
+                <div className="px-4 py-3 text-center">
+                  <p className="text-[10px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.45)' }}>👥 Your Team</p>
+                  <p className="text-2xl font-black" style={{ color: teamWinning ? '#00ff88' : '#f87171' }}>
+                    {teamTotal}
+                    <span className="text-xs ml-1 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>pts</span>
+                  </p>
+                  {teamWinning && <p className="text-[9px] font-bold mt-0.5" style={{ color: '#00ff88' }}>LEADING</p>}
+                </div>
+                <div className="px-4 py-3 text-center">
+                  <p className="text-[10px] font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.45)' }}>🤖 AI Bots</p>
+                  <p className="text-2xl font-black" style={{ color: !teamWinning ? '#00ff88' : '#f87171' }}>
+                    {enemyTotal}
+                    <span className="text-xs ml-1 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>pts</span>
+                  </p>
+                  {!teamWinning && <p className="text-[9px] font-bold mt-0.5" style={{ color: '#00ff88' }}>LEADING</p>}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* Footer */}
         <div

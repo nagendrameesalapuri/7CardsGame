@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { useSurvivalStore } from '../store/survivalStore';
 import { useGameStore } from '../store/gameStore';
-import { socketSurvival, on } from '../services/socket';
+import { socketSurvival, socketTeam, socketGame, on } from '../services/socket';
 import { survivalApi, walletApi, configApi } from '../services/api';
 import { StageIntro } from '../components/survival/StageIntro';
+import { Layout } from '../components/layout/Layout';
 
 function loadSurvivalStatus(setActiveStatus: (v: any) => void, setStatusChecked: (v: boolean) => void) {
   survivalApi.status()
     .then(r => { setActiveStatus(r.data.survival); setStatusChecked(true); })
     .catch(() => setStatusChecked(true));
 }
-import { Layout } from '../components/layout/Layout';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,14 @@ const AI_PERSONALITIES = [
   { stage: 3, icon: '🌀', name: 'Phantom',      type: 'The Mind Bender',           desc: 'Unpredictable bluffs and misdirection. You can never read its hand.',  color: '#a855f7', accent: 'rgba(168,85,247,0.07)'  },
   { stage: 4, icon: '🧠', name: 'Dual Core',    type: 'Smart + Aggressive Tandem', desc: 'Two coordinated AIs with opposing styles. Split your focus or fall.',  color: '#3b82f6', accent: 'rgba(59,130,246,0.07)'  },
   { stage: 5, icon: '👑', name: 'Apex Trinity', type: 'Final Boss + Elite Guard',  desc: 'Three synchronized AIs. One wrong move ends everything. Win or die.',  color: '#ef4444', accent: 'rgba(239,68,68,0.07)'   },
+];
+
+const TEAM_STAGES = [
+  { stage: 1, name: 'Guardian Clash',  botCount: 2, emojis: ['🛡️','🔥'],  color: '#22c55e', desc: 'Defender + Attacker',        difficulty: 'Easy'   },
+  { stage: 2, name: 'Force & Mind',    botCount: 2, emojis: ['💥','🧠'],  color: '#f59e0b', desc: 'Aggression + Strategy',      difficulty: 'Medium' },
+  { stage: 3, name: 'Shadow Minds',    botCount: 2, emojis: ['🌀','🧠'],  color: '#a855f7', desc: 'Deception + Strategy',       difficulty: 'Hard'   },
+  { stage: 4, name: 'Chaos Duo',       botCount: 2, emojis: ['🌀','🌪️'], color: '#3b82f6', desc: 'Bluff + Relentless Force',   difficulty: 'Expert' },
+  { stage: 5, name: 'Final Overlords', botCount: 2, emojis: ['💀','🔒'],  color: '#ef4444', desc: 'Boss + Warden (Care AI)',    difficulty: 'Boss'   },
 ];
 
 const TIER_DISPLAY = [
@@ -1041,13 +1049,621 @@ function SurvivalHistoryTab() {
   );
 }
 
+// ── Mode Selection Modal ───────────────────────────────────────────────────────
+
+function ModeSelectModal({ tier, tierLabel, tierColor, onIndividual, onTeam, onClose }: {
+  tier: string;
+  tierLabel: string;
+  tierColor: string;
+  onIndividual: () => void;
+  onTeam: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)' }}
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.88, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.88, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        className="rounded-2xl p-6 w-full max-w-sm space-y-5"
+        style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)', border: `1px solid ${tierColor}40` }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="text-center space-y-1">
+          <p className="text-[10px] tracking-[0.25em] uppercase font-bold" style={{ color: `${tierColor}80` }}>
+            {tierLabel} Tier · Choose Mode
+          </p>
+          <h2 className="text-xl font-black text-white">How do you want to battle?</h2>
+          <p className="text-xs text-dark-muted">Pick Solo for 1v1 or assemble a team to fight together</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={onIndividual}
+            className="flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            <span className="text-3xl">🧍</span>
+            <span className="text-sm font-black text-white">Solo</span>
+            <span className="text-[10px] text-dark-muted text-center leading-tight">1 player vs AI · same as before</span>
+          </motion.button>
+
+          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={onTeam}
+            className="flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all"
+            style={{ background: `${tierColor}12`, border: `1px solid ${tierColor}45` }}>
+            <span className="text-3xl">👥</span>
+            <span className="text-sm font-black" style={{ color: tierColor }}>Team</span>
+            <span className="text-[10px] text-dark-muted text-center leading-tight">2–4 players · combined score</span>
+          </motion.button>
+        </div>
+
+        <button onClick={onClose} className="w-full text-xs text-dark-muted py-1 hover:text-dark-text transition-colors">
+          Cancel
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Bot personality options for team builder ──────────────────────────────────
+
+const TEAM_BOT_OPTIONS = [
+  { id: 'safe',       name: 'Guardian',   icon: '🛡️', type: 'Cautious Defender',   color: '#22c55e' },
+  { id: 'aggressive', name: 'Viper',      icon: '🔥', type: 'Relentless Attacker', color: '#f59e0b' },
+  { id: 'bluff',      name: 'Mystic',     icon: '🌀', type: 'Mind Bender',         color: '#a855f7' },
+  { id: 'smart',      name: 'Tactician',  icon: '🧠', type: 'Strategic Thinker',   color: '#3b82f6' },
+];
+
+// ── Team Flow Modal ────────────────────────────────────────────────────────────
+
+function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
+  tier: string;
+  tierLabel: string;
+  tierColor: string;
+  entryPoints: number;
+  onClose: () => void;
+}) {
+  const { user } = useAuthStore();
+  const { teamState, teamError, clearTeamError } = useSurvivalStore();
+  const [tab, setTab] = useState<'create' | 'join'>('create');
+  const maxSize = 2; // Team Arena is fixed at 2v2
+  const [feeMode, setFeeMode] = useState<'split' | 'host_pays'>('split');
+  const [joinCode, setJoinCode] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [pickingSlot, setPickingSlot] = useState<number | null>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
+
+  const isHost = teamState?.hostId === user?.id;
+  const myEntryRupees = teamState
+    ? (teamState.entryFeeMode === 'split'
+        ? Math.ceil(teamState.entryPoints / teamState.members.length) / 100
+        : (isHost ? teamState.entryPoints / 100 : 0))
+    : 0;
+
+  const splitCost = Math.ceil(entryPoints / maxSize) / 100;
+
+  const handleCreate = () => {
+    if (creating) return;
+    setCreating(true);
+    clearTeamError();
+    socketTeam.create(tier, feeMode, maxSize);
+    const unsub = on('survival:team_updated', () => { setCreating(false); unsub(); });
+    const unsub2 = on('survival:team_error', () => { setCreating(false); unsub2(); });
+  };
+
+  const handleJoin = () => {
+    if (!joinCode.trim() || joining) return;
+    setJoining(true);
+    clearTeamError();
+    socketTeam.join(joinCode.trim());
+    const unsub = on('survival:team_updated', () => { setJoining(false); unsub(); });
+    const unsub2 = on('survival:team_error', () => { setJoining(false); unsub2(); });
+  };
+
+  const handleStart = () => {
+    if (!isHost || starting) return;
+    setStarting(true);
+    clearTeamError();
+    socketTeam.start();
+    const unsub = on('survival:team_error', () => { setStarting(false); unsub(); });
+  };
+
+  const handleLeave = () => {
+    socketTeam.leave();
+    onClose();
+  };
+
+  const copyCode = () => {
+    if (teamState?.teamCode) {
+      navigator.clipboard.writeText(teamState.teamCode).catch(() => {});
+    }
+  };
+
+  // In the lobby state (team created/joined)
+  if (teamState && (teamState.status === 'forming' || teamState.status === 'playing')) {
+    const memberCount = teamState.members.length;
+    const canStart = isHost && memberCount >= 2;
+
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: 'rgba(0,0,0,0.85)' }}>
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+          className="rounded-2xl p-6 w-full max-w-sm space-y-5"
+          style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)', border: `1px solid ${tierColor}40` }}>
+
+          {/* Header */}
+          <div className="text-center space-y-1">
+            <p className="text-[10px] tracking-[0.25em] uppercase font-bold" style={{ color: `${tierColor}80` }}>Team Lobby</p>
+            <h2 className="text-xl font-black text-white">
+              {teamState.tier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} · Team Battle
+            </h2>
+          </div>
+
+          {/* Invite code */}
+          <div className="rounded-xl p-3 text-center space-y-1"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <p className="text-[10px] text-dark-muted uppercase tracking-widest">Invite Code</p>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-2xl font-black tracking-[0.2em]" style={{ color: tierColor }}>
+                {teamState.teamCode}
+              </span>
+              <button onClick={copyCode}
+                className="text-xs px-2 py-1 rounded-lg transition-all"
+                style={{ background: `${tierColor}20`, color: tierColor, border: `1px solid ${tierColor}30` }}>
+                Copy
+              </button>
+            </div>
+            <p className="text-[10px] text-dark-muted">Share this with your teammates</p>
+          </div>
+
+          {/* Members */}
+          <div className="space-y-2">
+            <p className="text-[10px] text-dark-muted uppercase tracking-widest font-semibold">
+              Members ({memberCount}/{teamState.maxSize})
+            </p>
+            {Array.from({ length: teamState.maxSize }).map((_, i) => {
+              const member = teamState.members[i];
+              const isBotMember = member?.isBot;
+              const isEmpty = !member;
+              const botOpt = isBotMember ? TEAM_BOT_OPTIONS.find(b => b.id === member!.personality) : null;
+              const isPicking = pickingSlot === i;
+
+              if (isEmpty && isHost && isPicking) {
+                // Personality picker expanded in this slot
+                return (
+                  <motion.div key={i} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl overflow-hidden"
+                    style={{ border: `1px solid ${tierColor}40` }}>
+                    <div className="px-3 py-2 flex items-center justify-between"
+                      style={{ background: `${tierColor}10` }}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: tierColor }}>Pick Bot Personality</p>
+                      <button onClick={() => setPickingSlot(null)} className="text-dark-muted text-xs hover:text-white">✕</button>
+                    </div>
+                    <div className="p-2 grid grid-cols-4 gap-1.5">
+                      {TEAM_BOT_OPTIONS.map(opt => (
+                        <button key={opt.id}
+                          onClick={() => { socketTeam.addBot(opt.id); setPickingSlot(null); }}
+                          className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all hover:scale-105 active:scale-95"
+                          style={{ background: `${opt.color}12`, border: `1px solid ${opt.color}35` }}>
+                          <span className="text-xl">{opt.icon}</span>
+                          <p className="text-[9px] font-black leading-tight text-center" style={{ color: opt.color }}>{opt.name}</p>
+                          <p className="text-[8px] text-dark-muted leading-tight text-center">{opt.type}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                );
+              }
+
+              return (
+                <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                  style={{
+                    background: member ? (isBotMember ? `${botOpt?.color ?? '#60a5fa'}0d` : 'rgba(255,255,255,0.05)') : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${isBotMember ? `${botOpt?.color ?? '#60a5fa'}30` : 'rgba(255,255,255,0.07)'}`,
+                  }}>
+                  {member && !isBotMember ? (
+                    <>
+                      <span className="text-lg">{member.userId === teamState.hostId ? '👑' : '👤'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-white truncate">{member.username}</p>
+                        <p className="text-[10px] text-dark-muted">{member.userId === teamState.hostId ? 'Host' : 'Member'}</p>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                        style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                        Ready
+                      </span>
+                    </>
+                  ) : isBotMember ? (
+                    <>
+                      <span className="text-xl">{botOpt?.icon ?? '🤖'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: botOpt?.color ?? '#60a5fa' }}>{member!.username}</p>
+                        <p className="text-[10px] text-dark-muted">{botOpt?.type ?? 'AI Bot'}</p>
+                      </div>
+                      {isHost && (
+                        <button onClick={() => socketTeam.removeBot(member!.userId)}
+                          className="text-[10px] px-2 py-1 rounded-lg transition-all"
+                          style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                          Remove
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-lg opacity-30">⏳</span>
+                      <p className="flex-1 text-sm text-dark-muted/50 italic">Waiting for player…</p>
+                      {isHost && (
+                        <button onClick={() => setPickingSlot(i)}
+                          className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all"
+                          style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}>
+                          + Bot
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {isHost && teamState.members.some(m => m.isBot) && (
+              <p className="text-[10px] text-center" style={{ color: 'rgba(96,165,250,0.6)' }}>
+                🤖 Bot teammates added — Host pays full entry fee
+              </p>
+            )}
+          </div>
+
+          {/* Fee info */}
+          <div className="rounded-xl p-3 space-y-1"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <p className="text-[10px] text-dark-muted uppercase tracking-widest font-semibold">Entry Fee</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-dark-muted">
+                {teamState.entryFeeMode === 'split' ? 'Split equally among humans' : 'Host pays full'}
+              </p>
+              <p className="text-sm font-black" style={{ color: tierColor }}>
+                {myEntryRupees > 0 ? `₹${myEntryRupees.toFixed(0)} for you` : 'Free for you ✓'}
+              </p>
+            </div>
+            {teamState.entryFeeMode === 'split' && (
+              <p className="text-[10px]" style={{ color: 'rgba(34,197,94,0.7)' }}>
+                Prize split equally among human members on win
+              </p>
+            )}
+            {teamState.entryFeeMode === 'host_pays' && (
+              <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.7)' }}>
+                Host pays full entry · All prizes go to host on win
+              </p>
+            )}
+          </div>
+
+          {/* Error */}
+          {teamError && (
+            <p className="text-xs text-red-400 text-center px-2">{teamError}</p>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button onClick={handleLeave}
+              className="px-4 py-3 rounded-xl text-sm font-bold text-dark-muted border border-dark-border hover:border-red-400/50 hover:text-red-400 transition-all">
+              Leave
+            </button>
+            {isHost ? (
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                onClick={handleStart}
+                disabled={!canStart || starting}
+                className="flex-1 py-3 rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: canStart ? tierColor : 'rgba(255,255,255,0.08)', color: canStart ? '#0d1117' : '#666' }}>
+                {starting ? '⏳ Starting…' : canStart ? `⚔️ Start Battle (${memberCount} players)` : `Waiting (${memberCount}/${teamState.maxSize})`}
+              </motion.button>
+            ) : (
+              <div className="flex-1 py-3 rounded-xl text-sm font-bold text-center text-dark-muted"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                ⏳ Waiting for host to start…
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Create / Join form
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)' }}
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.88, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.88, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        className="rounded-2xl p-6 w-full max-w-sm space-y-5"
+        style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)', border: `1px solid ${tierColor}40` }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="text-center space-y-1">
+          <p className="text-[10px] tracking-[0.25em] uppercase font-bold" style={{ color: `${tierColor}80` }}>Team Battle · {tierLabel}</p>
+          <h2 className="text-xl font-black text-white">Set Up Your Team</h2>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          {(['create', 'join'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className="flex-1 py-2.5 text-sm font-semibold transition-all"
+              style={tab === t ? { background: `${tierColor}20`, color: tierColor } : { color: '#8b949e' }}>
+              {t === 'create' ? '➕ Create Team' : '🔗 Join Team'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'create' ? (
+          <div className="space-y-4">
+            {/* 2v2 format badge */}
+            <div className="flex items-center justify-center gap-2 py-2 rounded-xl"
+              style={{ background: `${tierColor}10`, border: `1px solid ${tierColor}30` }}>
+              <span className="text-base">👥</span>
+              <span className="text-sm font-black" style={{ color: tierColor }}>2 vs 2 Format</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: `${tierColor}20`, color: tierColor }}>FIXED</span>
+            </div>
+
+            {/* Entry fee mode */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-dark-muted">Entry Fee (Total: ₹{(entryPoints / 100).toFixed(0)})</p>
+              <div className="space-y-2">
+                <button onClick={() => setFeeMode('split')}
+                  className="w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all"
+                  style={feeMode === 'split'
+                    ? { background: `${tierColor}15`, border: `1.5px solid ${tierColor}50` }
+                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <span className="text-lg mt-0.5">💸</span>
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: feeMode === 'split' ? tierColor : '#e2e8f0' }}>Split Entry Fee</p>
+                    <p className="text-xs text-dark-muted">Each of 2 members pays <strong className="text-white">₹{splitCost.toFixed(0)}</strong></p>
+                  </div>
+                  {feeMode === 'split' && <span className="ml-auto text-sm" style={{ color: tierColor }}>✓</span>}
+                </button>
+
+                <button onClick={() => setFeeMode('host_pays')}
+                  className="w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all"
+                  style={feeMode === 'host_pays'
+                    ? { background: `${tierColor}15`, border: `1.5px solid ${tierColor}50` }
+                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <span className="text-lg mt-0.5">👑</span>
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: feeMode === 'host_pays' ? tierColor : '#e2e8f0' }}>Host Pays Full</p>
+                    <p className="text-xs text-dark-muted">You pay <strong className="text-white">₹{(entryPoints / 100).toFixed(0)}</strong> · team plays free</p>
+                  </div>
+                  {feeMode === 'host_pays' && <span className="ml-auto text-sm" style={{ color: tierColor }}>✓</span>}
+                </button>
+              </div>
+            </div>
+
+            {teamError && <p className="text-xs text-red-400 text-center">{teamError}</p>}
+
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              onClick={handleCreate} disabled={creating}
+              className="w-full py-3.5 rounded-xl font-bold text-sm disabled:opacity-50"
+              style={{ background: tierColor, color: '#0d1117' }}>
+              {creating ? '⏳ Creating…' : '➕ Create Team'}
+            </motion.button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-dark-muted">Enter invite code from your teammate</p>
+              <input
+                ref={codeRef}
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value.toUpperCase().slice(0, 6))}
+                onKeyDown={e => e.key === 'Enter' && handleJoin()}
+                placeholder="ABCD"
+                maxLength={6}
+                className="w-full px-4 py-3 rounded-xl text-center text-2xl font-black tracking-[0.3em] bg-transparent border outline-none focus:ring-1 transition-all"
+                style={{ border: `1.5px solid ${joinCode.length >= 4 ? tierColor : 'rgba(255,255,255,0.15)'}`, color: tierColor }}
+              />
+            </div>
+
+            {teamError && <p className="text-xs text-red-400 text-center">{teamError}</p>}
+
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              onClick={handleJoin} disabled={joinCode.trim().length < 4 || joining}
+              className="w-full py-3.5 rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: tierColor, color: '#0d1117' }}>
+              {joining ? '⏳ Joining…' : '🔗 Join Team'}
+            </motion.button>
+          </div>
+        )}
+
+        <button onClick={onClose} className="w-full text-xs text-dark-muted py-1 hover:text-dark-text transition-colors">
+          ← Back
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Team Stage Result Overlay ──────────────────────────────────────────────────
+
+function TeamStageResultOverlay({ onContinue }: { onContinue: (nextStage: number) => void }) {
+  const { user } = useAuthStore();
+  const { teamStageResult, teamState, clearTeamStageResult } = useSurvivalStore();
+  const [continuing, setContinuing] = useState(false);
+  if (!teamStageResult) return null;
+
+  const isHost = teamState?.hostId === user?.id;
+  const r = teamStageResult;
+  const won = r.teamWon;
+  const isOver = !!r.tournamentOver;
+
+  const handleContinue = () => {
+    if (!isHost || continuing) return;
+    setContinuing(true);
+    clearTeamStageResult();
+    if (!isOver && r.nextStage) {
+      // socketTeam.continue() is deferred — called after the stage intro dismisses
+      onContinue(r.nextStage);
+    }
+  };
+
+  const STAGE_COLORS = ['#22c55e','#f59e0b','#a855f7','#3b82f6','#ef4444'];
+  const stageColor = STAGE_COLORS[(r.stage - 1) % STAGE_COLORS.length];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.9)' }}>
+      <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.85, opacity: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+        className="rounded-2xl p-6 w-full max-w-sm space-y-5"
+        style={{
+          background: 'linear-gradient(160deg,#0d1117 0%,#0a0d1f 100%)',
+          border: `1px solid ${won ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'}`,
+        }}>
+
+        {/* Result header */}
+        <div className="text-center space-y-2">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.1, type: 'spring' }}
+            className="text-5xl">{won ? '🏆' : '💀'}</motion.div>
+          <p className="text-[10px] tracking-[0.25em] uppercase font-bold" style={{ color: `${stageColor}80` }}>
+            Stage {r.stage} · {r.stageName}
+          </p>
+          <h2 className="text-2xl font-black" style={{ color: won ? '#22c55e' : '#ef4444' }}>
+            {won ? 'Team Wins!' : 'Team Eliminated'}
+          </h2>
+        </div>
+
+        {/* Score comparison */}
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="px-4 py-2 text-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <p className="text-[10px] text-dark-muted uppercase tracking-widest font-semibold">Combined Score · Lower is Better</p>
+          </div>
+          <div className="p-4 space-y-3">
+            {/* Team score */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)' }}>👥</div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-bold text-white">Your Team</p>
+                  <p className="text-sm font-black" style={{ color: won ? '#22c55e' : '#f59e0b' }}>
+                    {r.teamScore} pts
+                  </p>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (r.teamScore / Math.max(r.teamScore, r.botTotalScore)) * 100)}%` }}
+                    transition={{ delay: 0.3, duration: 0.8 }}
+                    className="h-full rounded-full"
+                    style={{ background: won ? 'linear-gradient(90deg,#22c55e,#16a34a)' : 'linear-gradient(90deg,#f59e0b,#d97706)' }} />
+                </div>
+              </div>
+            </div>
+
+            {/* vs divider */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+              <span className="text-[10px] text-dark-muted font-bold">VS</span>
+              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            </div>
+
+            {/* Bot score */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>🤖</div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-bold text-white">AI Bots</p>
+                  <p className="text-sm font-black" style={{ color: won ? '#ef4444' : '#22c55e' }}>
+                    {r.botTotalScore} pts
+                  </p>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (r.botTotalScore / Math.max(r.teamScore, r.botTotalScore)) * 100)}%` }}
+                    transition={{ delay: 0.4, duration: 0.8 }}
+                    className="h-full rounded-full"
+                    style={{ background: won ? 'linear-gradient(90deg,#ef4444,#b91c1c)' : 'linear-gradient(90deg,#22c55e,#16a34a)' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Individual bot breakdown */}
+        {r.botScores.length > 1 && (
+          <div className="text-center space-y-1">
+            <p className="text-[10px] text-dark-muted uppercase tracking-wider">Individual Bot Scores</p>
+            <div className="flex justify-center gap-3">
+              {r.botScores.map((s: number, i: number) => (
+                <div key={i} className="text-center">
+                  <p className="text-xs font-bold text-white">{s} pts</p>
+                  <p className="text-[9px] text-dark-muted">{r.botNames?.[i] ?? `Bot ${i + 1}`}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Points earned */}
+        {won && r.pointsEarned > 0 && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+            className="rounded-xl p-3 text-center"
+            style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+            {r.entryFeeMode === 'split' ? (
+              <>
+                <p className="text-xs text-green-400 font-semibold">Each human member earned</p>
+                <p className="text-xl font-black text-green-400">+{r.pointsEarned.toLocaleString()} pts</p>
+                <p className="text-[10px] text-dark-muted">≡ ₹{(r.pointsEarned / 100).toFixed(0)} credited per member</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-yellow-400 font-semibold">Host earned (host paid entry)</p>
+                <p className="text-xl font-black text-yellow-400">+{r.pointsEarned.toLocaleString()} pts</p>
+                <p className="text-[10px] text-dark-muted">≡ ₹{(r.pointsEarned / 100).toFixed(0)} credited to host wallet</p>
+              </>
+            )}
+          </motion.div>
+        )}
+
+        {/* Action buttons */}
+        <div className="space-y-2">
+          {!isOver && won && r.nextStage && isHost && (
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              onClick={handleContinue} disabled={continuing}
+              className="w-full py-3.5 rounded-xl font-bold text-sm disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff' }}>
+              {continuing ? '⏳ Loading…' : `⚔️ Stage ${r.nextStage}: ${r.nextStageName}`}
+            </motion.button>
+          )}
+          {!isOver && won && !isHost && (
+            <div className="py-3.5 rounded-xl text-sm font-bold text-center text-dark-muted"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              ⏳ Waiting for host to continue…
+            </div>
+          )}
+          {isOver && (
+            <button onClick={clearTeamStageResult}
+              className="w-full py-3 rounded-xl font-bold text-sm"
+              style={{ background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }}>
+              View Summary
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function SurvivalTournamentPage() {
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const { subscribe, active, currentStage, stageResults, stageResult, tiebreakerResult,
-    totalPointsEarned, clearStageResult } = useSurvivalStore();
+    totalPointsEarned, clearStageResult,
+    teamState, teamStageResult, clearTeamStageResult, teamError } = useSurvivalStore();
   const { subscribeToEvents } = useGameStore();
   const [balance, setBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
@@ -1059,9 +1675,15 @@ export function SurvivalTournamentPage() {
   const [survivalCfg, setSurvivalCfg] = useState<Record<string, { entryPoints: number; stageRewards: number[] }>>({});
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const [showTeamQuitConfirm, setShowTeamQuitConfirm] = useState(false);
+  const [teamQuitting, setTeamQuitting] = useState(false);
   const [showStageIntro, setShowStageIntro] = useState(false);
   const [introStageNum, setIntroStageNum] = useState(1);
+  const [introIsTeamMode, setIntroIsTeamMode] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [showModeSelect, setShowModeSelect] = useState(false);
+  const [showTeamFlow, setShowTeamFlow] = useState(false);
+  const [pendingTier, setPendingTier] = useState<string | null>(null);
 
   const refreshBalance = useCallback(() => {
     walletApi.get().then(r => setBalance(r.data.balance)).catch(() => {});
@@ -1077,6 +1699,14 @@ export function SurvivalTournamentPage() {
       setActiveStatus(result);
     });
     const unsub5 = on('survival:stage_result', () => refreshBalance());
+    const unsub8 = on('survival:team_stage_result', () => refreshBalance());
+    const unsub9 = on('survival:team_started', (data: any) => {
+      setShowTeamFlow(false);
+      setIntroIsTeamMode(true);
+      setIntroStageNum(data.stage ?? 1);
+      setPendingAction(() => () => navigate('/game'));
+      setShowStageIntro(true);
+    });
     const unsub7 = on('survival:abandoned', () => {
       setActiveStatus(null);
       setQuitting(false);
@@ -1086,6 +1716,7 @@ export function SurvivalTournamentPage() {
     });
 
     loadSurvivalStatus(setActiveStatus, setStatusChecked);
+    socketTeam.status(); // check for any active/forming team on mount
     refreshBalance();
     configApi.getPublic().then(r => {
       const st = r.data.featureFlags?.survivalTiers;
@@ -1097,7 +1728,7 @@ export function SurvivalTournamentPage() {
       if (st) setEnabledTiers({ beginner: st.beginner ?? true, pro: st.pro ?? true, elite: st.elite ?? true, boss_arena: st.boss_arena ?? true });
       if ((cfg as any).survivalConfig) setSurvivalCfg((cfg as any).survivalConfig);
     });
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents, refreshBalance]);
 
   // Show stage intro then execute deferred action
@@ -1111,7 +1742,18 @@ export function SurvivalTournamentPage() {
 
   const handleStart = (tier: string) => {
     if (starting) return;
+    // Show mode selection modal first
+    setPendingTier(tier);
+    setShowModeSelect(true);
+  };
+
+  const handleSoloMode = () => {
+    if (!pendingTier) return;
+    const tier = pendingTier;
+    setShowModeSelect(false);
+    setPendingTier(null);
     setSelectedTier(tier);
+    setIntroIsTeamMode(false);
     setIntroStageNum(1);
     setPendingAction(() => () => {
       setStarting(true);
@@ -1119,6 +1761,11 @@ export function SurvivalTournamentPage() {
       const unsub = on('survival:error', () => { setStarting(false); setSelectedTier(null); unsub(); });
     });
     setShowStageIntro(true);
+  };
+
+  const handleTeamMode = () => {
+    setShowModeSelect(false);
+    setShowTeamFlow(true);
   };
 
   const handleResume = () => {
@@ -1135,9 +1782,25 @@ export function SurvivalTournamentPage() {
     socketSurvival.abandon();
   };
 
+  const handleTeamQuit = () => {
+    if (teamQuitting) return;
+    setTeamQuitting(true);
+    socketTeam.quit();
+    const unsub = on('survival:team_quit_result', () => {
+      setTeamQuitting(false);
+      setShowTeamQuitConfirm(false);
+      unsub();
+    });
+    const unsub2 = on('survival:team_error', () => {
+      setTeamQuitting(false);
+      unsub2();
+    });
+  };
+
   // Called from StageResultOverlay when the player wins a stage
   const handleResultContinue = useCallback((nextStageNum: number) => {
     useSurvivalStore.setState({ stageResult: null });
+    setIntroIsTeamMode(false);
     setIntroStageNum(nextStageNum);
     setPendingAction(() => () => socketSurvival.continue());
     setShowStageIntro(true);
@@ -1148,6 +1811,12 @@ export function SurvivalTournamentPage() {
   const pts = (balance ?? 0) * POINTS_PER_RUPEE;
   const isDangerStage = active && currentStage >= 4;
 
+  // Compute tier details for modals
+  const pendingTierDisplay = TIER_DISPLAY.find(t => t.id === (pendingTier ?? teamState?.tier ?? ''));
+  const pendingEntryPoints = pendingTierDisplay
+    ? (survivalCfg[pendingTierDisplay.id]?.entryPoints ?? pendingTierDisplay.defaultPoints)
+    : 0;
+
   return (
     <Layout>
       {/* Stage intro cinematic — shown before each stage */}
@@ -1155,17 +1824,65 @@ export function SurvivalTournamentPage() {
         {showStageIntro && (
           <StageIntro
             stage={introStageNum}
+            isTeamMode={introIsTeamMode}
             onDismiss={handleIntroDismiss}
           />
         )}
       </AnimatePresence>
 
+      {/* Mode selection modal */}
+      <AnimatePresence>
+        {showModeSelect && pendingTierDisplay && (
+          <ModeSelectModal
+            tier={pendingTierDisplay.id}
+            tierLabel={pendingTierDisplay.label}
+            tierColor={pendingTierDisplay.color}
+            onIndividual={handleSoloMode}
+            onTeam={handleTeamMode}
+            onClose={() => { setShowModeSelect(false); setPendingTier(null); }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Team setup / lobby modal */}
+      <AnimatePresence>
+        {(() => {
+          const teamTierDisplay = teamState
+            ? TIER_DISPLAY.find(t => t.id === teamState.tier) ?? pendingTierDisplay
+            : pendingTierDisplay;
+          const teamEntryPts = teamState
+            ? (survivalCfg[teamState.tier]?.entryPoints ?? teamTierDisplay?.defaultPoints ?? pendingEntryPoints)
+            : pendingEntryPoints;
+          return (showTeamFlow || (teamState && teamState.status === 'forming')) && teamTierDisplay ? (
+            <TeamFlowModal
+              tier={teamTierDisplay.id}
+              tierLabel={teamTierDisplay.label}
+              tierColor={teamTierDisplay.color}
+              entryPoints={teamEntryPts}
+              onClose={() => setShowTeamFlow(false)}
+            />
+          ) : null;
+        })()}
+      </AnimatePresence>
+
       {/* Tiebreaker overlay */}
       <AnimatePresence>{tiebreakerResult && <TiebreakerOverlay />}</AnimatePresence>
 
-      {/* Stage result overlay */}
+      {/* Individual stage result overlay */}
       <AnimatePresence>
         {stageResult && <StageResultOverlay onContinue={handleResultContinue} />}
+      </AnimatePresence>
+
+      {/* Team stage result overlay */}
+      <AnimatePresence>
+        {teamStageResult && (
+          <TeamStageResultOverlay onContinue={(nextStage) => {
+            setIntroIsTeamMode(true);
+            setIntroStageNum(nextStage);
+            setPendingAction(() => () => socketTeam.continue());
+            setShowStageIntro(true);
+          }} />
+        )}
       </AnimatePresence>
 
       {/* Danger atmosphere — subtle red pulse for stages 4 & 5 */}
@@ -1274,6 +1991,101 @@ export function SurvivalTournamentPage() {
           )}
         </AnimatePresence>
 
+        {/* Team forming lobby banner */}
+        <AnimatePresence>
+          {teamState && teamState.status === 'forming' && !showTeamFlow && (
+            <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="rounded-2xl p-5 cursor-pointer" onClick={() => setShowTeamFlow(true)}
+              style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.35)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">👥</span>
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: '#a855f7' }}>Team Lobby Open</p>
+                    <p className="text-xs text-dark-muted">
+                      {teamState.members.length}/{teamState.maxSize} players · Code: <strong style={{ color: '#a855f7' }}>{teamState.teamCode}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button className="text-xs px-3 py-1.5 rounded-lg font-bold transition-all"
+                  style={{ background: 'rgba(168,85,247,0.2)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.4)' }}>
+                  Open →
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Team match in progress — resume banner */}
+        <AnimatePresence>
+          {teamState && teamState.status === 'playing' && (
+            <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="rounded-2xl p-5"
+              style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.35)' }}>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">👥</span>
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: '#a855f7' }}>Team Match In Progress</p>
+                    <p className="text-xs text-dark-muted">
+                      Stage {teamState.currentStage}/5 · {teamState.members.filter(m => !m.isBot).length} human{teamState.members.filter(m => !m.isBot).length !== 1 ? 's' : ''} + {teamState.members.filter(m => m.isBot).length} bot{teamState.members.filter(m => m.isBot).length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+                {teamState.hostId === user?.id && (
+                  <button onClick={() => setShowTeamQuitConfirm(true)}
+                    className="text-xs text-red-400 hover:text-red-300 border border-red-400/30 hover:border-red-400/60 px-3 py-1.5 rounded-lg transition-all flex-shrink-0">
+                    ✕ Quit
+                  </button>
+                )}
+              </div>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                onClick={() => socketTeam.rejoin()}
+                className="w-full py-3 rounded-xl font-bold text-sm"
+                style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff' }}>
+                ▶ {teamState.currentRoomCode ? 'Rejoin Team Match' : 'Continue Team Match'}
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Team quit confirmation dialog */}
+        <AnimatePresence>
+          {showTeamQuitConfirm && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(0,0,0,0.75)' }}
+              onClick={() => !teamQuitting && setShowTeamQuitConfirm(false)}>
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                className="rounded-2xl p-6 max-w-sm w-full space-y-4"
+                style={{ background: '#0d1117', border: '1px solid rgba(239,68,68,0.4)' }}
+                onClick={e => e.stopPropagation()}>
+                <div className="text-center">
+                  <p className="text-3xl mb-2">⚠️</p>
+                  <p className="text-lg font-black text-white mb-1">Quit Team Tournament?</p>
+                  {(teamState?.stageResults?.length ?? 0) === 0
+                    ? <p className="text-sm text-green-400">No stages completed yet — your entry fee will be <strong>fully refunded</strong>.</p>
+                    : <p className="text-sm text-red-400">Stages already played — <strong>no refund</strong> will be given. Points earned so far are kept.</p>
+                  }
+                  <p className="text-xs text-dark-muted mt-2">This ends the tournament for your entire team.</p>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowTeamQuitConfirm(false)} disabled={teamQuitting}
+                    className="flex-1 py-3 rounded-xl font-bold text-sm text-dark-muted border border-dark-border hover:border-dark-text/30 transition-all disabled:opacity-40">
+                    Cancel
+                  </button>
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                    onClick={handleTeamQuit} disabled={teamQuitting}
+                    className="flex-1 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                    style={{ background: 'rgba(239,68,68,0.85)', color: '#fff' }}>
+                    {teamQuitting ? '⏳ Quitting…' : 'Yes, Quit'}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Active stage tracker (during tournament) */}
         {active && <ProgressionMap currentStage={currentStage} stageResults={stageResults} />}
 
@@ -1366,10 +2178,10 @@ export function SurvivalTournamentPage() {
                       </div>
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                         onClick={() => handleStart(tier.id)}
-                        disabled={starting || !canAfford || user?.isGuest || !!activeStatus}
+                        disabled={starting || !canAfford || user?.isGuest || !!activeStatus || (!!teamState && teamState.status === 'forming')}
                         className="w-full py-3 rounded-xl font-bold text-sm mt-auto disabled:opacity-40 disabled:cursor-not-allowed"
                         style={{ background: tier.color, color: '#0d1117' }}>
-                        {starting && selectedTier === tier.id ? '⏳ Starting…' : activeStatus ? 'Resume Active' : user?.isGuest ? 'Sign in to Play' : `Enter · ${points.toLocaleString()} pts`}
+                        {starting && selectedTier === tier.id ? '⏳ Starting…' : activeStatus ? 'Resume Active' : (teamState?.status === 'forming') ? 'Team Lobby Active' : user?.isGuest ? 'Sign in to Play' : `Enter · ${points.toLocaleString()} pts`}
                       </motion.button>
                     </motion.div>
                   );
@@ -1389,6 +2201,16 @@ export function SurvivalTournamentPage() {
                   <li>• <strong className="text-yellow-400">1 Rupee = {POINTS_PER_RUPEE} Points</strong> — rewards auto-convert to wallet</li>
                   <li>• 🔄 If you disconnect, resume from this page anytime</li>
                 </ul>
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(168,85,247,0.2)' }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(168,85,247,0.7)' }}>👥 Team Mode</p>
+                  <ul className="space-y-1 text-xs text-dark-muted">
+                    <li>• 2–4 players battle together against AI in the same room</li>
+                    <li>• <strong className="text-white">Combined score</strong> — your team's total vs AI total (lower wins)</li>
+                    <li>• Host creates team → share invite code → invite friends</li>
+                    <li>• Fee options: split equally or host pays everything</li>
+                    <li>• Each member earns stage rewards individually on win</li>
+                  </ul>
+                </div>
               </div>
             </motion.div>
           ) : (

@@ -9,6 +9,8 @@ import {
   TIER_CONFIG,
   SurvivalTier,
 } from '../../models/SurvivalTournament';
+import { SurvivalTeam } from '../../models/SurvivalTeam';
+import { handleTeamSurvivalMatchEnd } from './survivalTeamHandler';
 import { startRoomGame, getActiveGame, setBotPersonality, assignBotPersonalities } from './gameHandler';
 import { GameState } from '../../../../shared/src/types';
 import { getAdminConfig } from '../../models/AdminConfig';
@@ -30,7 +32,7 @@ function pointsToRupees(points: number): number {
 }
 
 // Load effective tier config from DB, falling back to static TIER_CONFIG defaults
-async function getEffectiveTierConfig(tier: SurvivalTier) {
+export async function getEffectiveTierConfig(tier: SurvivalTier) {
   try {
     const adminCfg = await getAdminConfig();
     const sc = (adminCfg.survivalConfig as any)?.[tier];
@@ -116,6 +118,13 @@ function emitGameState(socket: Socket, roomCode: string, userId: string) {
 
 // Called from gameHandler after every match ends
 export async function handleSurvivalMatchEnd(io: Server, state: GameState, matchResult: any) {
+  // Check for team tournament first
+  const team = await SurvivalTeam.findOne({ currentRoomCode: state.roomId, status: 'playing' });
+  if (team) {
+    await handleTeamSurvivalMatchEnd(io, state, team);
+    return;
+  }
+
   const survival = await SurvivalTournament.findOne({ currentRoomCode: state.roomId, status: 'active' });
   if (!survival) return;
 

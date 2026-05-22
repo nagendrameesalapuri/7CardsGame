@@ -392,6 +392,7 @@ export function LobbyPage() {
   const [aiRounds, setAiRounds] = useState(5);
   const [aiRoundsText, setAiRoundsText] = useState('5');
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
+  const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
     featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true } },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
@@ -475,6 +476,13 @@ export function LobbyPage() {
     return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
   }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    resumeRoomCodes.forEach(code => {
+      if (roomMeta[code]) return;
+      roomsApi.get(code).then(r => setRoomMeta(prev => ({ ...prev, [code]: r.data.room }))).catch(() => {});
+    });
+  }, [resumeRoomCodes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (room) { if (aiLoading) setAiLoading(false); return <RoomLobby />; }
   if (game) { navigate('/game'); return null; }
 
@@ -492,6 +500,42 @@ export function LobbyPage() {
 
   const rankCfg = progress ? (RANK_CONFIG[progress.rank] ?? RANK_CONFIG.bronze) : null;
   const xpPct   = progress ? Math.round((progress.xpProgress / Math.max(1, progress.xpNeeded)) * 100) : 0;
+
+  const getResumeGameInfo = (code: string) => {
+    const meta = roomMeta[code];
+    if (!meta) return {
+      icon: '🎮', title: 'Game in Progress', sub: `Room ${code} · Tap to rejoin`,
+      gradient: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.35)', accent: '#fbbf24', badge: 'LIVE',
+    };
+    const name: string = meta.name ?? '';
+    const botCount: number = meta.config?.botCount ?? 0;
+    const entryFee: number = meta.config?.entryFee ?? 0;
+    if (name.startsWith('Team Survival')) return {
+      icon: '👥', title: 'Team Survival', sub: 'Championship · Team match in progress',
+      gradient: 'linear-gradient(135deg,rgba(139,92,246,0.13),rgba(99,102,241,0.06))',
+      border: 'rgba(139,92,246,0.45)', accent: '#c4b5fd', badge: 'TEAM',
+    };
+    if (name.startsWith('Survival S')) return {
+      icon: '🏆', title: 'AI Survival', sub: 'Championship · Tournament in progress',
+      gradient: 'linear-gradient(135deg,rgba(16,185,129,0.13),rgba(6,182,212,0.06))',
+      border: 'rgba(16,185,129,0.45)', accent: '#6ee7b7', badge: 'TOURNAMENT',
+    };
+    if (entryFee > 0) return {
+      icon: '⚔️', title: 'Wager Match', sub: `${entryFee} pts · Stakes game in progress`,
+      gradient: 'linear-gradient(135deg,rgba(239,68,68,0.13),rgba(245,158,11,0.06))',
+      border: 'rgba(239,68,68,0.4)', accent: '#fca5a5', badge: 'WAGER',
+    };
+    if (botCount > 0) return {
+      icon: '🤖', title: 'Play vs AI', sub: `${botCount} bot${botCount > 1 ? 's' : ''} · AI match in progress`,
+      gradient: 'linear-gradient(135deg,rgba(59,130,246,0.13),rgba(6,182,212,0.06))',
+      border: 'rgba(59,130,246,0.4)', accent: '#93c5fd', badge: 'VS AI',
+    };
+    return {
+      icon: '🌐', title: 'Multiplayer', sub: 'Live match · Tap to rejoin',
+      gradient: 'linear-gradient(135deg,rgba(99,102,241,0.13),rgba(167,139,250,0.06))',
+      border: 'rgba(99,102,241,0.4)', accent: '#a5b4fc', badge: 'LIVE',
+    };
+  };
 
   return (
     <Layout>
@@ -612,27 +656,59 @@ export function LobbyPage() {
         </div>
 
         {/* ── Resume game banners (one per active room) ── */}
-        {resumeRoomCodes.map((code, i) => (
-          <motion.div key={code}
-            initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06 }}
-            className="mb-2 relative overflow-hidden rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
-            style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)' }}>
-            <Shimmer />
-            <div className="flex items-center gap-3 min-w-0">
-              <motion.span animate={{ rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2, delay: i * 0.4 }}
-                className="text-2xl flex-shrink-0">🎮</motion.span>
-              <div className="min-w-0">
-                <p className="font-black text-yellow-300 text-sm">Game in progress!</p>
-                <p className="text-dark-muted text-xs truncate">Room {code} · Tap to rejoin</p>
+        {resumeRoomCodes.map((code, i) => {
+          const info = getResumeGameInfo(code);
+          return (
+            <motion.div key={code}
+              initial={{ opacity: 0, y: -14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: i * 0.07, type: 'spring', stiffness: 320, damping: 28 }}
+              className="mb-2 relative overflow-hidden rounded-2xl"
+              style={{ background: info.gradient, border: `1px solid ${info.border}`, boxShadow: `0 4px 24px ${info.border.replace('0.45','0.1').replace('0.4','0.08')}` }}>
+              <Shimmer />
+              {/* Ambient glow blob */}
+              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none"
+                style={{ background: `radial-gradient(circle, ${info.border.replace('0.45','0.2').replace('0.4','0.15')}, transparent 70%)`, filter: 'blur(20px)' }} />
+
+              <div className="relative flex items-center gap-3 px-4 py-3">
+                {/* Icon with live pulse */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
+                    style={{ background: info.border.replace('0.45','0.15').replace('0.4','0.12'), border: `1px solid ${info.border}` }}>
+                    {info.icon}
+                  </div>
+                  {/* Live dot */}
+                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
+                    style={{ background: '#0f172a', border: `1.5px solid ${info.accent}` }}>
+                    <motion.div className="w-1.5 h-1.5 rounded-full"
+                      animate={{ opacity: [1, 0.2, 1] }}
+                      transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+                      style={{ background: info.accent }} />
+                  </div>
+                </div>
+
+                {/* Text */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <p className="font-black text-sm leading-tight" style={{ color: info.accent }}>{info.title}</p>
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+                      style={{ background: info.border.replace('0.45','0.18').replace('0.4','0.15'), color: info.accent, border: `1px solid ${info.border}` }}>
+                      {info.badge}
+                    </span>
+                  </div>
+                  <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    {info.sub} · <span style={{ color: 'rgba(255,255,255,0.25)' }}>{code}</span>
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button variant="primary" size="sm" onClick={() => { resumeGame(code); navigate('/game'); }}>▶ Resume</Button>
+                  <button onClick={() => clearResume(code)} className="text-dark-muted hover:text-white text-sm px-2 transition-colors">✕</button>
+                </div>
               </div>
-            </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <Button variant="primary" size="sm" onClick={() => { resumeGame(code); navigate('/game'); }}>▶ Resume</Button>
-              <button onClick={() => clearResume(code)} className="text-dark-muted hover:text-white text-sm px-2 transition-colors">✕</button>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
 
         {activeTab === 'history' && <HistoryTab />}
 
