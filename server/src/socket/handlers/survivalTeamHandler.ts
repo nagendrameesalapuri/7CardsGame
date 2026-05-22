@@ -165,6 +165,11 @@ async function startTeamRoom(io: Server, team: any, roomCode: string, stageConfi
   const allyBots = allBots.filter((b: any) => teamBotIds.has(b.userId));
   const opponentBots = allBots.filter((b: any) => !teamBotIds.has(b.userId));
 
+  // Inject team groups for team-aware round scoring (show caller's team all get 0 on success, etc.)
+  const teamMemberUserIds = (team.members as any[]).map((m: any) => m.userId);
+  const opponentBotUserIds = opponentBots.map((b: any) => b.userId);
+  (game as any).teamGroups = [teamMemberUserIds, opponentBotUserIds];
+
   // Assign personalities: ally bots get their chosen personality; opponent bots get stage personality
   assignBotPersonalities(game.id, [
     ...allyBots.map((b: any) => ({ userId: b.userId, personality: (teamBotPersonalityMap.get(b.userId) ?? 'smart') as BotPersonality })),

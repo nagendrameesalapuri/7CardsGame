@@ -443,7 +443,7 @@ export class GameEngine {
       );
     }
 
-    const roundResult = ScoreEngine.calculateRoundResult(state, playerId);
+    const roundResult = ScoreEngine.calculateRoundResult(state, playerId, state.teamGroups);
 
     const s: GameState = {
       ...state,

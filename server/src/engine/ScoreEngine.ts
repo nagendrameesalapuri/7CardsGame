@@ -21,7 +21,13 @@ export class ScoreEngine {
    *
    * Score of 1 is treated as 2 (minimum non-zero penalty).
    */
-  static calculateRoundResult(state: GameState, showPlayerId: string): RoundResult {
+  /**
+   * teamGroups: optional array of userId arrays (one per team).
+   * When provided, scoring is team-aware:
+   *   Show SUCCESS → entire show caller's team gets 0; enemy team pays individual hand totals.
+   *   Show FAIL   → entire enemy team gets 0; show caller pays full penalty; teammates pay individual hand totals.
+   */
+  static calculateRoundResult(state: GameState, showPlayerId: string, teamGroups?: string[][]): RoundResult {
     const activePlayers = state.players.filter(p => !p.isEliminated);
 
     // Score of 1 is rounded up to 2 (minimum non-zero penalty)
@@ -39,9 +45,30 @@ export class ScoreEngine {
     // Show caller wins on tie — declared first gets the edge
     const showPlayerWon = showPlayerTotal <= minTotal;
 
-    const winnerIds = showPlayerWon
-      ? [showPlayerId]
-      : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
+    let winnerIds: string[];
+
+    if (teamGroups && teamGroups.length >= 2) {
+      const showPlayer = state.players.find(p => p.id === showPlayerId)!;
+      const showTeamUserIds = teamGroups.find(g => g.includes(showPlayer.userId)) ?? [showPlayer.userId];
+      const enemyTeamUserIds = teamGroups.find(g => !g.includes(showPlayer.userId)) ?? [];
+
+      if (showPlayerWon) {
+        // Entire show caller's team wins (0 pts each)
+        winnerIds = state.players
+          .filter(p => showTeamUserIds.includes(p.userId))
+          .map(p => p.id);
+      } else {
+        // Entire enemy team wins (0 pts each); show caller pays full penalty
+        winnerIds = state.players
+          .filter(p => enemyTeamUserIds.includes(p.userId))
+          .map(p => p.id);
+      }
+    } else {
+      // Individual mode (original logic)
+      winnerIds = showPlayerWon
+        ? [showPlayerId]
+        : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
+    }
 
     const primaryWinnerId = winnerIds[0];
 
