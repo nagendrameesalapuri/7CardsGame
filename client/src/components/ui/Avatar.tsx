@@ -3,6 +3,15 @@ import { clsx } from 'clsx';
 
 const AVATARS = ['🎭', '🦁', '🐯', '🐻', '🦊', '🐺', '🦝', '🐼', '🦄', '🐲'];
 
+// Premium bot avatars keyed by AI personality
+const BOT_AVATAR_CFG: Record<string, { emoji: string; bg: string; ring: string; label: string }> = {
+  boss:       { emoji: '💀', bg: 'linear-gradient(135deg, #0a0000 0%, #7f1d1d 55%, #b91c1c 100%)', ring: '#ef4444', label: 'BOSS' },
+  smart:      { emoji: '🔮', bg: 'linear-gradient(135deg, #020617 0%, #1e3a8a 55%, #4338ca 100%)', ring: '#818cf8', label: 'AI'   },
+  aggressive: { emoji: '🔥', bg: 'linear-gradient(135deg, #0c0200 0%, #9a3412 55%, #ea580c 100%)', ring: '#fb923c', label: 'AI'   },
+  bluff:      { emoji: '🎭', bg: 'linear-gradient(135deg, #100018 0%, #6b21a8 55%, #9333ea 100%)', ring: '#e879f9', label: 'AI'   },
+  safe:       { emoji: '⚔️', bg: 'linear-gradient(135deg, #001209 0%, #065f46 55%, #059669 100%)', ring: '#34d399', label: 'AI'   },
+};
+
 interface AvatarProps {
   avatar: string;
   username?: string;
@@ -21,30 +30,37 @@ const sizeMap = {
   xl: 'w-20 h-20 text-4xl',
 };
 
+const emojiFontSize = { xs: '10px', sm: '13px', md: '16px', lg: '22px', xl: '32px' };
+
 function getEmoji(avatar: string): string {
-  // Avatar can be index or google profile URL
   if (avatar?.startsWith('http') || avatar?.startsWith('data:')) return '';
   const idx = parseInt(avatar?.replace(/\D/g, '') ?? '0', 10) % AVATARS.length;
   return AVATARS[idx] ?? AVATARS[0];
 }
 
 export function Avatar({ avatar, username, size = 'md', className, showName, isBot, isConnected }: AvatarProps) {
-  const emoji = getEmoji(avatar);
-  const isUrl = avatar?.startsWith('http') || avatar?.startsWith('data:');
+  const isUrl  = avatar?.startsWith('http') || avatar?.startsWith('data:');
+  const botKey = avatar?.startsWith('bot_') ? avatar.slice(4) : null;
+  const botCfg = botKey ? (BOT_AVATAR_CFG[botKey] ?? null) : null;
+  const emoji  = botCfg ? botCfg.emoji : getEmoji(avatar);
 
   return (
     <div className={clsx('flex flex-col items-center gap-1', className)}>
       <div className="relative inline-flex">
         <div
-          className={clsx(
-            sizeMap[size],
-            'rounded-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-blue-500 ring-2 ring-dark-border overflow-hidden'
-          )}
+          className={clsx(sizeMap[size], 'rounded-full flex items-center justify-center overflow-hidden')}
+          style={botCfg ? {
+            background: botCfg.bg,
+            boxShadow: `0 0 0 2px ${botCfg.ring}, 0 0 10px ${botCfg.ring}55`,
+          } : {
+            background: 'linear-gradient(135deg, #7c3aed, #3b82f6)',
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.12)',
+          }}
         >
           {isUrl ? (
             <img src={avatar} alt={username} className="w-full h-full object-cover" />
           ) : (
-            <span>{emoji}</span>
+            <span style={{ fontSize: emojiFontSize[size] }}>{emoji}</span>
           )}
         </div>
 
@@ -56,10 +72,14 @@ export function Avatar({ avatar, username, size = 'md', className, showName, isB
           )} />
         )}
 
-        {/* Bot badge */}
-        {isBot && (
-          <span className="absolute -top-1 -right-1 bg-neon-blue rounded-full w-4 h-4 flex items-center justify-center text-[8px] font-bold text-dark-bg">
-            AI
+        {/* Bot badge — personality-colored for AI bots */}
+        {(isBot || botCfg) && (
+          <span
+            className="absolute -top-1 -right-1 rounded-full w-4 h-4 flex items-center justify-center text-[7px] font-black"
+            style={botCfg
+              ? { background: botCfg.ring, color: '#0d1117', boxShadow: `0 0 6px ${botCfg.ring}` }
+              : { background: '#3b82f6', color: '#0d1117' }}>
+            {botCfg?.label ?? 'AI'}
           </span>
         )}
       </div>

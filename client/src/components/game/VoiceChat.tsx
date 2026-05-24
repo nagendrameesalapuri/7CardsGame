@@ -166,7 +166,7 @@ function PermissionModal({ error, onClose }: { error: VoicePermissionError; onCl
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function VoiceChat() {
+export function VoiceChat({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const {
     isInVoice, isJoining, isMuted, isSpeaking,
     participants, permissionError,
@@ -183,24 +183,33 @@ export function VoiceChat() {
 
   // ── NOT in voice: join button ────────────────────────────────────────────
   if (!isInVoice) {
+    const btnCls = size === 'lg'
+      ? 'w-10 h-10 rounded-full'
+      : 'w-7 h-7 rounded-xl';
+    const iconCls = size === 'lg' ? 'w-5 h-5' : 'w-3.5 h-3.5';
+    const spinCls = size === 'lg' ? 'w-4 h-4' : 'w-3 h-3';
     return (
       <>
         <motion.button
           whileTap={{ scale: 0.93 }}
           onClick={joinVoice}
           disabled={isJoining}
-          className="w-7 h-7 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}
+          className={clsx(btnCls, 'flex items-center justify-center transition-all active:scale-95 disabled:opacity-50')}
+          style={{
+            background: size === 'lg' ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.13)',
+            backdropFilter: 'blur(12px)',
+          }}
           title="Join voice chat"
         >
           {isJoining ? (
             <motion.span
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-              className="block w-3 h-3 rounded-full border-2 border-dark-muted border-t-neon-green"
+              className={clsx('block rounded-full border-2 border-dark-muted border-t-neon-green', spinCls)}
             />
           ) : (
-            <MicIcon muted={false} className="w-3.5 h-3.5 text-dark-muted" />
+            <MicIcon muted={false} className={clsx(iconCls, 'text-dark-muted')} />
           )}
         </motion.button>
 
@@ -241,7 +250,8 @@ export function VoiceChat() {
         whileTap={{ scale: 0.9 }}
         onClick={toggleMute}
         className={clsx(
-          'relative w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0',
+          'relative flex items-center justify-center transition-all flex-shrink-0',
+          size === 'lg' ? 'w-10 h-10 rounded-full' : 'w-7 h-7 rounded-xl',
           isMuted
             ? 'bg-neon-red/20 border border-neon-red/50'
             : 'bg-neon-green/15 border border-neon-green/40',
@@ -250,7 +260,7 @@ export function VoiceChat() {
       >
         <MicIcon
           muted={isMuted}
-          className={clsx('w-3.5 h-3.5', isMuted ? 'text-neon-red' : 'text-neon-green')}
+          className={clsx(size === 'lg' ? 'w-5 h-5' : 'w-3.5 h-3.5', isMuted ? 'text-neon-red' : 'text-neon-green')}
         />
         {!isMuted && isSpeaking && (
           <motion.span

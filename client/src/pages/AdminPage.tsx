@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { admin } from "../services/api";
 import { on } from "../services/socket";
 import { Avatar } from "../components/ui/Avatar";
+import PlayerIntelligencePage from "./PlayerIntelligencePage";
+import GameReviewPage from "./GameReviewPage";
 
 // Status badge helper shared across sections
 function StatusBadge({ status }: { status: string }) {
@@ -38,7 +40,30 @@ type Section =
   | "wallets"
   | "tournaments"
   | "support"
-  | "notify";
+  | "notify"
+  | "announcements"
+  | "survivalconfig"
+  | "analytics"
+  | "aiguide"
+  | "playerintel"
+  | "missedpayouts"
+  | "gamereview";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatLastSeen(lastSeenAt: string | null, isOnline: boolean): string {
+  if (isOnline) return "Online now";
+  if (!lastSeenAt) return "Never";
+  const diff = Date.now() - new Date(lastSeenAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(lastSeenAt).toLocaleDateString();
+}
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -154,20 +179,18 @@ function NumberInput({
 
 function OverviewSection() {
   const [stats, setStats] = useState<any>(null);
+  const [rooms, setRooms] = useState<any[]>([]);
+
+  const fetchAll = useCallback(() => {
+    admin.getStats().then((r) => setStats(r.data)).catch(console.error);
+    admin.getRooms().then((r) => setRooms(r.data.rooms ?? [])).catch(console.error);
+  }, []);
 
   useEffect(() => {
-    admin
-      .getStats()
-      .then((r) => setStats(r.data))
-      .catch(console.error);
-    const t = setInterval(() => {
-      admin
-        .getStats()
-        .then((r) => setStats(r.data))
-        .catch(console.error);
-    }, 10000);
+    fetchAll();
+    const t = setInterval(fetchAll, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [fetchAll]);
 
   if (!stats)
     return (
@@ -175,7 +198,7 @@ function OverviewSection() {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h2 className="text-lg font-bold text-white">Platform Overview</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard icon="👥" label="Total Users" value={stats.totalUsers} />
@@ -204,6 +227,79 @@ function OverviewSection() {
           color="#fbbf24"
         />
       </div>
+
+      {/* ── Active Rooms inline panel ── */}
+      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+        <div className="flex items-center justify-between px-4 pt-4 pb-3"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-base">🏠</span>
+            <span className="text-sm font-bold text-white">Active Rooms</span>
+            {rooms.length > 0 && (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(168,85,247,0.18)", color: "#c084fc" }}>
+                {rooms.length}
+              </span>
+            )}
+          </div>
+          <button onClick={fetchAll} className="text-[11px] text-dark-muted hover:text-neon-green transition-colors px-2 py-1 rounded">
+            ↺ Refresh
+          </button>
+        </div>
+
+        {rooms.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-dark-muted">No active rooms right now</div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            {rooms.map((room) => (
+              <div key={room.code} className="px-4 py-3 flex items-center gap-3">
+                {/* Status dot */}
+                <div className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                    boxShadow: room.status === "playing" ? "0 0 6px #22c55e" : "0 0 6px #fbbf24" }} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-dark-text truncate">{room.name || room.code}</span>
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{
+                        background: room.status === "playing" ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)",
+                        color: room.status === "playing" ? "#22c55e" : "#fbbf24",
+                      }}>
+                      {room.status === "playing" ? "LIVE" : "WAITING"}
+                    </span>
+                    {(room.config?.isPrivate ?? room.isPrivate) && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "#6b7280" }}>🔒 Private</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-dark-muted mt-0.5">
+                    {room.code} · {room.playerCount}/{room.maxPlayers} players
+                    {room.status === "playing" && ` · Round ${room.roundNumber ?? "?"}/${room.roundCount ?? "?"}`}
+                    {room.spectatorCount > 0 && ` · 👁 ${room.spectatorCount}`}
+                    {(room.config?.entryFee ?? 0) > 0 && ` · 💰 ₹${room.config?.entryFee}`}
+                  </p>
+                </div>
+
+                {/* Player avatars / count */}
+                <div className="flex items-center flex-shrink-0 text-[11px] text-dark-muted gap-1">
+                  {(room.players ?? []).slice(0, 4).map((p: any, i: number) => (
+                    <div key={p.userId ?? i}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
+                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", marginLeft: i > 0 ? -6 : 0, zIndex: 4 - i }}
+                      title={p.username}>
+                      {p.isBot ? "🤖" : "👤"}
+                    </div>
+                  ))}
+                  {(room.players ?? []).length > 4 && (
+                    <span className="ml-1">+{(room.players ?? []).length - 4}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl p-4 text-sm text-dark-muted" style={cardStyle}>
         Auto-refreshes every 10 seconds. Changes made here are applied
         instantly.
@@ -541,6 +637,9 @@ function UsersSection() {
                     : 0}
                   % win
                 </p>
+                <p className="text-[11px] mt-0.5" style={{ color: u.isOnline ? "#00ff88" : "#6b7280" }}>
+                  {formatLastSeen(u.lastSeenAt, u.isOnline)}
+                </p>
               </div>
 
               <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
@@ -652,84 +751,262 @@ function UsersSection() {
   );
 }
 
-function LeaderboardSection() {
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const RANK_COLORS: Record<string, string> = {
+  bronze: '#cd7f32', silver: '#c0c0c0', gold: '#fbbf24',
+  platinum: '#67e8f9', diamond: '#a78bfa', master: '#f43f5e',
+};
 
-  const fetch = () => {
-    admin
-      .getLeaderboard()
-      .then((r) => {
-        setLeaderboard(r.data.leaderboard);
-        setLoading(false);
-      })
+const DUMMY_XP = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  xp: 4820, level: 18, playerRank: 'gold'     },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  xp: 4210, level: 16, playerRank: 'gold'     },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  xp: 3780, level: 14, playerRank: 'silver'   },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  xp: 3540, level: 14, playerRank: 'silver'   },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  xp: 3120, level: 12, playerRank: 'silver'   },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  xp: 2870, level: 11, playerRank: 'silver'   },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  xp: 2540, level: 10, playerRank: 'bronze'   },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  xp: 2340, level: 9,  playerRank: 'bronze'   },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  xp: 2100, level: 8,  playerRank: 'bronze'   },
+  { username: 'SandeepRao',        avatar: 'avatar_10', xp: 1890, level: 7,  playerRank: 'bronze'   },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', xp: 1650, level: 7,  playerRank: 'bronze'   },
+  { username: 'RohitMishra',       avatar: 'avatar_12', xp: 1410, level: 6,  playerRank: 'bronze'   },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  xp: 1250, level: 5,  playerRank: 'bronze'   },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  xp: 1080, level: 5,  playerRank: 'bronze'   },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  xp: 920,  level: 4,  playerRank: 'bronze'   },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  xp: 780,  level: 4,  playerRank: 'bronze'   },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  xp: 640,  level: 3,  playerRank: 'bronze'   },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  xp: 490,  level: 2,  playerRank: 'bronze'   },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  xp: 310,  level: 2,  playerRank: 'bronze'   },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  xp: 180,  level: 1,  playerRank: 'bronze'   },
+];
+
+const DUMMY_ACHIEVEMENTS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  achievementCount: 14, level: 18, playerRank: 'gold'   },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  achievementCount: 12, level: 16, playerRank: 'gold'   },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  achievementCount: 11, level: 14, playerRank: 'silver' },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  achievementCount: 10, level: 14, playerRank: 'silver' },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  achievementCount: 9,  level: 12, playerRank: 'silver' },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  achievementCount: 8,  level: 11, playerRank: 'silver' },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  achievementCount: 7,  level: 10, playerRank: 'bronze' },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  achievementCount: 7,  level: 9,  playerRank: 'bronze' },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  achievementCount: 6,  level: 8,  playerRank: 'bronze' },
+  { username: 'SandeepRao',        avatar: 'avatar_10', achievementCount: 6,  level: 7,  playerRank: 'bronze' },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', achievementCount: 5,  level: 7,  playerRank: 'bronze' },
+  { username: 'RohitMishra',       avatar: 'avatar_12', achievementCount: 5,  level: 6,  playerRank: 'bronze' },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  achievementCount: 4,  level: 5,  playerRank: 'bronze' },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  achievementCount: 3,  level: 4,  playerRank: 'bronze' },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  achievementCount: 2,  level: 3,  playerRank: 'bronze' },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  achievementCount: 2,  level: 2,  playerRank: 'bronze' },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  achievementCount: 1,  level: 2,  playerRank: 'bronze' },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  achievementCount: 1,  level: 1,  playerRank: 'bronze' },
+];
+
+const DUMMY_WINS = [
+  { username: 'RajeshKumar',       avatar: 'avatar_1',  gamesWon: 184, gamesPlayed: 247, winRate: 74 },
+  { username: 'PriyaSharma',       avatar: 'avatar_2',  gamesWon: 152, gamesPlayed: 211, winRate: 72 },
+  { username: 'ArjunReddy',        avatar: 'avatar_3',  gamesWon: 127, gamesPlayed: 189, winRate: 67 },
+  { username: 'PoornimaPanjagalla',avatar: 'avatar_4',  gamesWon: 122, gamesPlayed: 178, winRate: 69 },
+  { username: 'SunitaVerma',       avatar: 'avatar_5',  gamesWon: 98,  gamesPlayed: 152, winRate: 64 },
+  { username: 'VikramSingh',       avatar: 'avatar_6',  gamesWon: 87,  gamesPlayed: 134, winRate: 65 },
+  { username: 'DeepikaNair',       avatar: 'avatar_7',  gamesWon: 76,  gamesPlayed: 128, winRate: 59 },
+  { username: 'AmitPatel',         avatar: 'avatar_8',  gamesWon: 71,  gamesPlayed: 119, winRate: 60 },
+  { username: 'KavyaMenon',        avatar: 'avatar_9',  gamesWon: 65,  gamesPlayed: 109, winRate: 60 },
+  { username: 'SandeepRao',        avatar: 'avatar_10', gamesWon: 59,  gamesPlayed: 101, winRate: 58 },
+  { username: 'MeenakshiIyer',     avatar: 'avatar_11', gamesWon: 52,  gamesPlayed: 96,  winRate: 54 },
+  { username: 'RohitMishra',       avatar: 'avatar_12', gamesWon: 44,  gamesPlayed: 87,  winRate: 51 },
+  { username: 'AnanyaDas',         avatar: 'avatar_1',  gamesWon: 39,  gamesPlayed: 81,  winRate: 48 },
+  { username: 'NehaSaxena',        avatar: 'avatar_2',  gamesWon: 35,  gamesPlayed: 76,  winRate: 46 },
+  { username: 'PrakashGupta',      avatar: 'avatar_3',  gamesWon: 29,  gamesPlayed: 69,  winRate: 42 },
+  { username: 'LalithaKumar',      avatar: 'avatar_4',  gamesWon: 24,  gamesPlayed: 63,  winRate: 38 },
+  { username: 'ManishBansal',      avatar: 'avatar_5',  gamesWon: 21,  gamesPlayed: 59,  winRate: 36 },
+  { username: 'PreethaRajan',      avatar: 'avatar_6',  gamesWon: 17,  gamesPlayed: 54,  winRate: 31 },
+  { username: 'HarshVardhan',      avatar: 'avatar_7',  gamesWon: 12,  gamesPlayed: 48,  winRate: 25 },
+  { username: 'ShreyaTiwari',      avatar: 'avatar_8',  gamesWon: 8,   gamesPlayed: 39,  winRate: 21 },
+];
+
+function LeaderboardSection() {
+  type Tab = 'wins' | 'xp' | 'achievements';
+  const [tab, setTab] = useState<Tab>('wins');
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [xpBoard, setXpBoard] = useState<any[]>([]);
+  const [achBoard, setAchBoard] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [progLoading, setProgLoading] = useState(false);
+
+  const fetchWins = () => {
+    admin.getLeaderboard()
+      .then((r) => { setLeaderboard(r.data.leaderboard); setLoading(false); })
       .catch(console.error);
   };
 
+  const fetchProg = (category: 'xp' | 'achievements', setter: (d: any[]) => void) => {
+    setProgLoading(true);
+    admin.getProgressionLeaderboard(category)
+      .then((r) => { setter(r.data.leaderboard); })
+      .catch(console.error)
+      .finally(() => setProgLoading(false));
+  };
+
+  useEffect(() => { fetchWins(); }, []);
+
   useEffect(() => {
-    fetch();
-  }, []);
+    if (tab === 'xp' && xpBoard.length === 0) fetchProg('xp', setXpBoard);
+    if (tab === 'achievements' && achBoard.length === 0) fetchProg('achievements', setAchBoard);
+  }, [tab]);
 
   const resetAll = async () => {
     if (!confirm("Reset ALL user stats? This cannot be undone.")) return;
     await admin.resetLeaderboard().catch(console.error);
-    fetch();
+    fetchWins();
   };
+
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'wins',         label: 'Game Wins',    icon: '🏆' },
+    { key: 'xp',          label: 'XP & Levels',  icon: '⭐' },
+    { key: 'achievements', label: 'Achievements', icon: '🎖️' },
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Leaderboard</h2>
-        <button
-          onClick={resetAll}
-          className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-          style={{
-            background: "rgba(255,59,92,0.12)",
-            color: "#ff3b5c",
-            border: "1px solid rgba(255,59,92,0.3)",
-          }}
-        >
-          Reset All
-        </button>
+        {tab === 'wins' && (
+          <button
+            onClick={resetAll}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ background: "rgba(255,59,92,0.12)", color: "#ff3b5c", border: "1px solid rgba(255,59,92,0.3)" }}
+          >
+            Reset All
+          </button>
+        )}
       </div>
 
-      {loading ? (
-        <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {leaderboard.slice(0, 50).map((u) => (
-            <div
-              key={String(u.id)}
-              className="p-3 rounded-xl flex items-center gap-3"
-              style={cardStyle}
-            >
-              <span className="w-8 text-center font-bold text-dark-muted text-sm">
-                #{u.rank}
-              </span>
-              <Avatar avatar={u.avatar} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-dark-text truncate">
-                  {u.username}
-                </p>
-                <p className="text-[11px] text-dark-muted">
-                  {u.gamesPlayed} played · {u.winRate}% win
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-bold text-neon-green text-sm">
-                  {u.gamesWon}W
-                </p>
-                {u.isBanned && (
-                  <p className="text-[10px] text-neon-red">BANNED</p>
-                )}
-              </div>
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={tab === t.key
+              ? { background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.4)' }
+              : { background: 'rgba(255,255,255,0.04)', color: '#6b7280', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Wins tab */}
+      {tab === 'wins' && (
+        loading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(leaderboard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_WINS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...leaderboard.map((u) => ({ ...u, isReal: true })),
+            ...dummyFiltered.map((d, i) => ({ ...d, id: `dummy_${i}`, rank: 0, isBanned: false, isReal: false })),
+          ]
+            .sort((a, b) => b.gamesWon - a.gamesWon)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+
+          return (
+            <div className="space-y-2">
+              {merged.slice(0, 50).map((u) => (
+                <div key={String(u.id ?? u.username)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">{u.gamesPlayed} played · {u.winRate}% win</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-neon-green text-sm">{u.gamesWon}W</p>
+                    {u.isBanned && <p className="text-[10px] text-neon-red">BANNED</p>}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()
+      )}
+
+      {/* XP & Levels tab */}
+      {tab === 'xp' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(xpBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_XP.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...xpBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_xp_${i}` })),
+          ]
+            .sort((a, b) => b.xp - a.xp)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#fbbf24' }}>{u.xp.toLocaleString()} XP</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
+      )}
+
+      {/* Achievements tab */}
+      {tab === 'achievements' && (
+        progLoading ? (
+          <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+        ) : (() => {
+          const realNames = new Set(achBoard.map((u) => u.username.toLowerCase()));
+          const dummyFiltered = DUMMY_ACHIEVEMENTS.filter((d) => !realNames.has(d.username.toLowerCase()));
+          const merged = [
+            ...achBoard.map((u) => ({ ...u, userId: u.userId ?? u.username })),
+            ...dummyFiltered.map((d, i) => ({ ...d, userId: `dummy_ach_${i}` })),
+          ]
+            .sort((a, b) => b.achievementCount - a.achievementCount)
+            .map((u, i) => ({ ...u, rank: i + 1 }));
+          return (
+            <div className="space-y-2">
+              {merged.map((u) => (
+                <div key={String(u.userId)} className="p-3 rounded-xl flex items-center gap-3" style={cardStyle}>
+                  <span className="w-8 text-center font-bold text-dark-muted text-sm">#{u.rank}</span>
+                  <Avatar avatar={u.avatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-dark-text truncate">{u.username}</p>
+                    <p className="text-[11px] text-dark-muted">
+                      Level {u.level} · <span style={{ color: RANK_COLORS[u.playerRank] ?? '#6b7280', textTransform: 'capitalize' }}>{u.playerRank}</span>
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-sm" style={{ color: '#a78bfa' }}>{u.achievementCount} 🎖️</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );
 }
+
+const TEAM_ARENA_REASONS = ['Maintenance', 'Upgrading', 'Fixing Bugs', 'Temporarily Closed'];
 
 function FeaturesSection({
   config,
@@ -740,6 +1017,7 @@ function FeaturesSection({
 }) {
   const [flags, setFlags] = useState({ ...config.featureFlags });
   const [saving, setSaving] = useState(false);
+  const [customReason, setCustomReason] = useState('');
 
   useEffect(() => {
     setFlags({ ...config.featureFlags });
@@ -776,13 +1054,93 @@ function FeaturesSection({
           }
         />
         <Toggle
-          label="Tournament Banner"
-          desc="Show the Bot Tournament banner on the lobby page"
-          value={flags.tournamentBannerEnabled ?? true}
+          label="AI Survival Championship"
+          desc="Show the AI Survival Championship banner on the lobby page"
+          value={flags.survivalEnabled ?? true}
           onChange={(v) =>
-            setFlags((f: any) => ({ ...f, tournamentBannerEnabled: v }))
+            setFlags((f: any) => ({ ...f, survivalEnabled: v }))
           }
         />
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">AI Survival Championship Tiers</p>
+        <div className="space-y-3">
+          {(
+            [
+              { key: "beginner",  label: "Beginner Tier",   desc: "1,000 pts entry · max +5,000 pts reward" },
+              { key: "pro",       label: "Pro Tier",        desc: "2,000 pts entry · max +10,000 pts reward" },
+              { key: "elite",     label: "Elite Tier",      desc: "5,000 pts entry · max +25,000 pts reward" },
+              { key: "boss_arena",label: "Boss Arena Tier", desc: "10,000 pts entry · max +50,000 pts reward" },
+            ] as const
+          ).map(({ key, label, desc }) => (
+            <Toggle
+              key={key}
+              label={label}
+              desc={desc}
+              value={flags.survivalTiers?.[key] ?? true}
+              onChange={(v) =>
+                setFlags((f: any) => ({
+                  ...f,
+                  survivalTiers: { ...(f.survivalTiers ?? { beginner: true, pro: true, elite: true, boss_arena: true }), [key]: v },
+                }))
+              }
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">Team Arena</p>
+        <div className="space-y-3 rounded-xl p-4" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.18)' }}>
+          <Toggle
+            label="Team Arena"
+            desc="Enable the 2v2 team survival tournament mode"
+            value={flags.teamArenaEnabled ?? true}
+            onChange={(v) => setFlags((f: any) => ({ ...f, teamArenaEnabled: v }))}
+          />
+          {!(flags.teamArenaEnabled ?? true) && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-dark-muted">Reason shown to players:</p>
+              <div className="flex flex-wrap gap-2">
+                {TEAM_ARENA_REASONS.map(reason => (
+                  <button
+                    key={reason}
+                    onClick={() => {
+                      setCustomReason('');
+                      setFlags((f: any) => ({ ...f, teamArenaDisabledReason: reason }));
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: flags.teamArenaDisabledReason === reason ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${flags.teamArenaDisabledReason === reason ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                      color: flags.teamArenaDisabledReason === reason ? '#c084fc' : '#9ca3af',
+                    }}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Or type a custom reason…"
+                value={customReason}
+                onChange={(e) => {
+                  setCustomReason(e.target.value);
+                  if (e.target.value) setFlags((f: any) => ({ ...f, teamArenaDisabledReason: e.target.value }));
+                }}
+                maxLength={100}
+                className="w-full px-3 py-2 rounded-lg text-xs text-white placeholder-dark-muted focus:outline-none"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+              />
+              {flags.teamArenaDisabledReason && (
+                <p className="text-[11px]" style={{ color: '#a855f7' }}>
+                  Banner will show: "<span className="font-semibold">{flags.teamArenaDisabledReason}</span>"
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <button
@@ -895,227 +1253,142 @@ function GameConfigSection({
   );
 }
 
-function WalletConfigSection({
-  config,
-  onSave,
-}: {
-  config: any;
-  onSave: (data: any) => void;
-}) {
+function WalletConfigSection({ config, onSave }: { config: any; onSave: (data: any) => void }) {
   const [wc, setWc] = useState({ ...config.walletConfig });
   const [saving, setSaving] = useState(false);
-  const [uploadingQr, setUploadingQr] = useState(false);
 
-  useEffect(() => {
-    setWc({ ...config.walletConfig });
-  }, [config]);
+  useEffect(() => { setWc({ ...config.walletConfig }); }, [config]);
 
-  const save = async () => {
-    setSaving(true);
-    await onSave({ walletConfig: wc });
-    setSaving(false);
-  };
+  const save = async () => { setSaving(true); await onSave({ walletConfig: wc }); setSaving(false); };
 
-  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingQr(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setWc((w: any) => ({ ...w, qrCodeUrl: base64 }));
-        setUploadingQr(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error("Failed to upload QR code", err);
-      setUploadingQr(false);
-    }
-  };
+  const InfoCard = ({ icon, title, desc }: { icon: string; title: string; desc: string }) => (
+    <div className="flex items-start gap-3 p-4 rounded-2xl"
+      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+      <span className="text-2xl flex-shrink-0">{icon}</span>
+      <div>
+        <p className="text-sm font-bold text-white">{title}</p>
+        <p className="text-xs text-dark-muted mt-0.5">{desc}</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-bold text-white">Wallet Configuration</h2>
-      <p className="text-xs text-dark-muted">
-        Control deposit/withdraw buttons and UPI payment details.
-      </p>
-
-      {/* Feature toggles */}
-      <div className="space-y-3">
-        <Toggle
-          label="Deposit Button Enabled"
-          desc="Allow users to add money to their wallet"
-          value={wc.depositEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, depositEnabled: v }))}
-        />
-        <Toggle
-          label="Withdraw Button Enabled"
-          desc="Allow users to withdraw money from their wallet"
-          value={wc.withdrawEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, withdrawEnabled: v }))}
-        />
-        <Toggle
-          label="QR Code Enabled"
-          desc="Show QR code for UPI payments"
-          value={wc.qrEnabled}
-          onChange={(v) => setWc((w: any) => ({ ...w, qrEnabled: v }))}
-        />
+    <div className="max-w-2xl space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-black text-white">⚙️ Reward Config</h2>
+        <p className="text-sm text-dark-muted mt-1">Control voucher submission and reward redemption for players.</p>
       </div>
 
-      {/* UPI Details */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide">
-          UPI Details
-        </p>
-        <div>
-          <label className="text-xs text-dark-muted block mb-1">UPI ID</label>
-          <input
-            type="text"
-            value={wc.upiId}
-            onChange={(e) =>
-              setWc((w: any) => ({ ...w, upiId: e.target.value }))
-            }
-            placeholder="e.g. paytmqr5p0dyv@ptys"
-            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-dark-muted block mb-1">UPI Name</label>
-          <input
-            type="text"
-            value={wc.upiName}
-            onChange={(e) =>
-              setWc((w: any) => ({ ...w, upiName: e.target.value }))
-            }
-            placeholder="e.g. 7Cards Game"
-            className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-dark-text text-sm focus:outline-none focus:border-neon-green"
-          />
-        </div>
+      {/* System overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <InfoCard icon="🎟️" title="Submit Vouchers" desc="Players submit gift cards (₹50/₹100) to earn Tournament Credits" />
+        <InfoCard icon="⚔️" title="Play & Win" desc="Players use credits to enter arenas and compete for prizes" />
+        <InfoCard icon="🎁" title="Redeem Rewards" desc="Winners redeem up to ₹500 in brand gift vouchers" />
       </div>
 
-      {/* QR Code Upload */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide">
-          QR Code Image
-        </p>
-        <div
-          className="rounded-lg p-4 border-2 border-dashed border-dark-border hover:border-neon-green/50 transition-colors cursor-pointer"
-          style={{ background: "rgba(255,255,255,0.02)" }}
-        >
-          <label className="cursor-pointer flex flex-col items-center gap-2">
-            <span className="text-2xl">📱</span>
-            <span className="text-xs text-dark-muted text-center">
-              {wc.qrCodeUrl
-                ? "Click to change QR code"
-                : "Click to upload QR code (PNG/JPG)"}
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleQrUpload}
-              disabled={uploadingQr}
-              className="hidden"
+      {/* Controls */}
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="px-5 py-3" style={{ background: "rgba(167,139,250,0.08)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <p className="text-xs font-black uppercase tracking-wider" style={{ color: "#a78bfa" }}>Feature Controls</p>
+        </div>
+        <div className="divide-y divide-white/5">
+          <div className="px-5 py-4">
+            <Toggle
+              label="Voucher Submission Enabled"
+              desc="Allow players to submit gift vouchers and earn Tournament Credits"
+              value={wc.depositEnabled}
+              onChange={(v) => setWc((w: any) => ({ ...w, depositEnabled: v }))}
             />
-          </label>
-        </div>
-        {wc.qrCodeUrl && (
-          <div className="rounded-lg p-3 bg-dark-surface flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-green-400">✓</span>
-              <span className="text-xs text-dark-text truncate">
-                QR code uploaded ({Math.round(wc.qrCodeUrl.length / 1024)} KB)
-              </span>
-            </div>
-            <button
-              onClick={() => setWc((w: any) => ({ ...w, qrCodeUrl: "" }))}
-              className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-            >
-              Remove
-            </button>
           </div>
-        )}
+          <div className="px-5 py-4">
+            <Toggle
+              label="Reward Redemption Enabled"
+              desc="Allow players to redeem their Reward Balance for brand gift vouchers"
+              value={wc.withdrawEnabled}
+              onChange={(v) => setWc((w: any) => ({ ...w, withdrawEnabled: v }))}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Preview */}
-      {wc.qrCodeUrl && (
-        <div className="rounded-lg p-4 bg-dark-surface text-center">
-          <p className="text-xs text-dark-muted mb-2">QR Code Preview</p>
-          <img
-            src={wc.qrCodeUrl}
-            alt="QR Code"
-            className="max-w-[200px] mx-auto rounded-lg border border-dark-border"
-          />
+      {/* Limits reference */}
+      <div className="rounded-2xl p-5 space-y-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        <p className="text-xs font-black uppercase tracking-wider text-dark-muted">System Limits (hardcoded)</p>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            { label: "Voucher amounts", value: "₹50 or ₹100 only" },
+            { label: "Daily voucher limit", value: "₹300 per player" },
+            { label: "Min redemption", value: "₹50" },
+            { label: "Max redemption", value: "₹500" },
+            { label: "Supported brands", value: "6 brands" },
+            { label: "Credits per ₹1", value: "100 credits" },
+          ].map((r) => (
+            <div key={r.label} className="flex items-center justify-between gap-2 py-2 px-3 rounded-xl"
+              style={{ background: "rgba(255,255,255,0.03)" }}>
+              <span className="text-dark-muted text-xs">{r.label}</span>
+              <span className="text-white font-bold text-xs">{r.value}</span>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
-      <button
-        onClick={save}
-        disabled={saving || uploadingQr}
-        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-        style={{ background: "rgba(147,51,234,0.8)", color: "white" }}
-      >
-        {saving ? "Saving…" : uploadingQr ? "Uploading…" : "Save Config"}
+      <button onClick={save} disabled={saving}
+        className="px-8 py-3 rounded-xl font-black text-sm transition-all disabled:opacity-50"
+        style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff" }}>
+        {saving ? "Saving…" : "Save Reward Config"}
       </button>
     </div>
   );
 }
 
-// ── Deposits Section ─────────────────────────────────────────────────────────
+// ── Voucher Queue Section (Deposits) ─────────────────────────────────────────
 
 const DEP_STATUS_STYLE: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-300",
+  pending:  "bg-yellow-500/20 text-yellow-300",
   approved: "bg-green-500/20 text-green-400",
   rejected: "bg-red-500/20 text-red-400",
+};
+
+const BRAND_ICONS: Record<string, string> = {
+  Amazon: "📦", Flipkart: "🛒", Myntra: "👗", Ajio: "👔", Swiggy: "🍔", Zomato: "🍕",
 };
 
 function DepositsSection() {
   const [deposits, setDeposits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [noteMap, setNoteMap] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<
-    "all" | "pending" | "approved" | "rejected"
-  >("pending");
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [screenshotModal, setScreenshotModal] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await admin.getDeposits();
       setDeposits(data.deposits);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const process = async (id: string, status: "approved" | "rejected") => {
+    setProcessingId(id);
     try {
       await admin.processDeposit(id, status, noteMap[id]);
-      setDeposits((prev) =>
-        prev.map((d) => (d._id === id ? { ...d, status } : d)),
-      );
-    } catch {
-      /* ignore */
-    }
+      setDeposits((prev) => prev.map((d) => (d._id === id ? { ...d, status } : d)));
+    } catch { /* ignore */ } finally { setProcessingId(null); }
   };
 
-  const filtered =
-    filter === "all" ? deposits : deposits.filter((d) => d.status === filter);
+  const filtered = filter === "all" ? deposits : deposits.filter((d) => d.status === filter);
   const pendingCount = deposits.filter((d) => d.status === "pending").length;
 
-  if (loading)
-    return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold text-white">
-          Deposit Requests
+          🎟️ Voucher Verification Queue
           {pendingCount > 0 && (
             <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">
               {pendingCount} pending
@@ -1124,16 +1397,9 @@ function DepositsSection() {
         </h2>
         <div className="flex gap-1.5">
           {(["pending", "approved", "rejected", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={clsx(
-                "px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize",
-                filter === f
-                  ? "bg-neon-green text-dark-bg"
-                  : "bg-dark-surface text-dark-muted border border-dark-border",
-              )}
-            >
+            <button key={f} onClick={() => setFilter(f)}
+              className={clsx("px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize",
+                filter === f ? "bg-indigo-500 text-white" : "bg-dark-surface text-dark-muted border border-dark-border")}>
               {f}
             </button>
           ))}
@@ -1142,37 +1408,52 @@ function DepositsSection() {
 
       {filtered.length === 0 ? (
         <p className="text-dark-muted text-sm py-8 text-center">
-          No {filter === "all" ? "" : filter} deposit requests
+          No {filter === "all" ? "" : filter} voucher submissions
         </p>
       ) : (
         <div className="space-y-3">
           {filtered.map((d) => (
-            <div
-              key={d._id}
-              className="rounded-2xl p-4 space-y-3"
-              style={cardStyle}
-            >
+            <div key={d._id} className="rounded-2xl p-4 space-y-3" style={cardStyle}>
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
-                  <p className="font-semibold text-white">{d.username}</p>
-                  <p className="text-xs text-dark-muted">
-                    UTR:{" "}
-                    <span className="font-mono text-white">{d.utrNumber}</span>
+                  <p className="font-semibold text-white flex items-center gap-1.5">
+                    {BRAND_ICONS[d.voucherBrand] ?? "🎟️"} {d.username}
                   </p>
-                  <p className="text-xs text-dark-muted">
-                    {new Date(d.createdAt).toLocaleString()}
-                  </p>
+                  {d.submissionType === "voucher" ? (
+                    <div className="space-y-0.5 mt-1">
+                      <p className="text-xs text-indigo-300 font-semibold">{d.voucherBrand} Voucher</p>
+                      {d.voucherNumber && (
+                        <p className="text-xs text-dark-muted font-mono">
+                          Code: <span className="text-white">{d.voucherNumber}</span>
+                        </p>
+                      )}
+                      {d.voucherPin && (
+                        <p className="text-xs text-dark-muted font-mono">
+                          PIN: <span className="text-white">{d.voucherPin}</span>
+                        </p>
+                      )}
+                      {d.voucherExpiry && (
+                        <p className="text-xs text-dark-muted">
+                          Expiry: <span className="text-white">{d.voucherExpiry}</span>
+                        </p>
+                      )}
+                      {d.screenshotUrl && (
+                        <button onClick={() => setScreenshotModal(d.screenshotUrl)}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors underline text-left">
+                          📸 View Screenshot
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-dark-muted mt-1">
+                      UTR: <span className="font-mono text-white">{d.utrNumber}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-dark-muted mt-1">{new Date(d.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-neon-green">
-                    ₹{d.amount}
-                  </p>
-                  <span
-                    className={clsx(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      DEP_STATUS_STYLE[d.status] ?? "",
-                    )}
-                  >
+                  <p className="text-xl font-bold text-indigo-300">₹{d.amount}</p>
+                  <span className={clsx("text-xs px-2 py-0.5 rounded-full", DEP_STATUS_STYLE[d.status] ?? "")}>
                     {d.status}
                   </span>
                 </div>
@@ -1180,151 +1461,242 @@ function DepositsSection() {
 
               {d.status === "pending" && (
                 <div className="flex gap-2 flex-wrap items-center">
-                  <input
-                    placeholder="Admin note (optional)"
-                    value={noteMap[d._id] ?? ""}
-                    onChange={(e) =>
-                      setNoteMap((p) => ({ ...p, [d._id]: e.target.value }))
-                    }
+                  <input placeholder="Admin note (optional)" value={noteMap[d._id] ?? ""}
+                    onChange={(e) => setNoteMap((p) => ({ ...p, [d._id]: e.target.value }))}
                     className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
                   />
-                  <button
-                    onClick={() => process(d._id, "approved")}
-                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors"
-                  >
+                  <button onClick={() => process(d._id, "approved")} disabled={processingId === d._id}
+                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
                     ✓ Approve & Credit
                   </button>
-                  <button
-                    onClick={() => process(d._id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors"
-                  >
+                  <button onClick={() => process(d._id, "rejected")} disabled={processingId === d._id}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
                     ✗ Reject
                   </button>
                 </div>
               )}
               {d.adminNote && (
-                <p className="text-xs text-dark-muted italic">
-                  Note: {d.adminNote}
-                </p>
+                <p className="text-xs text-dark-muted italic">Note: {d.adminNote}</p>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Screenshot lightbox */}
+      {screenshotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => setScreenshotModal(null)}>
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setScreenshotModal(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-dark-surface border border-dark-border text-white flex items-center justify-center text-sm z-10 hover:bg-dark-border transition-colors">
+              ×
+            </button>
+            <img src={screenshotModal} alt="Voucher screenshot"
+              className="w-full rounded-2xl object-contain max-h-[80vh]"
+              style={{ border: "1px solid rgba(99,102,241,0.4)" }} />
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Withdrawals Section ────────────────────────────────────────────────────────
+// ── Reward Delivery Section (Withdrawals) ────────────────────────────────────
 
 const WD_STATUS_STYLE: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-300",
-  approved: "bg-green-500/20 text-green-400",
-  rejected: "bg-red-500/20 text-red-400",
+  pending:   "bg-yellow-500/20 text-yellow-300",
+  approved:  "bg-green-500/20 text-green-400",
+  rejected:  "bg-red-500/20 text-red-400",
+  delivered: "bg-indigo-500/20 text-indigo-400",
 };
 
 function WithdrawalsSection() {
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [noteMap, setNoteMap] = useState<Record<string, string>>({});
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deliverMap, setDeliverMap] = useState<Record<string, {
+    voucherNumber: string; voucherPin: string; voucherExpiry: string; adminMessage: string;
+  }>>({});
+  const [deliverOpen, setDeliverOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await admin.getWithdrawals();
       setWithdrawals(data.withdrawals);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const process = async (id: string, status: "approved" | "rejected") => {
+    setProcessingId(id);
     try {
       await admin.processWithdrawal(id, status, noteMap[id]);
-      setWithdrawals((prev) =>
-        prev.map((w) => (w._id === id ? { ...w, status } : w)),
-      );
-    } catch {
-      /* ignore */
-    }
+      setWithdrawals((prev) => prev.map((w) => (w._id === id ? { ...w, status } : w)));
+    } catch { /* ignore */ } finally { setProcessingId(null); }
   };
 
-  if (loading)
-    return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
+  const deliver = async (id: string) => {
+    const d = deliverMap[id];
+    if (!d?.voucherNumber?.trim() || !d?.voucherPin?.trim() || !d?.voucherExpiry?.trim()) return;
+    setProcessingId(id);
+    try {
+      await admin.deliverVoucher(id, {
+        deliveredVoucherNumber: d.voucherNumber.trim(),
+        deliveredVoucherPin: d.voucherPin.trim(),
+        deliveredVoucherExpiry: d.voucherExpiry.trim(),
+        adminMessage: d.adminMessage?.trim() || undefined,
+      });
+      setWithdrawals((prev) => prev.map((w) => (w._id === id ? { ...w, status: "delivered" } : w)));
+      setDeliverOpen(null);
+    } catch { /* ignore */ } finally { setProcessingId(null); }
+  };
+
+  const setDeliverField = (id: string, field: string, value: string) => {
+    setDeliverMap((p) => ({ ...p, [id]: { ...p[id], [field]: value } }));
+  };
+
+  const pendingCount = withdrawals.filter((w) => w.status === "pending").length;
+
+  if (loading) return <p className="text-dark-muted text-sm py-8 text-center">Loading…</p>;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-white">Withdrawal Requests</h2>
+      <h2 className="text-xl font-bold text-white">
+        🎁 Reward Delivery
+        {pendingCount > 0 && (
+          <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">
+            {pendingCount} pending
+          </span>
+        )}
+      </h2>
       {withdrawals.length === 0 ? (
-        <p className="text-dark-muted text-sm py-8 text-center">
-          No withdrawal requests
-        </p>
+        <p className="text-dark-muted text-sm py-8 text-center">No reward redemption requests</p>
       ) : (
         <div className="space-y-3">
           {withdrawals.map((w) => (
-            <div
-              key={w._id}
-              className="rounded-2xl p-4 space-y-2"
-              style={cardStyle}
-            >
+            <div key={w._id} className="rounded-2xl p-4 space-y-2" style={cardStyle}>
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
-                  <p className="font-semibold text-white">{w.username}</p>
-                  <p className="text-sm text-dark-muted">
-                    {w.upiId
-                      ? `UPI: ${w.upiId}`
-                      : `Bank: ${w.bankDetails?.accountName}`}
+                  <p className="font-semibold text-white flex items-center gap-1.5">
+                    {BRAND_ICONS[w.voucherBrand] ?? "🎁"} {w.username}
                   </p>
-                  <p className="text-xs text-dark-muted">
-                    {new Date(w.createdAt).toLocaleString()}
-                  </p>
+                  {w.redemptionType === "voucher" ? (
+                    <p className="text-xs text-purple-300 mt-0.5">{w.voucherBrand} voucher redemption</p>
+                  ) : (
+                    <p className="text-xs text-dark-muted mt-0.5">
+                      {w.upiId ? `UPI: ${w.upiId}` : w.bankDetails?.accountName ? `Bank: ${w.bankDetails.accountName}` : "Bank transfer"}
+                    </p>
+                  )}
+                  <p className="text-xs text-dark-muted">{new Date(w.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-neon-green">
-                    ₹{w.amount}
-                  </p>
-                  <span
-                    className={clsx(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      WD_STATUS_STYLE[w.status] ?? "",
-                    )}
-                  >
+                  <p className="text-xl font-bold text-purple-400">₹{w.amount}</p>
+                  <span className={clsx("text-xs px-2 py-0.5 rounded-full", WD_STATUS_STYLE[w.status] ?? "")}>
                     {w.status}
                   </span>
                 </div>
               </div>
+
+              {/* Pending: approve/reject + option to deliver directly */}
               {w.status === "pending" && (
-                <div className="flex gap-2 flex-wrap items-center pt-1">
-                  <input
-                    placeholder="Admin note (optional)"
-                    value={noteMap[w._id] ?? ""}
-                    onChange={(e) =>
-                      setNoteMap((p) => ({ ...p, [w._id]: e.target.value }))
-                    }
-                    className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
-                  />
-                  <button
-                    onClick={() => process(w._id, "approved")}
-                    className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => process(w._id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors"
-                  >
-                    Reject
+                <div className="space-y-2 pt-1">
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <input placeholder="Admin note (optional)" value={noteMap[w._id] ?? ""}
+                      onChange={(e) => setNoteMap((p) => ({ ...p, [w._id]: e.target.value }))}
+                      className="flex-1 min-w-[140px] bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-xs text-dark-text focus:outline-none"
+                    />
+                    <button onClick={() => process(w._id, "approved")} disabled={processingId === w._id}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                      Approve
+                    </button>
+                    <button onClick={() => process(w._id, "rejected")} disabled={processingId === w._id}
+                      className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                      Reject
+                    </button>
+                    {w.redemptionType === "voucher" && (
+                      <button onClick={() => setDeliverOpen(deliverOpen === w._id ? null : w._id)}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors">
+                        🎁 Deliver Voucher
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Approved voucher: deliver form */}
+              {w.status === "approved" && w.redemptionType === "voucher" && (
+                <div className="pt-1">
+                  <button onClick={() => setDeliverOpen(deliverOpen === w._id ? null : w._id)}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors">
+                    🎁 Deliver Voucher
                   </button>
                 </div>
               )}
-              {w.adminNote && (
-                <p className="text-xs text-dark-muted italic">{w.adminNote}</p>
+
+              {/* Deliver voucher form */}
+              {deliverOpen === w._id && (
+                <div className="mt-2 p-3 rounded-xl space-y-2"
+                  style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+                  <p className="text-xs font-bold text-indigo-300">Enter {w.voucherBrand} Voucher Details</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Voucher Code *</label>
+                      <input placeholder="Code / Number"
+                        value={deliverMap[w._id]?.voucherNumber ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherNumber", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">PIN *</label>
+                      <input placeholder="PIN"
+                        value={deliverMap[w._id]?.voucherPin ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherPin", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Expiry *</label>
+                      <input placeholder="MM/YY"
+                        value={deliverMap[w._id]?.voucherExpiry ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "voucherExpiry", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs font-mono text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-dark-muted block mb-1">Message (optional)</label>
+                      <input placeholder="e.g. Enjoy!"
+                        value={deliverMap[w._id]?.adminMessage ?? ""}
+                        onChange={(e) => setDeliverField(w._id, "adminMessage", e.target.value)}
+                        className="w-full bg-dark-bg border border-dark-border rounded-lg px-2 py-1.5 text-xs text-dark-text focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <button onClick={() => deliver(w._id)} disabled={processingId === w._id ||
+                    !deliverMap[w._id]?.voucherNumber?.trim() || !deliverMap[w._id]?.voucherPin?.trim() || !deliverMap[w._id]?.voucherExpiry?.trim()}
+                    className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors disabled:opacity-40">
+                    {processingId === w._id ? "Delivering…" : "✓ Mark as Delivered"}
+                  </button>
+                </div>
               )}
+
+              {/* Delivered: show delivered voucher details */}
+              {w.status === "delivered" && w.deliveredVoucherNumber && (
+                <div className="mt-1 p-3 rounded-xl space-y-1"
+                  style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+                  <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Delivered Voucher</p>
+                  <p className="text-xs font-mono text-white">Code: {w.deliveredVoucherNumber}</p>
+                  <p className="text-xs font-mono text-white">PIN: {w.deliveredVoucherPin} · Exp: {w.deliveredVoucherExpiry}</p>
+                  {w.adminMessage && <p className="text-xs text-dark-muted italic">"{w.adminMessage}"</p>}
+                </div>
+              )}
+
+              {w.adminNote && <p className="text-xs text-dark-muted italic">Note: {w.adminNote}</p>}
             </div>
           ))}
         </div>
@@ -1538,7 +1910,7 @@ function WalletsSection() {
       );
       setCreditResult({
         ok: true,
-        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Added ₹${amt} to ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setCreditAmount("");
       setCreditNote("");
@@ -1571,7 +1943,7 @@ function WalletsSection() {
       );
       setDebitResult({
         ok: true,
-        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${data.balance}`,
+        msg: `Removed ₹${amt} from ${data.username} — new balance: ₹${Number(data.balance).toFixed(2)}`,
       });
       setDebitAmount("");
       setDebitNote("");
@@ -1611,7 +1983,7 @@ function WalletsSection() {
                   : "border-transparent text-dark-muted hover:text-white",
               )}
             >
-              ➕ Add Money
+              💳 Credit Player
             </button>
             <button
               onClick={() => {
@@ -1626,14 +1998,14 @@ function WalletsSection() {
                   : "border-transparent text-dark-muted hover:text-white",
               )}
             >
-              ➖ Remove Money
+              🔻 Debit Player
             </button>
           </div>
 
           {tab === "add" ? (
             <>
               <p className="text-sm font-semibold text-white">
-                💸 Credit User Wallet
+                💳 Credit Player Balance
               </p>
 
               {/* User dropdown */}
@@ -1667,7 +2039,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -1749,7 +2121,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))
@@ -1814,9 +2186,9 @@ function WalletsSection() {
                 style={{ background: "rgba(0,255,136,0.85)", color: "#0d1117" }}
               >
                 {crediting
-                  ? "Adding…"
+                  ? "Crediting…"
                   : selected
-                    ? `Add Money to ${selected.username}`
+                    ? `Credit ₹ to ${selected.username}`
                     : "Select a user first"}
               </button>
 
@@ -1832,7 +2204,7 @@ function WalletsSection() {
           ) : (
             <>
               <p className="text-sm font-semibold text-white">
-                🗑️ Debit User Wallet
+                🔻 Debit Player Balance
               </p>
 
               {/* User dropdown - reuse same logic */}
@@ -1866,7 +2238,7 @@ function WalletsSection() {
                       <div className="text-right flex-shrink-0 mr-1">
                         <p className="text-xs text-dark-muted">Balance</p>
                         <p className="text-sm font-bold text-neon-green">
-                          ₹{selected.balance}
+                          ₹{Number(selected.balance).toFixed(2)}
                         </p>
                       </div>
                       <button
@@ -1948,7 +2320,7 @@ function WalletsSection() {
                               </p>
                             </div>
                             <p className="font-bold text-neon-green text-sm flex-shrink-0">
-                              ₹{w.balance}
+                              ₹{Number(w.balance).toFixed(2)}
                             </p>
                           </button>
                         ))
@@ -2013,9 +2385,9 @@ function WalletsSection() {
                 style={{ background: "rgba(255,107,107,0.85)", color: "#fff" }}
               >
                 {debiting
-                  ? "Removing…"
+                  ? "Debiting…"
                   : selected
-                    ? `Remove Money from ${selected.username}`
+                    ? `Debit ₹ from ${selected.username}`
                     : "Select a user first"}
               </button>
 
@@ -2040,103 +2412,122 @@ function WalletsSection() {
 
 // ── Tournaments Section ────────────────────────────────────────────────────────
 
+const TIER_META: Record<string, { label: string; color: string; icon: string }> = {
+  beginner:   { label: "Beginner",   color: "#60a5fa", icon: "🌱" },
+  pro:        { label: "Pro",        color: "#a78bfa", icon: "⚡" },
+  elite:      { label: "Elite",      color: "#f59e0b", icon: "🔥" },
+  boss_arena: { label: "Boss Arena", color: "#ff6b6b", icon: "💀" },
+};
+
+const STAGE_PERSONALITIES = ["Safe", "Aggressive", "Bluff", "Smart", "Boss"];
+
 function TournamentsSection() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
+  const [tierFilter, setTierFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(
-    (p = 1, s = filter) => {
+    (p = 1, t = tierFilter) => {
       setLoading(true);
       admin
-        .getTournaments({ page: p, status: s || undefined })
+        .getSurvivalChampionship({ page: p, tier: t || undefined })
         .then((r) => setData(r.data))
         .catch(() => {})
         .finally(() => setLoading(false));
     },
-    [filter],
+    [tierFilter],
   );
 
-  useEffect(() => {
-    load(1);
-  }, []);
+  useEffect(() => { load(1); }, []);
 
-  const applyFilter = (s: string) => {
-    setFilter(s);
-    setPage(1);
-    load(1, s);
-  };
+  const applyTier = (t: string) => { setTierFilter(t); setPage(1); load(1, t); };
+  const changePage = (p: number) => { setPage(p); load(p); };
 
-  const changePage = (p: number) => {
-    setPage(p);
-    load(p);
-  };
-
-  const STATUS_FILTERS = [
-    { value: "", label: "All" },
-    { value: "active", label: "Active" },
-    { value: "won", label: "Won" },
-    { value: "lost", label: "Lost" },
-    { value: "draw", label: "Draw" },
+  const TIER_FILTERS = [
+    { value: "", label: "All Tiers" },
+    { value: "beginner", label: "🌱 Beginner" },
+    { value: "pro", label: "⚡ Pro" },
+    { value: "elite", label: "🔥 Elite" },
+    { value: "boss_arena", label: "💀 Boss Arena" },
   ];
+
+  const STATUS_COLOR: Record<string, string> = {
+    active: "#60a5fa",
+    won: "#00ff88",
+    lost: "#ff6b6b",
+    abandoned: "#6b7280",
+  };
 
   return (
     <div className="space-y-5">
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(16,185,129,0.12),rgba(245,158,11,0.08))", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">🤖</span>
+          <div>
+            <h2 className="text-base font-black text-white">AI Survival Championship</h2>
+            <p className="text-xs text-dark-muted">Survive 5 AI stages across 4 tiers · Beginner → Boss Arena</p>
+          </div>
+        </div>
+        <div className="flex gap-4 mt-3 flex-wrap">
+          {STAGE_PERSONALITIES.map((s, i) => (
+            <span key={s} className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "#8b949e" }}>
+              Stage {i + 1}: {s} AI
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* Summary cards */}
       {data?.summary && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            {
-              label: "Active",
-              value: data.summary.totalActive,
-              color: "#60a5fa",
-            },
-            { label: "Won", value: data.summary.totalWon, color: "#00ff88" },
-            { label: "Lost", value: data.summary.totalLost, color: "#ff6b6b" },
-            { label: "Draws", value: data.summary.totalDraw, color: "#fbbf24" },
-            {
-              label: "Prize Paid",
-              value: `₹${data.summary.totalPrizePaid}`,
-              color: "#ffd700",
-            },
+            { label: "Active",    value: data.summary.totalActive,    color: "#60a5fa" },
+            { label: "Completed", value: data.summary.totalWon,       color: "#00ff88" },
+            { label: "Lost",      value: data.summary.totalLost,      color: "#ff6b6b" },
+            { label: "Abandoned", value: data.summary.totalAbandoned, color: "#6b7280" },
+            { label: "Pts Paid",  value: (data.summary.totalPointsPaid ?? 0).toLocaleString(), color: "#ffd700" },
           ].map((s) => (
-            <div
-              key={s.label}
-              className="rounded-2xl p-3 text-center"
-              style={cardStyle}
-            >
-              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">
-                {s.label}
-              </p>
-              <p className="text-xl font-black" style={{ color: s.color }}>
-                {s.value}
-              </p>
+            <div key={s.label} className="rounded-2xl p-3 text-center" style={cardStyle}>
+              <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">{s.label}</p>
+              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Filter tabs */}
+      {/* Tier breakdown */}
+      {data?.summary?.tierBreakdown?.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {data.summary.tierBreakdown.map((tb: any) => {
+            const meta = TIER_META[tb._id] ?? { label: tb._id, color: "#8b949e", icon: "🎮" };
+            const winRate = tb.count > 0 ? Math.round((tb.won / tb.count) * 100) : 0;
+            return (
+              <div key={tb._id} className="rounded-2xl p-3" style={{ ...cardStyle, border: `1px solid ${meta.color}22` }}>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span>{meta.icon}</span>
+                  <p className="text-xs font-bold" style={{ color: meta.color }}>{meta.label}</p>
+                </div>
+                <p className="text-lg font-black text-white">{tb.count}</p>
+                <p className="text-[10px] text-dark-muted">{tb.won} won · {winRate}% win rate</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tier filter */}
       <div className="flex gap-2 flex-wrap">
-        {STATUS_FILTERS.map((f) => (
+        {TIER_FILTERS.map((f) => (
           <button
             key={f.value}
-            onClick={() => applyFilter(f.value)}
+            onClick={() => applyTier(f.value)}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={
-              filter === f.value
-                ? {
-                    background: "rgba(0,255,136,0.15)",
-                    color: "#00ff88",
-                    border: "1px solid rgba(0,255,136,0.4)",
-                  }
-                : {
-                    background: "rgba(255,255,255,0.04)",
-                    color: "#8b949e",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                  }
-            }
+            style={tierFilter === f.value
+              ? { background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.4)" }
+              : { background: "rgba(255,255,255,0.04)", color: "#8b949e", border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {f.label}
           </button>
@@ -2147,140 +2538,90 @@ function TournamentsSection() {
         <div className="flex justify-center py-10">
           <div className="w-6 h-6 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : !data?.tournaments?.length ? (
-        <p className="text-center text-dark-muted py-10">
-          No tournaments found.
-        </p>
+      ) : !data?.records?.length ? (
+        <p className="text-center text-dark-muted py-10">No survival runs found.</p>
       ) : (
         <div className="space-y-2">
-          {data.tournaments.map((t: any) => (
-            <div
-              key={t.id}
-              className="rounded-2xl p-4 space-y-2"
-              style={cardStyle}
-            >
-              {/* Row 1: user + status + fee */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Avatar avatar={t.avatar} username={t.username} size="sm" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-dark-text truncate">
-                      {t.username}
-                    </p>
-                    <p className="text-[10px] text-dark-muted truncate">
-                      {t.email}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <StatusBadge status={t.status} />
-                  <span className="text-xs text-dark-muted">₹{t.entryFee}</span>
-                </div>
-              </div>
-
-              {/* Row 2: game dots + series score */}
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 3 }, (_, i) => {
-                    const gr = t.gameResults?.[i];
-                    const bg = !gr
-                      ? "rgba(255,255,255,0.05)"
-                      : gr.isDraw
-                        ? "rgba(251,191,36,0.2)"
-                        : gr.playerWon
-                          ? "rgba(0,255,136,0.2)"
-                          : "rgba(255,107,107,0.2)";
-                    const border = !gr
-                      ? "rgba(255,255,255,0.08)"
-                      : gr.isDraw
-                        ? "rgba(251,191,36,0.5)"
-                        : gr.playerWon
-                          ? "rgba(0,255,136,0.5)"
-                          : "rgba(255,107,107,0.5)";
-                    return (
-                      <div
-                        key={i}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{
-                          background: bg,
-                          border: `1px solid ${border}`,
-                        }}
-                      >
-                        {!gr
-                          ? String(i + 1)
-                          : gr.isDraw
-                            ? "="
-                            : gr.playerWon
-                              ? "✓"
-                              : "✗"}
-                      </div>
-                    );
-                  })}
-                </div>
-                <span className="text-xs text-dark-muted">
-                  {t.playerWins}W – {t.botWins}L
-                  {(t.draws ?? 0) > 0 ? ` – ${t.draws}D` : ""} · {t.gamesPlayed}{" "}
-                  game{t.gamesPlayed !== 1 ? "s" : ""}
-                </span>
-              </div>
-
-              {/* Row 3: prize / refund + date */}
-              <div className="flex justify-between items-center text-xs">
-                <span
-                  style={{
-                    color:
-                      t.status === "won"
-                        ? "#00ff88"
-                        : t.status === "draw"
-                          ? "#fbbf24"
-                          : t.status === "lost"
-                            ? "#ff6b6b"
-                            : "#60a5fa",
-                  }}
+          {data.records.map((r: any) => {
+            const meta = TIER_META[r.tier] ?? { label: r.tier, color: "#8b949e", icon: "🎮" };
+            const isExpanded = expandedId === r.id;
+            return (
+              <div key={r.id} className="rounded-2xl overflow-hidden" style={cardStyle}>
+                <button
+                  className="w-full p-4 text-left"
+                  onClick={() => setExpandedId(isExpanded ? null : r.id)}
                 >
-                  {t.status === "won"
-                    ? `+₹${t.prizeAmount} prize`
-                    : t.status === "draw"
-                      ? `₹${t.entryFee} refunded`
-                      : t.status === "lost"
-                        ? `−₹${t.entryFee}`
-                        : "In progress"}
-                </span>
-                <span className="text-dark-muted">
-                  {new Date(t.createdAt).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar avatar={r.avatar} username={r.username} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-dark-text truncate">{r.username}</p>
+                        <p className="text-[10px] text-dark-muted truncate">{r.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44` }}>
+                        {meta.icon} {meta.label}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize" style={{ background: `${STATUS_COLOR[r.status] ?? "#8b949e"}22`, color: STATUS_COLOR[r.status] ?? "#8b949e", border: `1px solid ${STATUS_COLOR[r.status] ?? "#8b949e"}44` }}>
+                        {r.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stage progress dots */}
+                  <div className="flex items-center gap-2 mt-3">
+                    <div className="flex gap-1">
+                      {Array.from({ length: 5 }, (_, i) => {
+                        const sr = r.stageResults?.[i];
+                        const done = !!sr;
+                        const won = sr?.playerWon;
+                        const bg = !done ? "rgba(255,255,255,0.05)" : won ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)";
+                        const border = !done ? "rgba(255,255,255,0.08)" : won ? "rgba(0,255,136,0.5)" : "rgba(255,107,107,0.5)";
+                        return (
+                          <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: bg, border: `1px solid ${border}` }}>
+                            {!done ? String(i + 1) : won ? "✓" : "✗"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <span className="text-xs text-dark-muted">{r.stagesCompleted}/5 stages · {r.totalPointsEarned ?? 0} pts</span>
+                    <span className="ml-auto text-[10px] text-dark-muted">{new Date(r.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                  </div>
+                </button>
+
+                {/* Expanded stage detail */}
+                {isExpanded && r.stageResults?.length > 0 && (
+                  <div className="border-t border-white/5 p-4 space-y-2">
+                    {r.stageResults.map((sr: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="text-dark-muted">Stage {idx + 1} · {STAGE_PERSONALITIES[idx] ?? sr.personality} AI</span>
+                        <div className="flex items-center gap-3">
+                          <span style={{ color: sr.playerWon ? "#00ff88" : "#ff6b6b" }}>
+                            {sr.playerWon ? "Win" : "Loss"} · You {sr.playerScore} – Bot {sr.botScore}
+                          </span>
+                          <span style={{ color: "#ffd700" }}>+{sr.pointsEarned ?? 0} pts</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Pagination */}
       {data && data.pages > 1 && (
         <div className="flex justify-center gap-2">
-          <button
-            onClick={() => changePage(page - 1)}
-            disabled={page <= 1}
+          <button onClick={() => changePage(page - 1)} disabled={page <= 1}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}
-          >
-            ← Prev
-          </button>
-          <span className="text-xs text-dark-muted self-center">
-            Page {page} of {data.pages} ({data.total} total)
-          </span>
-          <button
-            onClick={() => changePage(page + 1)}
-            disabled={page >= data.pages}
+            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}>← Prev</button>
+          <span className="text-xs text-dark-muted self-center">Page {page} of {data.pages} ({data.total} total)</span>
+          <button onClick={() => changePage(page + 1)} disabled={page >= data.pages}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-30"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}
-          >
-            Next →
-          </button>
+            style={{ background: "rgba(255,255,255,0.06)", color: "#e6edf3" }}>Next →</button>
         </div>
       )}
     </div>
@@ -2556,27 +2897,311 @@ function SupportSection() {
 
 // ── Notify Section ─────────────────────────────────────────────────────────────
 
+const NOTIF_CATEGORIES = [
+  { value: "system",          label: "🔔 System" },
+  { value: "tournament",      label: "⚔️ Tournament" },
+  { value: "boss_arena",      label: "👑 Boss Arena" },
+  { value: "rewards",         label: "🎁 Rewards" },
+  { value: "daily_missions",  label: "🎯 Daily Missions" },
+  { value: "survival_streak", label: "🔥 Survival Streak" },
+  { value: "multiplayer",     label: "👥 Multiplayer" },
+  { value: "events",          label: "🎉 Events" },
+] as const;
+
+type NotifTarget = "global" | "specific" | "inactive";
+
+interface NotifTemplate {
+  label: string;
+  title: string;
+  message: string;
+  type: "info" | "warning" | "success";
+  category: string;
+  actionUrl?: string;
+  hasAmount?: boolean; // if true, show an amount input to substitute {amount}
+}
+
+const NOTIF_TEMPLATES: Record<string, NotifTemplate[]> = {
+  "🎁 Bonuses & Rewards": [
+    {
+      label: "Joining Bonus",
+      title: "🎁 Welcome Bonus Credited!",
+      message: "A joining bonus of {amount} points has been added to your account. Start playing and Master the SHOW!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Bonus",
+      title: "💰 Deposit Bonus Unlocked",
+      message: "Your deposit bonus of {amount} points is now live in your wallet. Use it in your next game!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Loyalty Reward",
+      title: "🏅 Loyalty Reward Credited",
+      message: "Thank you for being a valued player! {amount} loyalty points have been added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Referral Bonus",
+      title: "👥 Referral Bonus Earned!",
+      message: "Your referral reward of {amount} points has been credited. Keep inviting friends to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Special Cashback",
+      title: "💸 Cashback Applied",
+      message: "A cashback of {amount} points has been added to your account. Keep playing to earn more!",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "💳 Deposits": [
+    {
+      label: "Deposit Approved",
+      title: "✅ Deposit Approved",
+      message: "Your deposit of ₹{amount} has been successfully approved and added to your wallet.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Pending",
+      title: "⏳ Deposit Under Review",
+      message: "Your deposit of ₹{amount} is being reviewed. It will be credited within 24 hours.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Rejected",
+      title: "❌ Deposit Could Not Be Processed",
+      message: "Your deposit of ₹{amount} could not be verified. Please re-submit with a clear screenshot.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Deposit Reminder",
+      title: "💳 Add Funds to Keep Playing",
+      message: "Your balance is running low. Deposit now to continue competing in the Arena of Sevens.",
+      type: "info", category: "system", actionUrl: "/wallet",
+    },
+  ],
+  "💸 Withdrawals": [
+    {
+      label: "Withdrawal Approved",
+      title: "✅ Withdrawal Approved",
+      message: "Your withdrawal of ₹{amount} has been approved and is being processed. Expect it within 24–48 hrs.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Delivered",
+      title: "🎉 Payment Sent!",
+      message: "Your withdrawal of ₹{amount} has been successfully transferred to your account.",
+      type: "success", category: "rewards", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Rejected",
+      title: "⚠️ Withdrawal Request Issue",
+      message: "Your withdrawal of ₹{amount} could not be processed. Please check your bank details and retry.",
+      type: "warning", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+    {
+      label: "Withdrawal Processing",
+      title: "🔄 Withdrawal In Progress",
+      message: "Your withdrawal request of ₹{amount} is being processed. We'll notify you once complete.",
+      type: "info", category: "system", actionUrl: "/wallet", hasAmount: true,
+    },
+  ],
+  "⚔️ Tournament": [
+    {
+      label: "Tournament Starting",
+      title: "⚔️ Tournament Starts Now!",
+      message: "The Arena of Sevens tournament is LIVE! Register now and compete for the top spot.",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Ending Soon",
+      title: "⏰ Tournament Ends in 1 Hour",
+      message: "Last chance to enter! The current tournament closes soon. Join now before seats fill up.",
+      type: "warning", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "New Tournament Open",
+      title: "🏆 New Tournament is Open",
+      message: "A new ranked tournament has started. Entry is open — prove your skills and claim glory!",
+      type: "info", category: "tournament", actionUrl: "/survival",
+    },
+    {
+      label: "Tournament Results",
+      title: "🏅 Tournament Results Are In",
+      message: "The latest tournament has ended. Check the leaderboard to see the final rankings!",
+      type: "success", category: "tournament", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Special Prize Pool",
+      title: "💎 Special Prize Pool — {amount} Points",
+      message: "This weekend's tournament has a prize pool of {amount} points! Register now to compete.",
+      type: "success", category: "tournament", actionUrl: "/survival", hasAmount: true,
+    },
+  ],
+  "👑 Boss Arena": [
+    {
+      label: "Boss Arena Unlocked",
+      title: "👑 Boss Arena is OPEN",
+      message: "You've unlocked the Boss Arena! The ultimate challenge awaits — enter if you dare.",
+      type: "success", category: "boss_arena", actionUrl: "/survival",
+    },
+    {
+      label: "Boss Arena Event",
+      title: "🔥 Boss Arena Special Event",
+      message: "A limited Boss Arena event is live! Defeat the champion and claim massive rewards.",
+      type: "warning", category: "boss_arena", actionUrl: "/survival",
+    },
+  ],
+  "🔥 Streaks & Live": [
+    {
+      label: "Win Streak Alert",
+      title: "🔥 You're on a Hot Streak!",
+      message: "Your current win streak is live on the leaderboard. Keep it up and dominate the Arena!",
+      type: "success", category: "survival_streak", actionUrl: "/leaderboard",
+    },
+    {
+      label: "Streak at Risk",
+      title: "⚠️ Your Streak is at Risk",
+      message: "You haven't played today! Log in now to keep your survival streak alive.",
+      type: "warning", category: "survival_streak", actionUrl: "/survival",
+    },
+    {
+      label: "Live Game Alert",
+      title: "🎮 Game is Live — Join Now!",
+      message: "A live multiplayer game is waiting for you. Jump in and show your skills!",
+      type: "info", category: "multiplayer", actionUrl: "/lobby",
+    },
+    {
+      label: "Come Back",
+      title: "👋 We Miss You!",
+      message: "It's been a while since your last game. Return to the Arena and continue your climb!",
+      type: "info", category: "survival_streak", actionUrl: "/lobby",
+    },
+  ],
+  "🎉 Events & System": [
+    {
+      label: "Special Event Live",
+      title: "🎉 Special Event is LIVE",
+      message: "A limited-time event has started in Arena of Sevens. Play now to earn double rewards!",
+      type: "success", category: "events", actionUrl: "/lobby",
+    },
+    {
+      label: "Maintenance Notice",
+      title: "🔧 Scheduled Maintenance",
+      message: "The server will undergo maintenance in 30 minutes. Please complete your current games.",
+      type: "warning", category: "system",
+    },
+    {
+      label: "App Update",
+      title: "🆕 New Update Available",
+      message: "Arena of Sevens has been updated with new features! Refresh the app to get the latest.",
+      type: "info", category: "system",
+    },
+    {
+      label: "Weekend Offer",
+      title: "🎊 Weekend Special Offer",
+      message: "This weekend only — play 3 games and get {amount} bonus points! Offer ends Sunday.",
+      type: "success", category: "events", actionUrl: "/lobby", hasAmount: true,
+    },
+  ],
+};
+
+type BroadcastRecord = {
+  _id: string;
+  title: string;
+  message: string;
+  category: string;
+  type: string;
+  targetType: 'global' | 'targeted' | 'inactive';
+  intendedCount: number;
+  deliveredCount: number;
+  readCount: number;
+  createdAt: string;
+};
+
 function NotifySection() {
+  const [tab, setTab] = useState<"push" | "live" | "history">("push");
+
+  // Live (socket) state
+  const [liveTitle, setLiveTitle] = useState("");
+  const [liveMessage, setLiveMessage] = useState("");
+  const [liveType, setLiveType] = useState<"info" | "warning" | "success">("info");
+  const [liveSending, setLiveSending] = useState(false);
+  const [liveResult, setLiveResult] = useState<{ success: boolean; msg: string } | null>(null);
+
+  // Broadcast history state
+  const [broadcasts, setBroadcasts] = useState<BroadcastRecord[]>([]);
+  const [broadcastsLoading, setBroadcastsLoading] = useState(false);
+  const [broadcastPage, setBroadcastPage] = useState(1);
+  const [broadcastPages, setBroadcastPages] = useState(1);
+
+  // Push (FCM) state
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [type, setType] = useState<"info" | "warning" | "success">("info");
+  const [category, setCategory] = useState("system");
+  const [actionUrl, setActionUrl] = useState("");
+  const [target, setTarget] = useState<NotifTarget>("global");
+  const [userIds, setUserIds] = useState("");
+  const [inactiveHours, setInactiveHours] = useState("24");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [tokenUsers, setTokenUsers] = useState<number | null>(null);
 
-  const send = async () => {
-    if (!title.trim() || !message.trim()) return;
-    setSending(true);
-    setResult(null);
+  // Template picker state
+  const [templateGroup, setTemplateGroup] = useState<string | null>(null);
+  const [amountValue, setAmountValue] = useState("");
+  const [activeTemplate, setActiveTemplate] = useState<NotifTemplate | null>(null);
+
+  // Health state
+  const [health, setHealth] = useState<{ envVarsSet: boolean; tokenCount: number; hint: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  // Load FCM user count on mount
+  useEffect(() => {
+    admin.getPushUsers().then(r => setTokenUsers(r.data.total)).catch(() => {});
+  }, []);
+
+  const loadBroadcasts = useCallback(async (page = 1) => {
+    setBroadcastsLoading(true);
     try {
-      const res = await admin.sendNotification(title.trim(), message.trim(), type);
-      setResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
-      setTitle("");
-      setMessage("");
-    } catch (err: any) {
-      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
-    } finally {
-      setSending(false);
+      const r = await admin.getPushBroadcasts(page);
+      setBroadcasts(r.data.broadcasts);
+      setBroadcastPages(r.data.pages);
+      setBroadcastPage(page);
+    } catch { /* silent */ }
+    finally { setBroadcastsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") loadBroadcasts(1);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const checkHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const r = await admin.getPushHealth();
+      setHealth(r.data);
+    } catch { setHealth(null); }
+    finally { setHealthLoading(false); }
+  };
+
+  const applyTemplate = (tpl: NotifTemplate) => {
+    setActiveTemplate(tpl);
+    setAmountValue("");
+    setType(tpl.type);
+    setCategory(tpl.category);
+    setActionUrl(tpl.actionUrl ?? "");
+    if (!tpl.hasAmount) {
+      setTitle(tpl.title);
+      setMessage(tpl.message);
     }
+    // If has amount, wait until user fills amount
+  };
+
+  const applyAmountToTemplate = (amt: string) => {
+    if (!activeTemplate) return;
+    setTitle(activeTemplate.title.replace("{amount}", amt));
+    setMessage(activeTemplate.message.replace("{amount}", amt));
   };
 
   const typeOptions: { value: "info" | "warning" | "success"; label: string; color: string }[] = [
@@ -2585,98 +3210,1837 @@ function NotifySection() {
     { value: "success", label: "✅ Success", color: "#00ff88" },
   ];
 
+  const sendLive = async () => {
+    if (!liveTitle.trim() || !liveMessage.trim()) return;
+    setLiveSending(true);
+    setLiveResult(null);
+    try {
+      const res = await admin.sendNotification(liveTitle.trim(), liveMessage.trim(), liveType);
+      setLiveResult({ success: true, msg: `Sent to ${res.data.recipients} connected user(s)` });
+      setLiveTitle("");
+      setLiveMessage("");
+    } catch (err: any) {
+      setLiveResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setLiveSending(false);
+    }
+  };
+
+  const sendPush = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      let targetOpts: { global?: boolean; userIds?: string[]; inactiveHours?: number } = {};
+      if (target === "global") {
+        targetOpts = { global: true };
+      } else if (target === "inactive") {
+        targetOpts = { inactiveHours: parseInt(inactiveHours, 10) || 24 };
+      } else {
+        const ids = userIds.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (!ids.length) {
+          setResult({ success: false, msg: "Enter at least one User ID" });
+          setSending(false);
+          return;
+        }
+        targetOpts = { userIds: ids };
+      }
+      const res = await admin.sendPushNotification({
+        title: title.trim(),
+        message: message.trim(),
+        category,
+        type,
+        actionUrl: actionUrl.trim() || undefined,
+        ...targetOpts,
+      });
+      const d = res.data;
+      const modeLabel = d.mode === "global" ? "all users" : d.mode === "inactive" ? "inactive users" : `${d.count} user(s)`;
+      setResult({ success: true, msg: `Push sent to ${modeLabel}` });
+      setTitle(""); setMessage(""); setUserIds(""); setActionUrl("");
+      setActiveTemplate(null); setAmountValue(""); setTemplateGroup(null);
+      // Refresh history if it was already loaded
+      if (broadcasts.length > 0) loadBroadcasts(1);
+    } catch (err: any) {
+      setResult({ success: false, msg: err.response?.data?.error ?? "Failed to send" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const inputStyle = { border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" };
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-dark-text">Push Notification</h2>
-      <p className="text-xs text-dark-muted">Send a real-time notification to all currently connected users.</p>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-dark-text">Notifications</h2>
+        {tokenUsers !== null && (
+          <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+            📱 {tokenUsers} FCM device{tokenUsers !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
 
-      <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
-        {/* Type selector */}
-        <div>
-          <p className="text-xs text-dark-muted mb-2">Type</p>
-          <div className="flex gap-2">
-            {typeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setType(opt.value)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+        {([
+          { id: "push",    label: "📲 Push (FCM)" },
+          { id: "live",    label: "⚡ Live (Socket)" },
+          { id: "history", label: "📊 History" },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setResult(null); setLiveResult(null); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: tab === t.id ? "rgba(99,102,241,0.25)" : "transparent",
+              color: tab === t.id ? "#a5b4fc" : "#6b7280",
+              border: tab === t.id ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "push" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+
+          {/* ── Firebase Health Check ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={checkHealth} disabled={healthLoading}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>
+              {healthLoading ? "Checking…" : "🔍 Check Firebase"}
+            </button>
+            {health && (
+              <span className="text-[11px] px-2.5 py-1 rounded-full font-medium flex-1"
                 style={{
-                  background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
-                  color: type === opt.value ? opt.color : "#6b7280",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
+                  background: health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.1)" : "rgba(251,191,36,0.1)",
+                  color:      health.envVarsSet && health.tokenCount > 0 ? "#00ff88"              : "#fbbf24",
+                  border:     `1px solid ${health.envVarsSet && health.tokenCount > 0 ? "rgba(0,255,136,0.2)" : "rgba(251,191,36,0.2)"}`,
+                }}>
+                {health.envVarsSet ? "✓ Firebase OK" : "✗ Firebase not configured"} · {health.tokenCount} token{health.tokenCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {health && (
+              <p className="w-full text-[10px] text-dark-muted/70 -mt-2">{health.hint}</p>
+            )}
+          </div>
+
+          {health && !health.envVarsSet && (
+            <div className="rounded-xl p-3 text-xs space-y-1"
+              style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", color: "#fbbf24" }}>
+              <p className="font-bold">Add these to Render env vars:</p>
+              <p className="font-mono">FIREBASE_PROJECT_ID</p>
+              <p className="font-mono">FIREBASE_CLIENT_EMAIL</p>
+              <p className="font-mono">FIREBASE_PRIVATE_KEY</p>
+            </div>
+          )}
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+          {/* ── Template Picker ── */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Quick Templates</p>
+            {/* Group tabs */}
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {Object.keys(NOTIF_TEMPLATES).map(group => (
+                <button
+                  key={group}
+                  onClick={() => setTemplateGroup(templateGroup === group ? null : group)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all"
+                  style={{
+                    background: templateGroup === group ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${templateGroup === group ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: templateGroup === group ? "#a5b4fc" : "#64748b",
+                  }}>
+                  {group}
+                </button>
+              ))}
+            </div>
+
+            {/* Template cards */}
+            {templateGroup && (
+              <div className="flex flex-col gap-2 mb-1">
+                {(NOTIF_TEMPLATES[templateGroup] ?? []).map((tpl) => {
+                  const isActive = activeTemplate?.label === tpl.label && activeTemplate?.title === tpl.title;
+                  return (
+                    <button
+                      key={tpl.label}
+                      onClick={() => applyTemplate(tpl)}
+                      className="w-full text-left rounded-xl px-3 py-2.5 transition-all"
+                      style={{
+                        background: isActive ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${isActive ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                      }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold" style={{ color: isActive ? "#a5b4fc" : "#cbd5e1" }}>
+                          {tpl.label}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{
+                          background: tpl.type === "success" ? "rgba(0,255,136,0.1)" : tpl.type === "warning" ? "rgba(251,191,36,0.1)" : "rgba(96,165,250,0.1)",
+                          color: tpl.type === "success" ? "#00ff88" : tpl.type === "warning" ? "#fbbf24" : "#60a5fa",
+                        }}>
+                          {tpl.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: "#64748b" }}>
+                        {tpl.title}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Amount input when template needs it */}
+            {activeTemplate?.hasAmount && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={amountValue}
+                  onChange={e => {
+                    setAmountValue(e.target.value);
+                    applyAmountToTemplate(e.target.value);
+                  }}
+                  placeholder="Enter amount (e.g. 30 or ₹500)"
+                  className="flex-1 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                  style={{ border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.07)" }}
+                />
+                <span className="text-[11px] text-dark-muted shrink-0">fills {"{amount}"}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+          {/* Target mode */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Target</p>
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { v: "global",   l: "🌐 All Users" },
+                { v: "specific", l: "👤 Specific Users" },
+                { v: "inactive", l: "💤 Inactive Users" },
+              ] as { v: NotifTarget; l: string }[]).map(({ v, l }) => (
+                <button key={v} onClick={() => setTarget(v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: target === v ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${target === v ? "#6366f1" : "rgba(255,255,255,0.08)"}`,
+                    color: target === v ? "#a5b4fc" : "#6b7280",
+                  }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conditional target inputs */}
+          {target === "specific" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">User IDs <span className="text-dark-muted/50">(one per line or comma-separated)</span></p>
+              <textarea
+                value={userIds}
+                onChange={e => setUserIds(e.target.value)}
+                rows={3}
+                placeholder="64abc123…&#10;64def456…"
+                className="w-full px-3 py-2 rounded-xl text-xs text-dark-text bg-transparent outline-none resize-none font-mono"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {target === "inactive" && (
+            <div>
+              <p className="text-xs text-dark-muted mb-1.5">Inactive for at least (hours)</p>
+              <input
+                type="number" min={1} max={720}
+                value={inactiveHours}
+                onChange={e => setInactiveHours(e.target.value)}
+                className="w-32 px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {/* Category */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Category</p>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text outline-none"
+              style={{ ...inputStyle, appearance: "none" as any }}>
+              {NOTIF_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value} style={{ background: "#1a1a2e" }}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Type */}
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: type === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${type === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: type === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input
+              value={title} onChange={e => setTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Maintenance in 30 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Message */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea
+              value={message} onChange={e => setMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Notification body text…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle}
+            />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
+          </div>
+
+          {/* Action URL */}
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Action URL <span className="text-dark-muted/50">(optional deep link)</span></p>
+            <input
+              value={actionUrl} onChange={e => setActionUrl(e.target.value)}
+              placeholder="/lobby  or  /survival"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            onClick={sendPush}
+            disabled={sending || !title.trim() || !message.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}>
+            {sending ? "Sending…" : target === "global" ? "📢 Send to All Users" : target === "inactive" ? "💤 Send to Inactive" : "📲 Send to Selected Users"}
+          </button>
+
+          {result && (
+            <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
+              {result.success ? "✓ " : "✗ "}{result.msg}
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "live" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <p className="text-xs text-dark-muted">Instantly delivers an in-app toast to all currently connected users (no FCM required).</p>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-2">Type</p>
+            <div className="flex gap-2">
+              {typeOptions.map((opt) => (
+                <button key={opt.value} onClick={() => setLiveType(opt.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: liveType === opt.value ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${liveType === opt.value ? opt.color : "rgba(255,255,255,0.08)"}`,
+                    color: liveType === opt.value ? opt.color : "#6b7280",
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Title</p>
+            <input value={liveTitle} onChange={e => setLiveTitle(e.target.value)}
+              maxLength={80} placeholder="e.g. Server restart in 5 minutes"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
+              style={inputStyle} />
+          </div>
+
+          <div>
+            <p className="text-xs text-dark-muted mb-1.5">Message</p>
+            <textarea value={liveMessage} onChange={e => setLiveMessage(e.target.value)}
+              maxLength={300} rows={3}
+              placeholder="Detailed message visible in the notification bell…"
+              className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
+              style={inputStyle} />
+            <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{liveMessage.length}/300</p>
+          </div>
+
+          <button onClick={sendLive} disabled={liveSending || !liveTitle.trim() || !liveMessage.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff" }}>
+            {liveSending ? "Sending…" : "⚡ Broadcast Live"}
+          </button>
+
+          {liveResult && (
+            <p className="text-xs text-center font-medium" style={{ color: liveResult.success ? "#00ff88" : "#ff6b6b" }}>
+              {liveResult.success ? "✓ " : "✗ "}{liveResult.msg}
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div className="rounded-2xl p-5 space-y-4" style={cardStyle}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-dark-text">Broadcast History</p>
+            <button onClick={() => loadBroadcasts(broadcastPage)}
+              className="text-[11px] px-3 py-1 rounded-lg font-medium transition-all"
+              style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc" }}>
+              {broadcastsLoading ? "Loading…" : "↻ Refresh"}
+            </button>
+          </div>
+
+          {broadcastsLoading && broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6 animate-pulse">Loading broadcasts…</p>
+          ) : broadcasts.length === 0 ? (
+            <p className="text-xs text-dark-muted text-center py-6">No broadcasts sent yet</p>
+          ) : (
+            <div className="space-y-3">
+              {broadcasts.map(b => {
+                const deliverPct = b.intendedCount > 0
+                  ? Math.round((b.deliveredCount / b.intendedCount) * 100) : 0;
+                const readPct = b.intendedCount > 0
+                  ? Math.round((b.readCount / b.intendedCount) * 100) : 0;
+                const targetLabel = b.targetType === 'global' ? '🌍 Global'
+                  : b.targetType === 'targeted' ? '🎯 Targeted' : '⏰ Inactive';
+                const typeColor = b.type === 'success' ? '#00ff88'
+                  : b.type === 'warning' ? '#fbbf24' : '#60a5fa';
+                return (
+                  <div key={b._id} className="rounded-xl p-4 space-y-3"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {/* Header row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-dark-text truncate">{b.title}</p>
+                        <p className="text-[11px] text-dark-muted mt-0.5 line-clamp-2">{b.message}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                          style={{ background: `${typeColor}22`, color: typeColor }}>
+                          {b.type}
+                        </span>
+                        <span className="text-[10px] text-dark-muted">{targetLabel}</span>
+                      </div>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Intended", value: b.intendedCount, color: "#94a3b8", pct: null },
+                        { label: "Delivered", value: b.deliveredCount, color: "#60a5fa", pct: deliverPct },
+                        { label: "Read", value: b.readCount, color: "#00ff88", pct: readPct },
+                      ].map(stat => (
+                        <div key={stat.label} className="rounded-lg p-2.5 text-center"
+                          style={{ background: `${stat.color}11`, border: `1px solid ${stat.color}22` }}>
+                          <p className="text-lg font-bold" style={{ color: stat.color }}>{stat.value}</p>
+                          <p className="text-[10px] font-medium" style={{ color: `${stat.color}bb` }}>
+                            {stat.label}
+                          </p>
+                          {stat.pct !== null && (
+                            <p className="text-[10px]" style={{ color: `${stat.color}88` }}>
+                              {stat.pct}%
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Progress bars */}
+                    <div className="space-y-1.5">
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#60a5fa99" }}>Delivery rate</span>
+                          <span style={{ color: "#60a5fa" }}>{deliverPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${deliverPct}%`, background: "linear-gradient(90deg, #3b82f6, #60a5fa)" }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] mb-1">
+                          <span style={{ color: "#00ff8899" }}>Read rate</span>
+                          <span style={{ color: "#00ff88" }}>{readPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${readPct}%`, background: "linear-gradient(90deg, #00cc6a, #00ff88)" }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <p className="text-[10px] text-dark-muted/60">
+                      {new Date(b.createdAt).toLocaleString()} · {b.category}
+                    </p>
+                  </div>
+                );
+              })}
+
+              {/* Pagination */}
+              {broadcastPages > 1 && (
+                <div className="flex justify-center gap-2 pt-1">
+                  <button disabled={broadcastPage <= 1} onClick={() => loadBroadcasts(broadcastPage - 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>← Prev</button>
+                  <span className="text-xs text-dark-muted self-center">
+                    {broadcastPage} / {broadcastPages}
+                  </span>
+                  <button disabled={broadcastPage >= broadcastPages} onClick={() => loadBroadcasts(broadcastPage + 1)}
+                    className="px-3 py-1 rounded-lg text-xs disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>Next →</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Survival Config Section ───────────────────────────────────────────────────
+
+const SURVIVAL_TIER_DEFAULTS = {
+  beginner:   { entryPoints: 1000,  stageRewards: [200,  400,  700,   1200,  2500]  },
+  pro:        { entryPoints: 2000,  stageRewards: [400,  800,  1400,  2400,  5000]  },
+  elite:      { entryPoints: 5000,  stageRewards: [1000, 2000, 3500,  6000,  12500] },
+  boss_arena: { entryPoints: 10000, stageRewards: [2000, 4000, 7000,  12000, 25000] },
+} as const;
+
+const SURVIVAL_TIER_LABELS: Record<string, string> = {
+  beginner: "Beginner",
+  pro: "Pro",
+  elite: "Elite",
+  boss_arena: "Boss Arena",
+};
+
+const SURVIVAL_TIER_ICONS: Record<string, string> = {
+  beginner: "🌱",
+  pro: "⚡",
+  elite: "🔥",
+  boss_arena: "💀",
+};
+
+const SURVIVAL_TIER_COLORS: Record<string, string> = {
+  beginner: "#4ade80",
+  pro: "#60a5fa",
+  elite: "#a78bfa",
+  boss_arena: "#f97316",
+};
+
+const STAGE_NAMES = ["Safe AI", "Aggressive AI", "Bluff AI", "Smart AI", "Boss AI"];
+const STAGE_ICONS = ["🛡️", "⚔️", "🎭", "🧠", "👑"];
+
+function SurvivalConfigSection({
+  config,
+  onSave,
+}: {
+  config: any;
+  onSave: (data: any) => Promise<void>;
+}) {
+  const buildState = (cfg: any) => {
+    const sc = cfg.survivalConfig ?? {};
+    const keys = ["beginner", "pro", "elite", "boss_arena"] as const;
+    const out: any = {};
+    for (const k of keys) {
+      const def = SURVIVAL_TIER_DEFAULTS[k];
+      const src = sc[k] ?? {};
+      out[k] = {
+        entryPoints: typeof src.entryPoints === "number" ? src.entryPoints : def.entryPoints,
+        stageRewards: Array.isArray(src.stageRewards) && src.stageRewards.length === 5
+          ? [...src.stageRewards]
+          : [...def.stageRewards],
+      };
+    }
+    return out;
+  };
+
+  const [tiers, setTiers] = useState<any>(() => buildState(config));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setTiers(buildState(config)); }, [config]);
+
+  const setEntry = (tier: string, v: number) =>
+    setTiers((t: any) => ({ ...t, [tier]: { ...t[tier], entryPoints: Math.max(1, v) } }));
+
+  const setReward = (tier: string, idx: number, v: number) =>
+    setTiers((t: any) => {
+      const rewards = [...t[tier].stageRewards];
+      rewards[idx] = Math.max(1, v);
+      return { ...t, [tier]: { ...t[tier], stageRewards: rewards } };
+    });
+
+  const resetTier = async (tier: string) => {
+    await onSave({ survivalConfig: { [tier]: { reset: true } } });
+  };
+
+  const saveAll = async () => {
+    setSaving(true);
+    await onSave({ survivalConfig: tiers });
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg,rgba(16,185,129,0.1),rgba(139,92,246,0.08))", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)" }}>🏆</div>
+          <div>
+            <h2 className="text-base font-black text-white">AI Survival Championship</h2>
+            <p className="text-xs text-dark-muted">Configure entry costs & stage rewards for all 4 tiers</p>
           </div>
         </div>
-
-        {/* Title */}
-        <div>
-          <p className="text-xs text-dark-muted mb-1.5">Title</p>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={80}
-            placeholder="e.g. Maintenance in 30 minutes"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
-          />
+        <div className="flex items-center gap-2 mt-3 p-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <span className="text-sm">💡</span>
+          <p className="text-[11px] text-dark-muted"><span className="text-white font-semibold">100 pts = ₹1</span> · Players spend entry points to enter a tier and earn stage rewards for each AI they defeat.</p>
         </div>
+      </div>
 
-        {/* Message */}
+      {(["beginner", "pro", "elite", "boss_arena"] as const).map((tier) => {
+        const color = SURVIVAL_TIER_COLORS[tier];
+        const icon = SURVIVAL_TIER_ICONS[tier];
+        const label = SURVIVAL_TIER_LABELS[tier];
+        const totalReward = (tiers[tier].stageRewards as number[]).reduce((a: number, b: number) => a + b, 0);
+        const netGain = totalReward - tiers[tier].entryPoints;
+
+        return (
+          <div key={tier} className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${color}22`, background: "rgba(13,17,23,0.8)" }}>
+            {/* Tier header bar */}
+            <div className="flex items-center justify-between px-5 py-3.5" style={{ background: `linear-gradient(135deg,${color}12,transparent)`, borderBottom: `1px solid ${color}18` }}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ background: `${color}18`, border: `1px solid ${color}33` }}>
+                  {icon}
+                </div>
+                <div>
+                  <p className="text-sm font-black" style={{ color }}>{label} Tier</p>
+                  <p className="text-[10px] text-dark-muted">Entry · Stage Rewards · Max Payout</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-[10px] text-dark-muted">Max Payout</p>
+                  <p className="text-sm font-black" style={{ color }}>₹{(totalReward / 100).toFixed(0)}</p>
+                </div>
+                <button
+                  onClick={() => resetTier(tier)}
+                  className="text-[10px] px-2.5 py-1 rounded-lg transition-all"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#8b949e", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  ↺ Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* Entry Fee */}
+              <div className="flex items-start gap-4">
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: `${color}aa` }}>
+                    🎟️ Entry Cost (pts)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      value={tiers[tier].entryPoints}
+                      onChange={(e) => setEntry(tier, parseInt(e.target.value) || 1)}
+                      className="flex-1 bg-dark-bg border rounded-xl px-3 py-2.5 text-white text-sm font-bold focus:outline-none transition-all"
+                      style={{ borderColor: `${color}33` }}
+                    />
+                    <div className="text-center px-3 py-2 rounded-xl min-w-[60px]" style={{ background: `${color}10`, border: `1px solid ${color}22` }}>
+                      <p className="text-[10px] text-dark-muted">= Rupees</p>
+                      <p className="text-sm font-black" style={{ color }}>₹{(tiers[tier].entryPoints / 100).toFixed(0)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-center px-4 py-2 rounded-xl" style={{ background: netGain > 0 ? "rgba(0,255,136,0.08)" : "rgba(255,107,107,0.08)", border: `1px solid ${netGain > 0 ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)"}` }}>
+                  <p className="text-[10px] text-dark-muted">Net Gain</p>
+                  <p className="text-sm font-black" style={{ color: netGain > 0 ? "#00ff88" : "#ff6b6b" }}>{netGain > 0 ? "+" : ""}₹{(netGain / 100).toFixed(0)}</p>
+                </div>
+              </div>
+
+              {/* Stage Rewards */}
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider mb-3 block" style={{ color: `${color}aa` }}>
+                  🏅 Stage Rewards — Defeat each AI to earn
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[0, 1, 2, 3, 4].map((idx) => (
+                    <div key={idx} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}15` }}>
+                      <div className="py-1.5 text-center" style={{ background: `${color}0d` }}>
+                        <p className="text-[10px] font-bold" style={{ color: `${color}cc` }}>{STAGE_ICONS[idx]}</p>
+                        <p className="text-[9px] text-dark-muted mt-0.5">{STAGE_NAMES[idx].split(" ")[0]}</p>
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        value={tiers[tier].stageRewards[idx] ?? 0}
+                        onChange={(e) => setReward(tier, idx, parseInt(e.target.value) || 1)}
+                        className="w-full bg-dark-bg px-1 py-2 text-white text-xs text-center font-bold focus:outline-none"
+                        style={{ borderTop: `1px solid ${color}15` }}
+                      />
+                      <div className="py-1 text-center" style={{ background: "rgba(255,255,255,0.02)" }}>
+                        <p className="text-[9px] font-semibold" style={{ color: `${color}99` }}>
+                          ₹{((tiers[tier].stageRewards[idx] ?? 0) / 100).toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <button
+        onClick={saveAll}
+        disabled={saving}
+        className="w-full py-3.5 rounded-xl font-black text-sm transition-all disabled:opacity-50"
+        style={{ background: "linear-gradient(135deg,rgba(139,92,246,0.9),rgba(16,185,129,0.7))", color: "white", boxShadow: "0 4px 20px rgba(139,92,246,0.3)" }}
+      >
+        {saving ? "Saving Changes…" : "💾 Save Championship Config"}
+      </button>
+    </div>
+  );
+}
+
+// ── Analytics Section ─────────────────────────────────────────────────────────
+
+function AnalyticsSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+
+  const fetchAnalytics = useCallback(() => {
+    admin
+      .getAnalytics()
+      .then((r) => { setData(r.data); setLoading(false); })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    fetchAnalytics();
+    const t = setInterval(fetchAnalytics, 15000);
+    return () => clearInterval(t);
+  }, [fetchAnalytics]);
+
+  const handleReset = async () => {
+    if (!confirm("Reset all analytics data? This cannot be undone.")) return;
+    setResetting(true);
+    await admin.resetAnalytics().catch(console.error);
+    await fetchAnalytics();
+    setResetting(false);
+  };
+
+  if (loading || !data)
+    return <div className="text-dark-muted text-sm animate-pulse">Loading analytics…</div>;
+
+  const s = data.summary;
+  const personalities = ["safe", "aggressive", "bluff", "smart", "boss"];
+  const personalityColors: Record<string, string> = {
+    safe: "#00ff88", aggressive: "#ff6b6b", bluff: "#fbbf24",
+    smart: "#00d4ff", boss: "#a855f7",
+  };
+
+  const bar = (pct: number | null, color: string) => (
+    <div className="h-2 rounded-full bg-dark-border overflow-hidden">
+      <div
+        className="h-2 rounded-full transition-all duration-500"
+        style={{ width: `${pct ?? 0}%`, background: color }}
+      />
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Game Analytics</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchAnalytics}
+            className="text-xs text-dark-muted hover:text-neon-green px-2 py-1 rounded"
+          >
+            ↺ Refresh
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-400/30 hover:border-red-300/50 disabled:opacity-50"
+          >
+            {resetting ? "Resetting…" : "Reset Data"}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard icon="🎮" label="Total Games" value={s.totalGames} color="#00ff88" />
+        <StatCard icon="🔄" label="Total Rounds" value={s.totalRounds} color="#00d4ff" />
+        <StatCard icon="🤖" label="Bot Win Rate" value={s.botWinRate != null ? `${s.botWinRate}%` : "—"} color="#ff6b6b" />
+        <StatCard icon="👤" label="Human Win Rate" value={s.humanWinRate != null ? `${s.humanWinRate}%` : "—"} color="#00ff88" />
+        <StatCard icon="📣" label="Show Success" value={s.showSuccessRate != null ? `${s.showSuccessRate}%` : "—"} color="#fbbf24" />
+        <StatCard icon="⚔️" label="Attack Effective" value={s.attackEffectiveness != null ? `${s.attackEffectiveness}%` : "—"} color="#a855f7" />
+        <StatCard icon="🃏" label="Jack Effective" value={s.jackEffectiveness != null ? `${s.jackEffectiveness}%` : "—"} color="#00d4ff" />
+        <StatCard icon="⏱️" label="Avg Round" value={`${s.avgRoundDurationSec}s`} color="#fbbf24" />
+        <StatCard icon="🚜" label="Farming Signals" value={s.farmingSignals} color="#ff6b6b" />
+      </div>
+
+      {/* Bot win rate by personality */}
+      <div className="rounded-xl p-4 space-y-3" style={cardStyle}>
+        <p className="text-sm font-bold text-white">Win Rate by Bot Personality</p>
+        {personalities.map((p) => {
+          const rate: number | null = data.winRateByPersonality?.[p] != null
+            ? +(data.winRateByPersonality[p] * 100).toFixed(1)
+            : null;
+          return (
+            <div key={p} className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="capitalize font-semibold" style={{ color: personalityColors[p] }}>{p}</span>
+                <span className="text-dark-muted">{rate != null ? `${rate}%` : "—"}</span>
+              </div>
+              {bar(rate, personalityColors[p])}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Stage clear rates */}
+      {Object.keys(data.stageClearRates ?? {}).length > 0 && (
+        <div className="rounded-xl p-4 space-y-3" style={cardStyle}>
+          <p className="text-sm font-bold text-white">Survival Stage Clear Rates</p>
+          {Object.entries(data.stageClearRates as Record<string, number | null>)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([stage, rate]) => {
+              const pct = rate != null ? +(rate * 100).toFixed(1) : null;
+              return (
+                <div key={stage} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-dark-text">Stage {stage}</span>
+                    <span className="text-dark-muted">{pct != null ? `${pct}%` : "—"}</span>
+                  </div>
+                  {bar(pct, "#00d4ff")}
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {/* Show success by hand total */}
+      {Object.keys(data.showSuccessByTotal ?? {}).length > 0 && (
+        <div className="rounded-xl p-4" style={cardStyle}>
+          <p className="text-sm font-bold text-white mb-3">SHOW Success by Hand Total</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-dark-muted">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left pb-2">Total</th>
+                  <th className="text-right pb-2">Attempts</th>
+                  <th className="text-right pb-2">Successes</th>
+                  <th className="text-right pb-2">Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(data.showSuccessByTotal as Record<string, { attempts: number; successes: number }>)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([total, d]) => {
+                    const rate = d.attempts > 0 ? ((d.successes / d.attempts) * 100).toFixed(0) : "—";
+                    return (
+                      <tr key={total} className="border-b border-white/5">
+                        <td className="py-1.5 font-bold text-dark-text">≤{total}</td>
+                        <td className="py-1.5 text-right">{d.attempts}</td>
+                        <td className="py-1.5 text-right text-neon-green">{d.successes}</td>
+                        <td className="py-1.5 text-right font-bold" style={{ color: Number(rate) > 50 ? "#00ff88" : "#ff6b6b" }}>{rate}{typeof rate === "string" ? "" : "%"}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent events log */}
+      <div className="rounded-xl p-4" style={cardStyle}>
+        <p className="text-sm font-bold text-white mb-3">Recent Events (last 50)</p>
+        <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+          {(data.recentEvents as any[]).slice().reverse().map((ev: any, i: number) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] py-1 border-b border-white/5">
+              <span className="text-dark-muted font-mono w-28 shrink-0">{ev.type}</span>
+              <span className="text-dark-text truncate">
+                {ev.isBot ? "🤖" : "👤"}
+                {ev.personality ? ` [${ev.personality}]` : ""}
+                {ev.handTotal != null ? ` hand=${ev.handTotal}` : ""}
+                {ev.success != null ? (ev.success ? " ✅" : " ❌") : ""}
+                {ev.cardsThrown != null ? ` threw=${ev.cardsThrown}` : ""}
+                {ev.targetTook != null ? (ev.targetTook ? " took" : " blocked") : ""}
+                {ev.winnerIsBot != null ? (ev.winnerIsBot ? " bot won" : " human won") : ""}
+                {ev.durationMs != null ? ` ${(ev.durationMs / 1000).toFixed(1)}s` : ""}
+                {ev.stage != null ? ` stage=${ev.stage}` : ""}
+                {ev.passed != null ? (ev.passed ? " pass" : " fail") : ""}
+                {ev.botCount != null ? ` bots=${ev.botCount}` : ""}
+              </span>
+            </div>
+          ))}
+          {data.recentEvents.length === 0 && (
+            <p className="text-dark-muted text-xs text-center py-4">No events recorded yet. Play some games first.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="text-xs text-dark-muted text-center">Auto-refreshes every 15 seconds · In-memory rolling window (5000 events)</div>
+    </div>
+  );
+}
+
+// ── AI Guide Section ──────────────────────────────────────────────────────────
+
+function AiGuideSection() {
+  const [tab, setTab] = useState<"bots" | "stages" | "tiers" | "logic">("bots");
+
+  const tabs: { key: typeof tab; label: string; icon: string }[] = [
+    { key: "bots",   label: "Bot Personalities", icon: "🤖" },
+    { key: "stages", label: "Survival Stages",   icon: "⚔️" },
+    { key: "tiers",  label: "Tier & Rewards",    icon: "🏆" },
+    { key: "logic",  label: "Decision Logic",    icon: "🧠" },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.18))", border: "1px solid rgba(99,102,241,0.3)" }}>
+          🧬
+        </div>
         <div>
-          <p className="text-xs text-dark-muted mb-1.5">Message</p>
+          <h2 className="text-xl font-black text-white">AI & Bot Strategy Reference</h2>
+          <p className="text-xs" style={{ color: "rgba(148,163,184,0.6)" }}>Complete guide to bot personalities, survival stages, and decision logic</p>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+            style={{
+              background: tab === t.key ? "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${tab === t.key ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.06)"}`,
+              color: tab === t.key ? "#a5b4fc" : "rgba(148,163,184,0.7)",
+              boxShadow: tab === t.key ? "0 0 16px rgba(99,102,241,0.2)" : "none",
+            }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div key={tab}
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.16 }}>
+
+          {/* ── BOT PERSONALITIES ── */}
+          {tab === "bots" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(99,102,241,0.7)" }}>5 Bot Personalities</p>
+
+              {[
+                {
+                  name: "Safe", icon: "🛡️", color: "#34d399", glow: "rgba(52,211,153,0.15)",
+                  think: "1200ms base", style: "Defensive — waits for good hands", risk: "Low",
+                  key: ["High combo preservation (0.95)", "Random play 22%", "Shows at ≤5 pts", "Jack use bias 20%", "Killer instinct 15%", "Denial weight 28%"],
+                  tag: "Beginner-friendly",
+                },
+                {
+                  name: "Aggressive", icon: "⚡", color: "#f87171", glow: "rgba(248,113,113,0.15)",
+                  think: "280ms base", style: "Always attacks — non-stop pressure", risk: "High",
+                  key: ["Always attacks (alwaysAttack: true)", "Jack use bias 70%", "Killer instinct 85%", "Show interrupt bias 70%", "Denial weight 55%", "Random play only 6%"],
+                  tag: "Stage 2 & Final Boss",
+                },
+                {
+                  name: "Bluff", icon: "🎭", color: "#fbbf24", glow: "rgba(251,191,36,0.15)",
+                  think: "700ms ± 680ms jitter", style: "Deceptive — intentionally fakes weak hands", risk: "Medium",
+                  key: ["Wide timing jitter (psychological suspense)", "Breaks pairs on purpose to fake weakness", "Delays Show bluff — discards 2nd-best", "Deeper fake during bait phase", "Killer instinct 45%", "Denial weight 45%"],
+                  tag: "Stage 3 — Hardest to read",
+                },
+                {
+                  name: "Smart", icon: "🧠", color: "#60a5fa", glow: "rgba(96,165,250,0.15)",
+                  think: "480ms base", style: "Balanced — denial-aware, near-optimal", risk: "Medium",
+                  key: ["Denial weight 65% (avoids feeding you useful cards)", "Killer instinct 60%", "Show interrupt bias 65%", "Controlled imperfection (4% sub-optimal)", "2-turn lookahead on every discard", "Adapts to your archetype"],
+                  tag: "Stage 4 leader",
+                },
+                {
+                  name: "Boss", icon: "👑", color: "#a78bfa", glow: "rgba(167,139,250,0.15)",
+                  think: "200ms base", style: "Switches sub-mode every turn — human-like", risk: "Maximum",
+                  key: ["8 dynamic sub-modes per turn", "Emotional phases: building→pressure→cooldown→bait→surge", "15% chance to pick 2nd-best (controlled imperfection)", "Per-match variant seed (4 playstyles)", "Denial weight 82%, killer instinct 82%", "Show interrupt bias 90%"],
+                  tag: "Stage 5 — Final Boss",
+                },
+              ].map((bot, i) => (
+                <motion.div key={bot.name}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.07 }}
+                  className="rounded-2xl p-5"
+                  style={{ background: bot.glow, border: `1px solid ${bot.color}28`, boxShadow: `0 4px 24px ${bot.glow}` }}>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black"
+                        style={{ background: `${bot.color}20`, border: `1px solid ${bot.color}40` }}>
+                        {bot.icon}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-black" style={{ color: bot.color }}>{bot.name} Bot</p>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                            style={{ background: `${bot.color}18`, color: bot.color }}>
+                            {bot.tag}
+                          </span>
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: "rgba(148,163,184,0.7)" }}>{bot.style}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[10px] font-bold" style={{ color: "rgba(148,163,184,0.5)" }}>THINK TIME</p>
+                      <p className="text-sm font-black" style={{ color: bot.color }}>{bot.think}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {bot.key.map(k => (
+                      <div key={k} className="flex items-start gap-2 text-xs" style={{ color: "rgba(203,213,225,0.75)" }}>
+                        <span style={{ color: bot.color, flexShrink: 0 }}>›</span>{k}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Boss Sub-modes */}
+              <div className="rounded-2xl p-5 mt-2"
+                style={{ background: "rgba(167,139,250,0.07)", border: "1px solid rgba(167,139,250,0.2)" }}>
+                <p className="text-sm font-black text-white mb-1">👑 Boss — 8 Dynamic Sub-modes</p>
+                <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>Boss picks one mode every turn based on game state. Each match also gets a random "variant seed" that biases it toward a playstyle.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { mode: "killer",         when: "You're recovering/weak",           action: "Maximum aggression — closes you out fast", color: "#f87171" },
+                    { mode: "anti_show",      when: "You're close to calling Show",     action: "Burns all 7s/Js to interrupt your Show", color: "#fb923c" },
+                    { mode: "pressure_mode",  when: "You're panic-drawing",             action: "Relentless — zero breathing room given", color: "#f43f5e" },
+                    { mode: "tempo_control",  when: "You have a trap setup",            action: "Disrupts your rhythm with J skips", color: "#60a5fa" },
+                    { mode: "aggressive",     when: "You have very few cards",          action: "Rush attack with 7s immediately", color: "#f87171" },
+                    { mode: "combo_preserve", when: "Bait/cooldown phase",              action: "Builds own hand while denying yours", color: "#34d399" },
+                    { mode: "defensive",      when: "Cooldown phase (planned retreat)", action: "Slows down to bait you into rushing", color: "#94a3b8" },
+                    { mode: "trap",           when: "You're playing smart",             action: "Lures you into discarding useful cards", color: "#fbbf24" },
+                  ].map(m => (
+                    <div key={m.mode} className="rounded-xl p-3"
+                      style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${m.color}22` }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full"
+                          style={{ background: `${m.color}18`, color: m.color }}>
+                          {m.mode}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-semibold" style={{ color: "rgba(148,163,184,0.65)" }}>When: {m.when}</p>
+                      <p className="text-[11px] mt-0.5 font-bold text-white">{m.action}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-xl p-3" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(167,139,250,0.15)" }}>
+                  <p className="text-[11px] font-black text-white mb-2">Emotional Phase Cycle</p>
+                  <div className="flex items-center gap-1 flex-wrap text-[10px] font-bold">
+                    {["building", "pressure", "cooldown", "bait", "surge"].map((phase, i, arr) => (
+                      <React.Fragment key={phase}>
+                        <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(167,139,250,0.15)", color: "#a78bfa" }}>{phase}</span>
+                        {i < arr.length - 1 && <span style={{ color: "rgba(148,163,184,0.4)" }}>→</span>}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <p className="text-[10px] mt-2" style={{ color: "rgba(148,163,184,0.55)" }}>
+                    After 2 pressure turns → cooldown → bait (passive play to trick you) → surge (max spike). Creates human-like rhythm.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── SURVIVAL STAGES ── */}
+          {tab === "stages" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(245,158,11,0.7)" }}>5-Stage AI Championship</p>
+              <p className="text-sm mb-4" style={{ color: "rgba(148,163,184,0.65)" }}>
+                Win condition: your total hand score must be <strong className="text-white">strictly lower</strong> than every bot's score. 3 rounds per stage. Bots escalate each stage.
+              </p>
+              {[
+                { stage: 1, format: "1v1",  bots: ["Safe Bot"],                              personalities: ["safe"],                           difficulty: 1, color: "#34d399", desc: "Defensive AI — learns basic strategies, safe to practice with" },
+                { stage: 2, format: "1v1",  bots: ["Aggressive Bot"],                        personalities: ["aggressive"],                     difficulty: 2, color: "#fbbf24", desc: "Non-stop attack pressure — throws 7s constantly, very fast decisions" },
+                { stage: 3, format: "1v1",  bots: ["Bluff Bot"],                             personalities: ["bluff"],                          difficulty: 3, color: "#f97316", desc: "Deceptive — fakes weakness, unpredictable timing, psychological warfare" },
+                { stage: 4, format: "1v2",  bots: ["Smart AI", "Aggressive AI"],             personalities: ["smart", "aggressive"],            difficulty: 4, color: "#f87171", desc: "Smart controls tempo and denies your cards; Aggressive attacks simultaneously" },
+                { stage: 5, format: "1v3",  bots: ["Boss AI", "Smart AI", "Aggressive AI"], personalities: ["boss", "smart", "aggressive"],    difficulty: 5, color: "#a78bfa", desc: "Final Boss Arena — Boss switches modes every turn, two supports apply constant pressure" },
+              ].map((s, i) => (
+                <motion.div key={s.stage}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  className="rounded-2xl p-5"
+                  style={{ background: "rgba(0,0,0,0.35)", border: `1px solid ${s.color}28` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg"
+                        style={{ background: `${s.color}15`, border: `1px solid ${s.color}40`, color: s.color }}>
+                        S{s.stage}
+                      </div>
+                      <div>
+                        <p className="font-black text-white text-sm">{s.bots[0]}{s.bots.length > 1 ? ` + ${s.bots.length - 1} more` : ""}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                            style={{ background: `${s.color}18`, color: s.color }}>
+                            {s.format}
+                          </span>
+                          <span className="text-[10px]" style={{ color: "rgba(148,163,184,0.5)" }}>{"★".repeat(s.difficulty)}{"☆".repeat(5 - s.difficulty)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: "rgba(203,213,225,0.7)" }}>{s.desc}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {s.bots.map((b, bi) => (
+                      <div key={b} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <span className="text-[11px] font-black text-white">{b}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(0,0,0,0.3)", color: "rgba(148,163,184,0.6)" }}>
+                          {s.personalities[bi]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+              <div className="rounded-2xl p-4 mt-2"
+                style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                <p className="text-sm font-black text-white mb-2">💡 Player Tips</p>
+                <div className="space-y-1.5">
+                  {[
+                    "Against Safe — it rarely attacks, so focus on getting your hand to ≤5 and Show fast",
+                    "Against Aggressive — counter 7-attacks with your own 7s; if you have none, take the cards calmly",
+                    "Against Bluff — ignore its timing tells; just play your own optimal line",
+                    "Stage 4 — target Smart AI first (it controls discard denial); Aggressive runs itself into walls",
+                    "Stage 5 — Boss switches modes; don't adapt to its last move, adapt to your own hand state",
+                  ].map(tip => (
+                    <div key={tip} className="flex items-start gap-2 text-xs" style={{ color: "rgba(203,213,225,0.7)" }}>
+                      <span style={{ color: "#34d399", flexShrink: 0 }}>›</span>{tip}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TIER & REWARDS ── */}
+          {tab === "tiers" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(168,85,247,0.7)" }}>Tournament Tiers & Point Rewards</p>
+              <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>100 points = ₹1 wallet balance. Rewards credited per stage cleared — you keep what you earn even if eliminated later. Refund only if you quit before completing a single round.</p>
+
+              {[
+                { tier: "Beginner",    entry: 1000, rewards: [100, 200, 300, 450, 700],     total: 1750, color: "#34d399", icon: "🌱" },
+                { tier: "Pro",         entry: 2000, rewards: [200, 350, 600, 900, 1500],    total: 3550, color: "#60a5fa", icon: "⚡" },
+                { tier: "Elite",       entry: 5000, rewards: [600, 900, 1400, 2200, 3800],  total: 8900, color: "#f59e0b", icon: "💎" },
+                { tier: "Boss Arena",  entry: 10000, rewards: [1200, 1800, 2600, 4200, 7600], total: 17400, color: "#a78bfa", icon: "👑" },
+              ].map((t, i) => {
+                const net = t.total - t.entry;
+                const roi = Math.round((net / t.entry) * 100);
+                return (
+                  <motion.div key={t.tier}
+                    initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    className="rounded-2xl p-5"
+                    style={{ background: "rgba(0,0,0,0.35)", border: `1px solid ${t.color}30` }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{t.icon}</span>
+                        <div>
+                          <p className="font-black text-white">{t.tier}</p>
+                          <p className="text-xs" style={{ color: "rgba(148,163,184,0.6)" }}>Entry: <span style={{ color: t.color }}>{t.entry.toLocaleString()} pts</span> (₹{t.entry / 100})</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs" style={{ color: "rgba(148,163,184,0.5)" }}>Max earn</p>
+                        <p className="font-black" style={{ color: t.color }}>{t.total.toLocaleString()} pts</p>
+                        <p className="text-[10px]" style={{ color: net > 0 ? "#34d399" : "#f87171" }}>ROI: +{roi}%</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {t.rewards.map((r, si) => (
+                        <div key={si} className="rounded-xl p-2 text-center"
+                          style={{ background: `${t.color}10`, border: `1px solid ${t.color}25` }}>
+                          <p className="text-[9px] font-bold mb-1" style={{ color: "rgba(148,163,184,0.5)" }}>S{si + 1}</p>
+                          <p className="text-sm font-black" style={{ color: t.color }}>{r}</p>
+                          <p className="text-[9px]" style={{ color: "rgba(148,163,184,0.4)" }}>pts</p>
+                          <p className="text-[9px] mt-0.5 font-semibold" style={{ color: "rgba(52,211,153,0.7)" }}>₹{r / 100}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-4 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div className="text-xs" style={{ color: "rgba(148,163,184,0.55)" }}>
+                        Complete all 5 stages → net <span style={{ color: "#34d399" }}>+{net.toLocaleString()} pts (₹{net / 100})</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+
+              <div className="rounded-2xl p-4" style={{ background: "rgba(96,165,250,0.07)", border: "1px solid rgba(96,165,250,0.2)" }}>
+                <p className="text-sm font-black text-white mb-3">📋 Refund Policy</p>
+                <div className="space-y-2 text-xs" style={{ color: "rgba(203,213,225,0.7)" }}>
+                  <div className="flex items-start gap-2"><span style={{ color: "#34d399" }}>✓</span>Full refund if you quit before completing Round 1 of Stage 1</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#f87171" }}>✗</span>No refund after any round has been played</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#34d399" }}>✓</span>All stage rewards already credited remain in wallet</div>
+                  <div className="flex items-start gap-2"><span style={{ color: "#fbbf24" }}>⚠</span>Stale/crashed sessions auto-refunded on next login</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── DECISION LOGIC ── */}
+          {tab === "logic" && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "rgba(96,165,250,0.7)" }}>Bot Decision Pipeline (per turn)</p>
+              <p className="text-xs mb-4" style={{ color: "rgba(148,163,184,0.6)" }}>
+                Every bot executes these steps in strict priority order each turn. Higher-priority signals override lower ones.
+              </p>
+
+              {[
+                { step: 1,  title: "Show Interruption",           color: "#f43f5e", icon: "🚨",
+                  when: "Threat = CRITICAL, opponent within 3 cards of Show",
+                  action: "Preserves 7s for attack; dumps highest-value safe card. Sacrifices own optimization to prevent your Show." },
+                { step: 2,  title: "Attack: Throw All 7s",        color: "#f87171", icon: "⚔️",
+                  when: "Opponent hand ≤ attackAllAt threshold (varies by personality)",
+                  action: "Throws all 7s simultaneously to dump maximum cards on you. Cannot be countered unless you hold 7s." },
+                { step: 3,  title: "Bluff Tactical Line",         color: "#fbbf24", icon: "🎭",
+                  when: "Bluff personality only, threat is not high/critical, 20% of turns",
+                  action: "Intentionally breaks a pair (medium-value) to fake a scattered hand, baiting you into thinking it's weak." },
+                { step: 4,  title: "Anti-Determinism",            color: "#a78bfa", icon: "🎲",
+                  when: "Boss/smart: 4-15% chance, not triggered recently",
+                  action: "Picks 2nd-best option instead of optimal — prevents you from pattern-reading and exploiting predictability." },
+                { step: 5,  title: "Immediate Show Check",        color: "#34d399", icon: "✅",
+                  when: "Best discard would drop hand score to ≤5",
+                  action: "Executes the discard immediately and calls Show next turn. Won't delay a guaranteed win." },
+                { step: 6,  title: "Strategic 7 Deployment",      color: "#f97316", icon: "7️⃣",
+                  when: "Has 7s; opponent hand ≤ sevenSaveThreshold OR killer instinct active",
+                  action: "Deploys one or all 7s strategically. Saves them until opponent is close enough to make the attack painful." },
+                { step: 7,  title: "Jack Skip for Tempo Denial",  color: "#60a5fa", icon: "🃏",
+                  when: "Has J; next player hand ≤ skipAt threshold; no 7s available",
+                  action: "Burns J to skip your turn and deny you a draw. Most effective when you're 1-2 cards away from winning." },
+                { step: 8,  title: "Opponent-Benefit Penalty",    color: "#818cf8", icon: "🧮",
+                  when: "Every discard decision (always active)",
+                  action: "Scores every discard option by how much it helps you. Avoids giving away Aces, 2s, 3s, jokers. Multiplied by 2× in CRITICAL threat." },
+                { step: 9,  title: "2-Turn Lookahead",            color: "#a78bfa", icon: "🔭",
+                  when: "Every discard option evaluated",
+                  action: "Simulates one more discard after the current one. Options that lead to ≤5 score in 2 turns get a priority bonus." },
+                { step: 10, title: "Show Decision",               color: "#34d399", icon: "🏁",
+                  when: "Total ≤ showHardMax (safe:5, boss:5, smart:6, bluff:9, aggressive:7)",
+                  action: "Calls Show if confidence ≥ threshold. Calls sooner when you're close to Showing first (race condition logic)." },
+              ].map((s, i) => (
+                <motion.div key={s.step}
+                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="rounded-2xl p-4 flex gap-4"
+                  style={{ background: "rgba(0,0,0,0.3)", border: `1px solid ${s.color}22` }}>
+                  <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm"
+                    style={{ background: `${s.color}15`, border: `1px solid ${s.color}35`, color: s.color }}>
+                    {s.step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{s.icon}</span>
+                      <p className="font-black text-white text-sm">{s.title}</p>
+                    </div>
+                    <p className="text-[11px] mb-1" style={{ color: "rgba(148,163,184,0.55)" }}>
+                      <span className="font-bold" style={{ color: s.color }}>When: </span>{s.when}
+                    </p>
+                    <p className="text-[11px]" style={{ color: "rgba(203,213,225,0.7)" }}>{s.action}</p>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Threat Level Engine */}
+              <div className="rounded-2xl p-5" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                <p className="text-sm font-black text-white mb-3">🌡️ Threat Level Engine</p>
+                <p className="text-xs mb-3" style={{ color: "rgba(148,163,184,0.6)" }}>
+                  Computed every turn. Drives aggression multipliers across all 10 steps.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { level: "LOW",      color: "#34d399", condition: "Opponent 7+ cards, low show pressure" },
+                    { level: "MEDIUM",   color: "#fbbf24", condition: "Opponent 5-6 cards OR show pressure ≥30%" },
+                    { level: "HIGH",     color: "#f97316", condition: "Opponent 3-4 cards OR show pressure ≥50%" },
+                    { level: "CRITICAL", color: "#f43f5e", condition: "Opponent ≤2 cards OR show pressure ≥75%" },
+                  ].map(t => (
+                    <div key={t.level} className="rounded-xl p-3"
+                      style={{ background: `${t.color}10`, border: `1px solid ${t.color}30` }}>
+                      <p className="text-xs font-black mb-1" style={{ color: t.color }}>{t.level}</p>
+                      <p className="text-[10px]" style={{ color: "rgba(148,163,184,0.65)" }}>{t.condition}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Player Archetypes */}
+              <div className="rounded-2xl p-5" style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <p className="text-sm font-black text-white mb-3">🎯 Player Archetype Detection</p>
+                <p className="text-xs mb-3" style={{ color: "rgba(148,163,184,0.6)" }}>Bots observe your play pattern and classify you. Changes how they respond to you specifically.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { arch: "fast_show",     sig: "Many Shows + high cut rate → bot rushes to Show first" },
+                    { arch: "combo_hoarder", sig: "Holds pairs/triples → bot avoids giving matching ranks" },
+                    { arch: "aggressive",    sig: "Many attack throws → bot goes defensive then counters" },
+                    { arch: "defensive",     sig: "Many attack takes → bot increases attack frequency" },
+                    { arch: "trap",          sig: "Stable high hand count → bot controls tempo to disrupt" },
+                    { arch: "hold_7s",       sig: "Never throws 7s → bot adds trap signal, expects counter-attack" },
+                  ].map(a => (
+                    <div key={a.arch} className="flex items-start gap-2 rounded-xl p-2.5"
+                      style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(245,158,11,0.1)" }}>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                        style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                        {a.arch}
+                      </span>
+                      <p className="text-[11px]" style={{ color: "rgba(203,213,225,0.65)" }}>{a.sig}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+interface AnnouncementRecord {
+  _id: string;
+  message: string;
+  type: "banner" | "marquee" | "popup";
+  active: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+function AnnouncementsSection() {
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [type, setType] = useState<"banner" | "marquee" | "popup">("banner");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await admin.getAnnouncements();
+      setAnnouncements(r.data.announcements);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!message.trim()) { setError("Message is required"); return; }
+    setError(null);
+    setAdding(true);
+    try {
+      await admin.createAnnouncement({ message: message.trim(), type });
+      setMessage("");
+      await load();
+    } catch {
+      setError("Failed to add announcement");
+    } finally { setAdding(false); }
+  };
+
+  const handleToggle = async (id: string, active: boolean) => {
+    try {
+      await admin.updateAnnouncement(id, { active: !active });
+      setAnnouncements(prev => prev.map(a => a._id === id ? { ...a, active: !active } : a));
+    } catch { /* silent */ }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await admin.deleteAnnouncement(id);
+      setAnnouncements(prev => prev.filter(a => a._id !== id));
+    } catch { /* silent */ }
+  };
+
+  const TYPE_LABELS: Record<string, string> = {
+    banner: "Banner",
+    marquee: "Marquee",
+    popup: "Popup",
+  };
+
+  const TYPE_COLORS: Record<string, string> = {
+    banner: "#60a5fa",
+    marquee: "#fbbf24",
+    popup: "#a78bfa",
+  };
+
+  const TYPE_ICONS: Record<string, string> = { banner: "🔔", marquee: "📡", popup: "💬" };
+  const TYPE_DESC: Record<string, string> = {
+    banner: "Pinned bar at the top of every page",
+    marquee: "Animated scrolling ticker strip",
+    popup: "Floating card — players must dismiss",
+  };
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.4)", boxShadow: "0 0 20px rgba(99,102,241,0.2)" }}>
+          📣
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-white">Announcements</h2>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(148,163,184,0.6)" }}>Broadcast messages to all players in real-time</p>
+        </div>
+      </div>
+
+      {/* Type cards — select visually */}
+      <div className="grid grid-cols-3 gap-3">
+        {(["banner","marquee","popup"] as const).map(t => (
+          <button key={t} onClick={() => setType(t)}
+            className="rounded-2xl p-4 text-left transition-all"
+            style={{
+              background: type === t
+                ? `linear-gradient(135deg,${TYPE_COLORS[t]}22,${TYPE_COLORS[t]}10)`
+                : "rgba(255,255,255,0.03)",
+              border: `1.5px solid ${type === t ? TYPE_COLORS[t] + "60" : "rgba(255,255,255,0.07)"}`,
+              boxShadow: type === t ? `0 0 20px ${TYPE_COLORS[t]}18` : "none",
+              transform: type === t ? "translateY(-1px)" : "none",
+            }}>
+            <div className="text-xl mb-2">{TYPE_ICONS[t]}</div>
+            <p className="text-sm font-black mb-1" style={{ color: type === t ? TYPE_COLORS[t] : "#e2e8f0" }}>
+              {TYPE_LABELS[t]}
+            </p>
+            <p className="text-[10px] leading-snug" style={{ color: "rgba(148,163,184,0.55)" }}>
+              {TYPE_DESC[t]}
+            </p>
+          </button>
+        ))}
+      </div>
+
+      {/* Compose area */}
+      <div className="rounded-2xl overflow-hidden"
+        style={{ background: "rgba(12,14,22,0.97)", border: "1px solid rgba(255,255,255,0.07)" }}>
+        {/* Top accent */}
+        <div style={{ height: 3, background: `linear-gradient(90deg,${TYPE_COLORS[type]},${TYPE_COLORS[type]}80,transparent)` }} />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{TYPE_ICONS[type]}</span>
+            <p className="text-sm font-bold text-white">Compose {TYPE_LABELS[type]}</p>
+          </div>
+
           <textarea
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={300}
-            rows={3}
-            placeholder="Detailed message visible in the notification bell…"
-            className="w-full px-3 py-2 rounded-xl text-sm text-dark-text bg-transparent outline-none resize-none"
-            style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
+            onChange={e => setMessage(e.target.value)}
+            placeholder={`Write your ${TYPE_LABELS[type].toLowerCase()} message here…`}
+            rows={4}
+            maxLength={500}
+            className="w-full rounded-xl px-4 py-3 text-sm resize-none outline-none text-dark-text placeholder-dark-muted"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${message ? TYPE_COLORS[type] + "40" : "rgba(255,255,255,0.08)"}`,
+              transition: "border-color 0.2s",
+            }}
           />
-          <p className="text-[10px] text-dark-muted/60 text-right mt-0.5">{message.length}/300</p>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{ color: "rgba(148,163,184,0.4)" }}>
+              {message.length}/500 characters
+            </p>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !message.trim()}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all disabled:opacity-40"
+              style={{
+                background: `linear-gradient(135deg,${TYPE_COLORS[type]}30,${TYPE_COLORS[type]}18)`,
+                border: `1px solid ${TYPE_COLORS[type]}50`,
+                color: TYPE_COLORS[type],
+                boxShadow: !adding && message.trim() ? `0 0 16px ${TYPE_COLORS[type]}20` : "none",
+              }}
+            >
+              {adding ? "Publishing…" : "＋ Publish Announcement"}
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-widest" style={{ color: "rgba(148,163,184,0.45)" }}>
+            Published ({announcements.length})
+          </p>
         </div>
 
-        {/* Send button */}
-        <button
-          onClick={send}
-          disabled={sending || !title.trim() || !message.trim()}
-          className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}
-        >
-          {sending ? "Sending…" : "📢 Send to All Users"}
-        </button>
+        {loading ? (
+          <div className="rounded-2xl p-8 text-center text-sm text-dark-muted animate-pulse" style={cardStyle}>Loading…</div>
+        ) : announcements.length === 0 ? (
+          <div className="rounded-2xl p-10 text-center" style={cardStyle}>
+            <p className="text-3xl mb-3">📭</p>
+            <p className="text-sm font-semibold text-dark-muted">No announcements published yet</p>
+            <p className="text-xs text-dark-muted mt-1">Compose one above and hit Publish</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {announcements.map(ann => (
+              <motion.div
+                key={ann._id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: ann.active ? 1 : 0.55, y: 0 }}
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: ann.active
+                    ? `linear-gradient(135deg,${TYPE_COLORS[ann.type]}10,rgba(12,14,22,0.97))`
+                    : "rgba(12,14,22,0.7)",
+                  border: `1px solid ${ann.active ? TYPE_COLORS[ann.type] + "35" : "rgba(255,255,255,0.06)"}`,
+                }}>
+                {/* Left accent */}
+                <div style={{ display: "flex" }}>
+                  <div style={{ width: 4, flexShrink: 0, background: ann.active ? TYPE_COLORS[ann.type] : "rgba(255,255,255,0.08)" }} />
+                  <div className="flex-1 p-5">
+                    <div className="flex items-start gap-4">
+                      {/* Icon circle */}
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                        style={{
+                          background: `${TYPE_COLORS[ann.type]}18`,
+                          border: `1px solid ${TYPE_COLORS[ann.type]}35`,
+                        }}>
+                        {TYPE_ICONS[ann.type]}
+                      </div>
 
-        {result && (
-          <p className="text-xs text-center font-medium" style={{ color: result.success ? "#00ff88" : "#ff6b6b" }}>
-            {result.success ? "✓ " : "✗ "}{result.msg}
-          </p>
+                      <div className="flex-1 min-w-0">
+                        {/* Badge + status */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                            style={{ background: `${TYPE_COLORS[ann.type]}20`, color: TYPE_COLORS[ann.type], border: `1px solid ${TYPE_COLORS[ann.type]}35` }}>
+                            {TYPE_LABELS[ann.type]}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                            style={{ background: ann.active ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)", color: ann.active ? "#22c55e" : "#6b7280" }}>
+                            {ann.active ? "● Live" : "○ Paused"}
+                          </span>
+                        </div>
+
+                        {/* Message */}
+                        <p className="text-base font-semibold text-white break-words leading-relaxed">
+                          {ann.message}
+                        </p>
+
+                        <p className="text-[11px] mt-2" style={{ color: "rgba(148,163,184,0.4)" }}>
+                          Published {new Date(ann.createdAt).toLocaleDateString()} at {new Date(ann.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        {/* Toggle */}
+                        <button
+                          onClick={() => handleToggle(ann._id, ann.active)}
+                          className="relative flex-shrink-0"
+                          style={{ width: 48, height: 26, borderRadius: 13,
+                            background: ann.active ? "#22c55e" : "rgba(255,255,255,0.1)",
+                            border: `1px solid ${ann.active ? "#16a34a" : "rgba(255,255,255,0.1)"}`,
+                            transition: "background 0.2s", cursor: "pointer" }}
+                          title={ann.active ? "Pause" : "Activate"}
+                        >
+                          <motion.span layout
+                            className="absolute top-[3px] w-5 h-5 bg-white rounded-full shadow-md"
+                            animate={{ x: ann.active ? 24 : 3 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDelete(ann._id)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.7)", fontSize: 16 }}
+                          title="Delete"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
+// ── Missed Payouts Section ───────────────────────────────────────────────────
+
+function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => void }) {
+  const [data, setData] = useState<any>(null);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [repaying, setRepaying] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const showToast = (msg: string, ok: boolean) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await admin.getMissedPayouts(page);
+      setData(r.data);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, [page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const repay = async (userId: string, amount: number, roomCode: string, username: string) => {
+    if (!confirm(`Repay ₹${amount} to ${username} for room ${roomCode}?`)) return;
+    setRepaying(userId + roomCode);
+    try {
+      const r = await admin.repayMissedPayout({ userId, amount, roomCode, note: "Admin repay via dashboard" });
+      showToast(`₹${amount} repaid to ${r.data.username}. New balance: ₹${r.data.balance}`, true);
+      load();
+    } catch (e: any) {
+      showToast(e?.response?.data?.error ?? "Repay failed", false);
+    } finally { setRepaying(null); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-white">Missed Prize Payouts</h2>
+        <p className="text-xs text-dark-muted mt-1">
+          Failed winning transactions and games where entry fees were paid but no prize was issued.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+      ) : (
+        <>
+          {/* Failed transactions */}
+          <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+            <div className="px-4 py-3 flex items-center gap-2"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,59,92,0.06)" }}>
+              <span className="text-sm font-bold text-white">Failed Prize Transactions</span>
+              {(data?.total ?? 0) > 0 && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: "rgba(255,59,92,0.2)", color: "#ff6b6b" }}>{data.total}</span>
+              )}
+            </div>
+            {(data?.failed ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-dark-muted">No failed transactions</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {data.failed.map((t: any) => (
+                  <div key={t._id} className="px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white">{t.description}</p>
+                      <p className="text-[11px] text-dark-muted font-mono">{t.userId} · {new Date(t.createdAt).toLocaleString()}</p>
+                      {t.metadata?.failReason && (
+                        <p className="text-[10px] mt-0.5" style={{ color: "#ff6b6b" }}>Reason: {t.metadata.failReason}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold text-neon-red">₹{t.amount}</span>
+                      <button
+                        onClick={() => repay(t.userId, t.amount, t.metadata?.roomCode ?? "", t.userId)}
+                        disabled={repaying === t.userId + (t.metadata?.roomCode ?? "")}
+                        className="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40"
+                        style={{ background: "rgba(0,255,136,0.15)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.3)" }}
+                      >
+                        {repaying === t.userId + (t.metadata?.roomCode ?? "") ? "…" : "Repay"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Orphaned games — entry fee paid, no prize issued */}
+          <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+            <div className="px-4 py-3"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(251,191,36,0.06)" }}>
+              <span className="text-sm font-bold text-white">Games With No Prize Record</span>
+              <p className="text-[11px] text-dark-muted mt-0.5">Finished games where players paid but no prize transaction exists</p>
+            </div>
+            {(data?.orphaned ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-dark-muted">No orphaned games found</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {data.orphaned.map((g: any) => (
+                  <div key={g.roomId} className="px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white">Room: {g.roomId}</p>
+                      <p className="text-[11px] text-dark-muted">
+                        Winner: {g.winnerUsername ?? "unknown"} · {g.paidCount} paid player{g.paidCount !== 1 ? "s" : ""} · Pot: ₹{g.totalPot}
+                      </p>
+                      <p className="text-[11px] text-dark-muted">{g.endedAt ? new Date(g.endedAt).toLocaleString() : "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                      <span className="font-bold" style={{ color: "#fbbf24" }}>₹{g.totalPot}</span>
+                      {onReview && (
+                        <button
+                          onClick={() => onReview(g.roomId)}
+                          className="text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-colors"
+                          style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}
+                        >
+                          🕵️ Review
+                        </button>
+                      )}
+                      {g.winnerId && (
+                        <button
+                          onClick={() => repay(g.winnerId, g.totalPot, g.roomId, g.winnerUsername ?? g.winnerId)}
+                          disabled={!!repaying}
+                          className="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40"
+                          style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}
+                        >
+                          {repaying ? "…" : "Repay Winner"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination for failed transactions */}
+          {(data?.pages ?? 1) > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">← Prev</button>
+              <span className="text-xs text-dark-muted">{page} / {data.pages}</span>
+              <button onClick={() => setPage(p => Math.min(data.pages, p + 1))} disabled={page === data.pages}
+                className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">Next →</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl"
+          style={{
+            background: toast.ok ? "rgba(0,200,100,0.15)" : "rgba(220,50,50,0.15)",
+            border: toast.ok ? "1px solid rgba(0,200,100,0.4)" : "1px solid rgba(220,50,50,0.4)",
+            color: toast.ok ? "#00e676" : "#ff6b6b",
+          }}>
+          {toast.ok ? "✅" : "❌"} {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
-const NAV: { key: Section; icon: string; label: string }[] = [
-  { key: "overview", icon: "📊", label: "Overview" },
-  { key: "rooms", icon: "🎮", label: "Live Rooms" },
-  { key: "users", icon: "👤", label: "Users" },
-  { key: "leaderboard", icon: "🏆", label: "Leaderboard" },
-  { key: "deposits", icon: "📥", label: "Deposits" },
-  { key: "withdrawals", icon: "💸", label: "Withdrawals" },
-  { key: "wallets", icon: "💰", label: "Wallets" },
-  { key: "tournaments", icon: "⚔️", label: "Tournaments" },
-  { key: "support", icon: "🎧", label: "Support" },
-  { key: "features", icon: "⚙️", label: "Features" },
-  { key: "gameconfig", icon: "🎯", label: "Game Config" },
-  { key: "walletconfig", icon: "💳", label: "Wallet Config" },
-  { key: "notify", icon: "📢", label: "Notify Users" },
+type NavGroup = {
+  label: string;
+  accent: string;
+  bg: string;
+  items: { key: Section; icon: string; label: string }[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "ARENA",
+    accent: "#f59e0b",
+    bg: "rgba(245,158,11,0.08)",
+    items: [
+      { key: "overview",      icon: "📊", label: "Dashboard" },
+      { key: "rooms",         icon: "🎮", label: "Live Rooms" },
+      { key: "gamereview",    icon: "🕵️", label: "Game Review" },
+      { key: "tournaments",   icon: "🤖", label: "AI Championship" },
+      { key: "gameconfig",    icon: "🎯", label: "Game Config" },
+      { key: "survivalconfig",  icon: "🛡️", label: "Survival Config" },
+      { key: "analytics",       icon: "📈", label: "Analytics" },
+      { key: "aiguide",       icon: "🧬", label: "AI Strategy Guide" },
+    ],
+  },
+  {
+    label: "PLAYERS",
+    accent: "#60a5fa",
+    bg: "rgba(96,165,250,0.08)",
+    items: [
+      { key: "users",         icon: "👥", label: "Players" },
+      { key: "playerintel",   icon: "🔍", label: "Player Intel" },
+      { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
+      { key: "support",       icon: "🎧", label: "Support" },
+      { key: "notify",        icon: "📢", label: "Notify Players" },
+      { key: "announcements", icon: "📣", label: "Announcements" },
+    ],
+  },
+  {
+    label: "REWARDS",
+    accent: "#a78bfa",
+    bg: "rgba(167,139,250,0.08)",
+    items: [
+      { key: "deposits",      icon: "🎟️", label: "Voucher Queue" },
+      { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
+      { key: "wallets",       icon: "💰", label: "Player Wallets" },
+      { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
+      { key: "walletconfig",  icon: "⚙️", label: "Reward Config" },
+    ],
+  },
+  {
+    label: "SYSTEM",
+    accent: "#6b7280",
+    bg: "rgba(107,114,128,0.06)",
+    items: [
+      { key: "features",      icon: "🔧", label: "Feature Flags" },
+    ],
+  },
 ];
+
+const NAV_FLAT = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, accent: g.accent })));
+
+function findNavItem(key: Section) {
+  for (const g of NAV_GROUPS) {
+    const item = g.items.find((i) => i.key === key);
+    if (item) return { ...item, group: g };
+  }
+  return null;
+}
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -2744,144 +5108,146 @@ export function AdminPage() {
     );
   }
 
+  const currentNav = findNavItem(section);
+
   return (
-    <div
-      className="min-h-screen bg-dark-bg flex"
-      style={{
-        background: "linear-gradient(135deg, #0a0b0e 0%, #0d0e14 100%)",
-      }}
-    >
+    <div className="min-h-screen flex" style={{ background: "radial-gradient(ellipse 120% 60% at 50% 0%, rgba(20,12,50,1) 0%, rgba(6,6,18,1) 60%)" }}>
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
-      {/* Mobile overlay */}
       <AnimatePresence>
         {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          />
+            className="fixed inset-0 z-40 bg-black/70 lg:hidden" />
         )}
       </AnimatePresence>
 
       <motion.aside
         className={clsx(
-          "fixed top-0 left-0 h-full z-50 lg:relative lg:translate-x-0 flex flex-col w-56 flex-shrink-0",
+          "fixed top-0 left-0 h-full z-50 lg:relative lg:translate-x-0 flex flex-col flex-shrink-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
-        style={{
-          background: "rgba(10,11,14,0.98)",
-          borderRight: "1px solid rgba(255,255,255,0.05)",
-        }}
+        style={{ width: 220, background: "rgba(8,8,20,0.99)", borderRight: "1px solid rgba(255,255,255,0.06)" }}
       >
         {/* Logo */}
-        <div className="p-5 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🔐</span>
-            <div>
-              <p className="font-bold text-white text-sm">Admin Panel</p>
-              <p className="text-[10px] text-dark-muted">7 Cards Show</p>
+        <div className="px-4 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+              style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.4)" }}>
+              ⚔️
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-white text-sm leading-tight">Arena of Sevens</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(99,102,241,0.8)" }}>Admin Panel</p>
             </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => {
-                setSection(item.key);
-                setSidebarOpen(false);
-              }}
-              className={clsx(
-                "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left",
-                section === item.key
-                  ? "bg-purple-500/20 text-purple-300"
-                  : "text-dark-muted hover:text-dark-text hover:bg-white/5",
-              )}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </button>
+        {/* Grouped Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              {/* Group header */}
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] px-2 mb-1.5"
+                style={{ color: group.accent, opacity: 0.7 }}>
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = section === item.key;
+                  return (
+                    <button key={item.key}
+                      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium transition-all text-left relative"
+                      style={active ? {
+                        background: group.bg,
+                        color: group.accent,
+                        borderLeft: `3px solid ${group.accent}`,
+                      } : { color: "rgba(156,163,175,0.7)" }}>
+                      {!active && <span style={{ width: 3 }} />}
+                      <span className="text-sm leading-none">{item.icon}</span>
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </nav>
 
         {/* Bottom */}
-        <div className="p-3 border-t border-white/5 space-y-1">
-          <button
-            onClick={() => navigate("/lobby")}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-dark-muted hover:text-dark-text hover:bg-white/5 transition-all"
-          >
-            🎮 Back to Game
+        <div className="px-2 py-3 space-y-0.5" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => navigate("/lobby")}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] transition-all text-left"
+            style={{ color: "rgba(156,163,175,0.6)" }}>
+            <span className="text-sm">🎮</span>
+            <span>Back to Game</span>
           </button>
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-neon-red/70 hover:text-neon-red hover:bg-neon-red/5 transition-all"
-          >
-            🔓 Logout
+          <button onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] transition-all text-left"
+            style={{ color: "rgba(239,68,68,0.7)" }}>
+            <span className="text-sm">🔓</span>
+            <span>Logout</span>
           </button>
         </div>
       </motion.aside>
 
       {/* ── Main content ────────────────────────────────────────────── */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {/* Mobile header */}
-        <div className="flex items-center gap-3 mb-6 lg:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl bg-dark-surface border border-dark-border"
-          >
-            <svg
-              className="w-4 h-4 text-dark-text"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
+      <main className="flex-1 min-w-0 overflow-y-auto">
+        {/* Top bar */}
+        <div className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4"
+          style={{ background: "rgba(8,8,20,0.92)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-xl border transition-colors"
+            style={{ background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.08)" }}>
+            <svg className="w-4 h-4 text-dark-text" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="font-bold text-white">
-            {NAV.find((n) => n.key === section)?.icon}{" "}
-            {NAV.find((n) => n.key === section)?.label}
-          </span>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 min-w-0">
+            {currentNav && (
+              <>
+                <span className="text-[10px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-md"
+                  style={{ background: `${currentNav.group?.bg}`, color: currentNav.group?.accent, border: `1px solid ${currentNav.group?.accent}30` }}>
+                  {currentNav.group?.label}
+                </span>
+                <span className="text-dark-muted text-xs">›</span>
+                <span className="text-sm font-semibold text-white truncate">{currentNav.icon} {currentNav.label}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={section}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-          >
-            {section === "overview" && <OverviewSection />}
-            {section === "rooms" && <RoomsSection />}
-            {section === "users" && <UsersSection />}
-            {section === "leaderboard" && <LeaderboardSection />}
-            {section === "deposits" && <DepositsSection />}
-            {section === "withdrawals" && <WithdrawalsSection />}
-            {section === "wallets" && <WalletsSection />}
-            {section === "tournaments" && <TournamentsSection />}
-            {section === "support" && <SupportSection />}
-            {section === "features" && (
-              <FeaturesSection config={config} onSave={saveConfig} />
-            )}
-            {section === "gameconfig" && (
-              <GameConfigSection config={config} onSave={saveConfig} />
-            )}
-            {section === "walletconfig" && (
-              <WalletConfigSection config={config} onSave={saveConfig} />
-            )}
-            {section === "notify" && <NotifySection />}
-          </motion.div>
-        </AnimatePresence>
+        <div className="p-4 sm:p-6 lg:p-8">
+          <AnimatePresence mode="wait">
+            <motion.div key={section}
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+              {section === "overview" && <OverviewSection />}
+              {section === "rooms" && <RoomsSection />}
+              {section === "users" && <UsersSection />}
+              {section === "leaderboard" && <LeaderboardSection />}
+              {section === "deposits" && <DepositsSection />}
+              {section === "withdrawals" && <WithdrawalsSection />}
+              {section === "wallets" && <WalletsSection />}
+              {section === "tournaments" && <TournamentsSection />}
+              {section === "support" && <SupportSection />}
+              {section === "features" && <FeaturesSection config={config} onSave={saveConfig} />}
+              {section === "gameconfig" && <GameConfigSection config={config} onSave={saveConfig} />}
+              {section === "walletconfig" && <WalletConfigSection config={config} onSave={saveConfig} />}
+              {section === "notify" && <NotifySection />}
+              {section === "announcements" && <AnnouncementsSection />}
+              {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
+              {section === "analytics" && <AnalyticsSection />}
+              {section === "aiguide" && <AiGuideSection />}
+              {section === "playerintel" && <PlayerIntelligencePage />}
+              {section === "missedpayouts" && (
+                <MissedPayoutsSection onReview={(roomId) => { setSection("gamereview"); setTimeout(() => { (window as any).__gameReviewCode = roomId; window.dispatchEvent(new CustomEvent("admin:reviewRoom", { detail: roomId })); }, 50); }} />
+              )}
+              {section === "gamereview" && <GameReviewPage />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </main>
 
       {/* ── Toast notification ─────────────────────────────────────── */}

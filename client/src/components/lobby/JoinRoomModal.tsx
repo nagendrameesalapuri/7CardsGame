@@ -11,9 +11,11 @@ interface JoinRoomModalProps {
 export function JoinRoomModal({ isOpen, onClose }: JoinRoomModalProps) {
   const { joinRoom, roomError } = useGameStore();
   const [code, setCode] = useState('');
+  const [joining, setJoining] = useState(false);
 
   const handleJoin = () => {
-    if (code.trim().length !== 6) return;
+    if (code.trim().length !== 6 || joining) return;
+    setJoining(true);
     joinRoom(code.trim().toUpperCase());
     onClose();
   };
@@ -42,10 +44,10 @@ export function JoinRoomModal({ isOpen, onClose }: JoinRoomModalProps) {
           <Button
             variant="primary"
             onClick={handleJoin}
-            disabled={code.length !== 6}
+            disabled={code.length !== 6 || joining}
             fullWidth
           >
-            Join
+            {joining ? 'Joining…' : 'Join'}
           </Button>
         </div>
       </div>

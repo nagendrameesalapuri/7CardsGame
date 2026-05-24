@@ -17,6 +17,7 @@ interface FloatingReaction {
 interface ChatPanelProps {
   messages: ChatMessage[];
   playerCount?: number;
+  size?: 'sm' | 'lg';
 }
 
 function formatTime(iso: string): string {
@@ -25,7 +26,7 @@ function formatTime(iso: string): string {
 
 type AnnotatedMsg = ChatMessage & { isFirst: boolean; isLast: boolean };
 
-export function ChatPanel({ messages, playerCount = 2 }: ChatPanelProps) {
+export function ChatPanel({ messages, playerCount = 2, size = 'sm' }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [lastReadCount, setLastReadCount] = useState(0);
@@ -104,7 +105,41 @@ export function ChatPanel({ messages, playerCount = 2 }: ChatPanelProps) {
   });
 
   // ── Toggle button (stays in top bar, no stacking-context issues) ──────────
-  const toggleBtn = (
+  const toggleBtn = size === 'lg' ? (
+    <button
+      onClick={open}
+      className="relative w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95"
+      style={{
+        background: 'rgba(255,255,255,0.09)',
+        border: '1px solid rgba(255,255,255,0.13)',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      {unreadCount > 0 && (
+        <span
+          className="absolute top-0 right-0 w-2 h-2 rounded-full"
+          style={{ background: '#00ff88', boxShadow: '0 0 6px rgba(0,255,136,0.9)' }}
+        />
+      )}
+      <svg className="w-5 h-5 text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+      <AnimatePresence>
+        {unreadCount > 0 && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            className="absolute -top-1 -right-1 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center"
+            style={{ background: '#ff3b5c', boxShadow: '0 0 8px rgba(255,59,92,0.7)' }}
+          >
+            {Math.min(unreadCount, 9)}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  ) : (
     <button
       onClick={open}
       className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition-all active:scale-95"

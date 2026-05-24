@@ -4,6 +4,39 @@ import { ClientGameState, Room, GameAction, ChatMessage, MatchResult, SpectatorG
 let socket: Socket | null = null;
 let spectatorSocket: Socket | null = null;
 
+// ── Network quality tracking ──────────────────────────────────────────────────
+
+export type NetworkQuality = 'good' | 'reconnecting' | 'offline';
+let _quality: NetworkQuality = 'good';
+const _qualityListeners = new Set<(q: NetworkQuality) => void>();
+
+function setQuality(q: NetworkQuality) {
+  if (_quality === q) return;
+  _quality = q;
+  _qualityListeners.forEach(fn => fn(q));
+}
+
+export function getNetworkQuality(): NetworkQuality { return _quality; }
+export function subscribeNetworkQuality(fn: (q: NetworkQuality) => void): () => void {
+  _qualityListeners.add(fn);
+  return () => _qualityListeners.delete(fn);
+}
+
+// ── Action throttle (prevent rapid-fire duplicate emits) ──────────────────────
+
+let _lastActionAt = 0;
+const MIN_ACTION_INTERVAL_MS = 550;
+
+function canEmitAction(): boolean {
+  const now = Date.now();
+  if (now - _lastActionAt < MIN_ACTION_INTERVAL_MS) return false;
+  _lastActionAt = now;
+  return true;
+}
+
+// Reset throttle when a new game state arrives (so legitimate sequential actions aren't blocked)
+export function resetActionThrottle() { _lastActionAt = 0; }
+
 export function getSocket(): Socket {
   if (!socket) throw new Error('Socket not initialized — call connectSocket first');
   return socket;
@@ -26,9 +59,20 @@ export function connectSocket(token?: string, guestToken?: string): Socket {
     transports: ['websocket', 'polling'],
   });
 
-  socket.on('connect', () => console.log('[Socket] Connected:', socket!.id));
-  socket.on('disconnect', (reason) => console.warn('[Socket] Disconnected:', reason));
-  socket.on('connect_error', (err) => console.error('[Socket] Error:', err.message));
+  socket.on('connect', () => {
+    console.log('[Socket] Connected:', socket!.id);
+    setQuality('good');
+  });
+  socket.on('disconnect', (reason) => {
+    console.warn('[Socket] Disconnected:', reason);
+    setQuality('offline');
+  });
+  socket.on('connect_error', (err) => {
+    console.error('[Socket] Error:', err.message);
+    setQuality('offline');
+  });
+  socket.io.on('reconnect_attempt', () => setQuality('reconnecting'));
+  socket.io.on('reconnect', () => setQuality('good'));
 
   return socket;
 }
@@ -89,6 +133,8 @@ export const socketRoom = {
     allowBots?: boolean;
     botCount?: number;
     entryFee?: number;
+    botPersonality?: string;
+    invitedUserIds?: string[];
   }) => getSocket().emit('room:create', data),
 
   join: (code: string) => getSocket().emit('room:join', code),
@@ -101,11 +147,11 @@ export const socketRoom = {
 // ── Game events ───────────────────────────────────────────────────────────────
 
 export const socketGame = {
-  draw: (source: 'deck' | 'discard') => getSocket().emit('game:draw', source),
-  discard: (cardIds: string[]) => getSocket().emit('game:discard', cardIds),
-  show: () => getSocket().emit('game:show'),
+  draw: (source: 'deck' | 'discard') => canEmitAction() && getSocket().emit('game:draw', source),
+  discard: (cardIds: string[]) => canEmitAction() && getSocket().emit('game:discard', cardIds),
+  show: () => canEmitAction() && getSocket().emit('game:show'),
   attackRespond: (action: 'throw' | 'take', cardIds?: string[]) =>
-    getSocket().emit('game:attack:respond', { action, cardIds }),
+    canEmitAction() && getSocket().emit('game:attack:respond', { action, cardIds }),
   reconnect: (roomCode: string) => getSocket().emit('game:reconnect', roomCode),
   roundReady: () => getSocket().emit('game:round_ready'),
 };
@@ -123,6 +169,29 @@ export const socketTournament = {
   start:  (entryFee: number) => getSocket().emit('tournament:start', { entryFee }),
   status: ()                 => getSocket().emit('tournament:status'),
   cancel: ()                 => getSocket().emit('tournament:cancel'),
+};
+
+// ── Survival Championship events ──────────────────────────────────────────────
+
+export const socketSurvival = {
+  start:    (tier: string) => getSocket().emit('survival:start', { tier }),
+  status:   ()             => getSocket().emit('survival:status'),
+  continue: ()             => getSocket().emit('survival:continue'),
+  abandon:  ()             => getSocket().emit('survival:abandon'),
+};
+
+export const socketTeam = {
+  create:    (tier: string, entryFeeMode: 'split' | 'host_pays', maxSize: number) =>
+    getSocket().emit('survival:team_create', { tier, entryFeeMode, maxSize }),
+  join:      (teamCode: string) => getSocket().emit('survival:team_join', { teamCode }),
+  start:     ()                 => getSocket().emit('survival:team_start'),
+  continue:  ()                 => getSocket().emit('survival:team_continue'),
+  leave:     ()                 => getSocket().emit('survival:team_leave'),
+  status:    ()                 => getSocket().emit('survival:team_status'),
+  addBot:    (personality: string) => getSocket().emit('survival:team_add_bot', { personality }),
+  removeBot: (botUserId: string) => getSocket().emit('survival:team_remove_bot', { botUserId }),
+  quit:      ()                 => getSocket().emit('survival:team_quit'),
+  rejoin:    ()                 => getSocket().emit('survival:team_rejoin'),
 };
 
 // ── Event listener helpers (typed) ───────────────────────────────────────────
@@ -163,6 +232,23 @@ type EventMap = {
   'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
   'tournament:cancelled':     { refunded: boolean; amount: number };
   'tournament:error':         string;
+  // Survival Championship
+  'survival:started':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; roomCode: string; botName: string; personality: string };
+  'survival:resumed':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; totalPointsEarned: number; stageResults: any[]; currentRoomCode: string | null };
+  'survival:stage_result':    { stage: number; totalStages: number; personality: string; botName: string; playerWon: boolean; isDraw: boolean; playerScore: number; botScore: number; pointsEarned: number; stageResults: any[]; tournamentOver: boolean; won?: boolean; totalPointsEarned?: number; nextStage?: number; nextRoomCode?: string; nextBotName?: string; nextPersonality?: string; newWalletBalance?: number };
+  'survival:tiebreaker':      { stage: number; stageName: string; stageDesc?: string; botNames: string[]; personalities: string[]; playerScore: number; botScore: number; botScores: number[]; scoreboard: any[]; stageResults: any[] };
+  'survival:status_result':   any;
+  'survival:abandoned':       { totalPointsEarned: number; refunded?: boolean; refundAmount?: number; forcedByAdmin?: boolean };
+  'survival:error':           string;
+  // Survival Team
+  'survival:team_updated':      any;
+  'survival:team_started':      { teamCode: string; roomCode: string; stage: number; stageName: string; stageDesc?: string; botNames: string[]; tier: string; entryPoints: number };
+  'survival:team_stage_result': { stage: number; totalStages: number; stageName: string; stageDesc?: string; botNames: string[]; teamScore: number; botScores: number[]; botTotalScore: number; scoreboard: any[]; teamWon: boolean; pointsEarned: number; stageResults: any[]; isTeamMode: true; tournamentOver: boolean; won?: boolean; totalPointsEarned?: number; nextStage?: number; nextRoomCode?: string; nextStageName?: string; nextStageDesc?: string; nextBotNames?: string[] };
+  'survival:team_stage_started': { stage: number; stageName: string; stageDesc?: string; roomCode: string; botNames: string[] };
+  'survival:team_disbanded':    { reason: string };
+  'survival:team_quit_result':  { refunded: boolean; refundAmount: number };
+  'survival:team_error':        string;
+  'progression:update':       { xpGained: number; multiplier: number; newXp: number; newLevel: number; newRank: string; leveled: boolean; rankedUp: boolean; winStreak: number; xpProgress: number; xpNeeded: number; newAchievements?: any[] };
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };

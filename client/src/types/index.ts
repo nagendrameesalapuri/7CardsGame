@@ -17,6 +17,7 @@ export type {
   Room,
   ClientGameState,
   ClientPlayerState,
+  PlayerBadge,
   GameAction,
   User,
   UserStats,

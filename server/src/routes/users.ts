@@ -30,6 +30,30 @@ router.post('/admin/reset-stats', async (req: Request, res: Response) => {
   }
 });
 
+// Search users by username (for invite-to-room feature)
+router.get('/search', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const q     = String(req.query.q ?? '').trim();
+    const limit = Math.min(30, parseInt(String(req.query.limit ?? '20'), 10));
+
+    const filter: Record<string, any> = {
+      isGuest: false,
+      _id: { $ne: req.user!.id },
+    };
+    if (q) filter.username = { $regex: q, $options: 'i' };
+
+    const users = await User.find(filter)
+      .select('_id username avatar')
+      .sort({ username: 1 })
+      .limit(limit)
+      .lean();
+
+    res.json({ users: users.map(u => ({ id: u._id, username: u.username, avatar: u.avatar })) });
+  } catch {
+    res.status(500).json({ error: 'Failed to search users' });
+  }
+});
+
 // Leaderboard
 router.get('/leaderboard', async (_req: Request, res: Response) => {
   try {
@@ -76,8 +100,12 @@ router.get('/:id/profile', async (req: Request, res: Response) => {
 // Update own profile
 router.patch('/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { username, avatar } = req.body as { username?: string; avatar?: string };
-    const updates: Record<string, string> = {};
+    const { username, avatar, selectedBadgeId } = req.body as {
+      username?: string;
+      avatar?: string;
+      selectedBadgeId?: string | null;
+    };
+    const updates: Record<string, unknown> = {};
 
     if (username) {
       if (username.length < 2 || username.length > 20) {
@@ -87,6 +115,10 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     }
 
     if (avatar) updates.avatar = avatar;
+
+    if (selectedBadgeId !== undefined) {
+      updates.selectedBadgeId = selectedBadgeId ?? null;
+    }
 
     const user = await User.findByIdAndUpdate(req.user!.id, updates, { new: true })
       .select('-guestToken');

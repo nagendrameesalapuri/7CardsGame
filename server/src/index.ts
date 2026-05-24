@@ -11,6 +11,7 @@ import passport from 'passport';
 import rateLimit from 'express-rate-limit';
 
 import { connectDatabase } from './config/database';
+import { Announcement } from './models/Announcement';
 import { configurePassport } from './config/passport';
 import { initSocketIO } from './socket';
 
@@ -19,9 +20,11 @@ import roomRoutes from './routes/rooms';
 import userRoutes from './routes/users';
 import gameRoutes from './routes/games';
 import walletRoutes from './routes/wallet';
-import tournamentRoutes from './routes/tournaments';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
+import survivalRoutes from './routes/survival';
+import progressionRoutes from './routes/progression';
+import notificationRoutes from './routes/notifications';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -99,10 +102,26 @@ async function bootstrap() {
   app.use('/api/users', userRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
-  app.use('/api/tournaments', tournamentRoutes);
+  app.use('/api/survival', survivalRoutes);
   app.use('/api/support', supportRoutes);
+  app.use('/api/progression', progressionRoutes);
+  app.use('/api/notifications', notificationRoutes);
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
+
+  // Public: active announcements (no auth required)
+  app.get('/api/announcements', async (_req, res) => {
+    try {
+      const now = new Date();
+      const list = await Announcement.find({
+        active: true,
+        $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }, { expiresAt: { $gt: now } }],
+      }).sort({ createdAt: -1 }).limit(5).lean();
+      res.json({ announcements: list });
+    } catch {
+      res.status(500).json({ error: 'Failed to load announcements' });
+    }
+  });
 
   // ── Socket.IO ────────────────────────────────────────────────────────────────
   const io = new Server(httpServer, {

@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../ui/Modal';
+import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
-import { walletApi } from '../../services/api';
+import { walletApi, usersApi } from '../../services/api';
 import { PublicAdminConfig } from '../../types';
+
+// Use shared Avatar component for consistent avatar rendering
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -33,6 +36,14 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
   const [entryFeeText, setEntryFeeText] = useState('');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
+  // Invite players state
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState('');
+  const [inviteResults, setInviteResults] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [invitedUsers, setInvitedUsers] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isCashGame      = form.entryFee > 0;
   const prizePool       = form.entryFee * form.maxPlayers;
   const isGuest         = user?.isGuest ?? true;
@@ -45,9 +56,48 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
     walletApi.get().then(r => setWalletBalance(r.data.balance)).catch(() => {});
   }, [isOpen, isGuest]);
 
+  // Reset invite state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setInviteOpen(false);
+      setInviteSearch('');
+      setInviteResults([]);
+      setInvitedUsers([]);
+    }
+  }, [isOpen]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (!inviteOpen) return;
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    setInviteLoading(true);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const r = await usersApi.search(inviteSearch);
+        // Filter out already-invited users
+        setInviteResults(r.data.users.filter(u => !invitedUsers.some(i => i.id === u.id)));
+      } catch { /* silent */ }
+      finally { setInviteLoading(false); }
+    }, 300);
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
+  }, [inviteSearch, inviteOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleInvite = (u: { id: string; username: string; avatar: string }) => {
+    setInvitedUsers(prev => {
+      if (prev.some(x => x.id === u.id)) return prev.filter(x => x.id !== u.id);
+      return [...prev, u];
+    });
+    setInviteResults(prev => prev.filter(x => x.id !== u.id));
+  };
+
   const handleCreate = () => {
     if (!canCreate) return;
-    createRoom({ ...form, name: form.name.trim(), entryFee: isGuest ? 0 : form.entryFee });
+    createRoom({
+      ...form,
+      name: form.name.trim(),
+      entryFee: isGuest ? 0 : form.entryFee,
+      invitedUserIds: invitedUsers.map(u => u.id),
+    });
     onClose();
   };
 
@@ -122,14 +172,14 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
           <span className="text-dark-text text-sm">Private Room (invite-only)</span>
         </label>
 
-        {/* ── Entry Fee & Prize Pool ──────────────────────────────────── */}
+        {/* ── Game Mode ──────────────────────────────────────────────── */}
         <div className={`rounded-xl p-3 space-y-3 transition-all ${isCashGame && !isGuest ? 'border border-yellow-500/30 bg-yellow-500/5' : 'border border-dark-border bg-dark-surface/40'}`}>
           <div className="flex items-center justify-between">
             <label className="text-sm font-semibold text-dark-text flex items-center gap-2">
-              💰 Entry Fee
+              🎮 Game Mode
               {isCashGame && !isGuest && (
                 <span className="text-[10px] bg-yellow-500/25 text-yellow-300 px-1.5 py-0.5 rounded-full font-medium">
-                  Cash Game
+                  Competitive
                 </span>
               )}
             </label>
@@ -138,7 +188,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             )}
           </div>
 
-          {/* Free / Bet Match toggle */}
+          {/* Free / Wager toggle */}
           <div className="flex gap-2">
             <button
               type="button"
@@ -149,7 +199,7 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-neon-green/50'
               }`}
             >
-              🎮 Free
+              🎮 Free Play
             </button>
             <button
               type="button"
@@ -165,11 +215,11 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   : 'bg-dark-bg border border-dark-border text-dark-muted hover:border-yellow-400/50'
               }`}
             >
-              🎰 Bet Match
+              ⚔️ Wager Game
             </button>
           </div>
 
-          {/* Bet amount input — shown only when Bet Match is active */}
+          {/* Wager amount input */}
           {isCashGame && !isGuest && (
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-muted text-sm font-medium">₹</span>
@@ -190,18 +240,18 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
                   setForm(f => ({ ...f, entryFee: clamped }));
                   setEntryFeeText(String(clamped));
                 }}
-                placeholder="Enter bet amount per player"
+                placeholder="Enter wager amount per player"
                 className="w-full bg-dark-bg border border-yellow-400/40 rounded-lg pl-7 pr-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-yellow-400 transition-colors"
               />
             </div>
           )}
 
-          {/* Wallet balance indicator */}
+          {/* Wallet balance */}
           {!isGuest && walletBalance !== null && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-dark-muted">Your wallet balance</span>
+              <span className="text-dark-muted">Wallet Balance</span>
               <span className={isCashGame && walletBalance < form.entryFee ? 'text-red-400 font-bold' : 'text-neon-green font-bold'}>
-                ₹{walletBalance}
+                ₹{Number(walletBalance).toFixed(2)}
               </span>
             </div>
           )}
@@ -209,31 +259,99 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
           {/* Insufficient funds warning */}
           {isCashGame && !isGuest && walletBalance !== null && walletBalance < form.entryFee && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-              ⚠️ Insufficient balance. Add ₹{form.entryFee - walletBalance} more to create this room.
+              ⚠️ Insufficient balance. Add ₹{(form.entryFee - walletBalance).toFixed(2)} more to create this room.
             </div>
           )}
 
-          {/* Prize pool calculator */}
+          {/* Wager breakdown */}
           {isCashGame && !isGuest ? (
             <div className="rounded-lg p-3 bg-dark-bg border border-yellow-500/20 space-y-2">
-              <p className="text-xs text-dark-muted uppercase tracking-wider font-semibold">Prize Pool Breakdown</p>
+              <p className="text-xs text-dark-muted uppercase tracking-wider font-semibold">Wager Breakdown</p>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-dark-muted">Entry Fee × Max Players</span>
+                <span className="text-dark-muted">Wager × Max Players</span>
                 <span className="text-dark-text font-mono">₹{form.entryFee} × {form.maxPlayers}</span>
               </div>
               <div className="h-px bg-dark-border" />
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-yellow-300">🏆 Winner Gets</span>
+                <span className="text-sm font-bold text-yellow-300">🏆 Winner Earns</span>
                 <span className="text-2xl font-bold text-yellow-400">₹{prizePool}</span>
               </div>
               <p className="text-[10px] text-dark-muted">
-                ₹{form.entryFee} deducted from each player's wallet on join. Winner takes entire pot.
+                ₹{form.entryFee} deducted from each player's wallet on join. Winner takes the pot.
               </p>
             </div>
           ) : form.entryFee === 0 && !isGuest ? (
-            <p className="text-xs text-dark-muted">Free game — no entry fee, no prize money.</p>
+            <p className="text-xs text-dark-muted">Free Play — casual game, no wager required.</p>
           ) : null}
         </div>
+
+        {/* ── Invite Players ──────────────────────────────────────────────── */}
+        {!isGuest && (
+          <div className="rounded-xl border border-dark-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setInviteOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-dark-text hover:bg-white/5 transition-colors"
+            >
+              <span className="flex items-center gap-2 font-semibold">
+                👥 Invite Players
+                {invitedUsers.length > 0 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+                    {invitedUsers.length} selected
+                  </span>
+                )}
+              </span>
+              <span className="text-dark-muted text-xs">{inviteOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {inviteOpen && (
+              <div className="border-t border-dark-border bg-dark-bg/60 p-3 space-y-3">
+                {/* Selected users */}
+                {invitedUsers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {invitedUsers.map(u => (
+                      <span key={u.id} className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold"
+                        style={{ background: 'rgba(99,102,241,0.18)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+                        <Avatar avatar={u.avatar} username={u.username} size="xs" />
+                        {u.username}
+                        <button onClick={() => toggleInvite(u)} className="text-dark-muted hover:text-red-400 transition-colors ml-0.5">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search input */}
+                <input
+                  value={inviteSearch}
+                  onChange={e => setInviteSearch(e.target.value)}
+                  placeholder="Search players by username…"
+                  className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-sm text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-blue transition-colors"
+                />
+
+                {/* Search results */}
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {inviteLoading ? (
+                    <p className="text-xs text-dark-muted text-center py-3 animate-pulse">Searching…</p>
+                  ) : inviteResults.length === 0 ? (
+                    <p className="text-xs text-dark-muted text-center py-3">
+                      {inviteSearch ? 'No players found' : 'Start typing to search'}
+                    </p>
+                  ) : (
+                    inviteResults.map(u => (
+                      <button key={u.id} type="button" onClick={() => toggleInvite(u)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition-colors">
+                        <Avatar avatar={u.avatar} username={u.username} size="sm" />
+                        <span className="text-sm text-dark-text font-medium flex-1">{u.username}</span>
+                        <span className="text-xs text-neon-blue font-semibold">+ Invite</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3 pt-1">
           <Button variant="ghost" onClick={onClose} fullWidth>Cancel</Button>
@@ -246,9 +364,9 @@ export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModa
             {!form.name.trim()
               ? 'Enter Room Name'
               : !hasEnoughFunds
-              ? `Need ₹${form.entryFee - (walletBalance ?? 0)} more`
+              ? `Need ₹${(form.entryFee - (walletBalance ?? 0)).toFixed(2)} more`
               : isCashGame && !isGuest
-              ? `Create · ₹${prizePool} Prize Pool`
+              ? `Create · ₹${prizePool} Pot`
               : 'Create Room'}
           </Button>
         </div>

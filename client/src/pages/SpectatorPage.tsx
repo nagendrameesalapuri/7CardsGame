@@ -45,7 +45,29 @@ function DiscardTop({ card }: { card: any }) {
   );
 }
 
+function FaceUpCard({ card }: { card: any }) {
+  const isPrintedJoker = card.rank === 'Joker';
+  const isRed = RED_SUITS.has(card.suit);
+  const suit = SUIT_SYMBOL[card.suit] ?? '';
+  return (
+    <div className={clsx(
+      'w-6 h-9 rounded flex flex-col items-center justify-between px-0.5 py-0.5 leading-none select-none border',
+      card.isJoker
+        ? 'bg-yellow-100 border-yellow-500 text-yellow-700'
+        : isRed
+        ? 'bg-white border-red-400 text-red-600'
+        : 'bg-white border-slate-400 text-slate-800'
+    )}>
+      <span className="text-[8px] font-black leading-none">{isPrintedJoker ? '🃏' : card.rank}</span>
+      <span className="text-[9px] leading-none">{card.isJoker && !isPrintedJoker ? '★' : suit}</span>
+      <span className="text-[7px] leading-none opacity-60">{card.value}</span>
+    </div>
+  );
+}
+
 function PlayerCard({ player, isCurrent, isShowCaller }: { player: any; isCurrent: boolean; isShowCaller: boolean }) {
+  const showRealCards = !player.isBot && Array.isArray(player.hand) && player.hand.length > 0;
+
   return (
     <motion.div
       layout
@@ -57,10 +79,10 @@ function PlayerCard({ player, isCurrent, isShowCaller }: { player: any; isCurren
       style={{
         background: isCurrent ? 'rgba(0,255,136,0.08)' : 'rgba(255,255,255,0.04)',
         border: isCurrent ? '1px solid rgba(0,255,136,0.3)' : '1px solid rgba(255,255,255,0.07)',
-        minWidth: 72,
+        minWidth: showRealCards ? 100 : 72,
       }}
     >
-      {/* Avatar placeholder */}
+      {/* Avatar */}
       <div className={clsx(
         'w-9 h-9 rounded-full flex items-center justify-center text-sm font-black',
         player.isBot ? 'bg-neon-blue/30 text-neon-blue' : 'bg-neon-green/20 text-neon-green'
@@ -68,24 +90,30 @@ function PlayerCard({ player, isCurrent, isShowCaller }: { player: any; isCurren
         {player.isBot ? '🤖' : player.username.slice(0, 1).toUpperCase()}
       </div>
 
-      <p className="text-[10px] font-semibold text-dark-text truncate max-w-[72px] text-center">{player.username}</p>
+      <p className="text-[10px] font-semibold text-dark-text truncate max-w-[96px] text-center">{player.username}</p>
 
-      {/* Hand count facedown cards */}
-      <div className="flex gap-0.5 justify-center">
-        {Array.from({ length: Math.min(player.handCount, 7) }).map((_, i) => (
-          <div key={i} className="w-3.5 h-5 rounded bg-gradient-to-b from-blue-700 to-blue-900 border border-blue-600" />
-        ))}
-      </div>
-      <p className="text-[10px] text-dark-muted">{player.handCount} cards</p>
-
-      {/* Hand total */}
-      {(player as any).handTotal !== undefined && (
-        <div className="px-2 py-0.5 rounded-lg text-center"
-          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
-        >
-          <span className="text-[11px] font-black text-white">{(player as any).handTotal}</span>
-          <span className="text-[9px] text-dark-muted ml-0.5">pts</span>
-        </div>
+      {showRealCards ? (
+        /* Human player — show real face-up cards */
+        <>
+          <div className="flex flex-wrap gap-0.5 justify-center">
+            {player.hand.map((card: any) => <FaceUpCard key={card.id} card={card} />)}
+          </div>
+          <div className="px-2 py-0.5 rounded-lg text-center"
+            style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.25)' }}>
+            <span className="text-[11px] font-black text-neon-green">{player.handTotal ?? '?'}</span>
+            <span className="text-[9px] text-dark-muted ml-0.5">pts</span>
+          </div>
+        </>
+      ) : (
+        /* Bot — face-down hidden cards */
+        <>
+          <div className="flex gap-0.5 justify-center">
+            {Array.from({ length: Math.min(player.handCount, 7) }).map((_, i) => (
+              <div key={i} className="w-3.5 h-5 rounded bg-gradient-to-b from-blue-700 to-blue-900 border border-blue-600" />
+            ))}
+          </div>
+          <p className="text-[10px] text-dark-muted">{player.handCount} cards · hidden</p>
+        </>
       )}
 
       <div className="flex items-center gap-1">
@@ -97,9 +125,7 @@ function PlayerCard({ player, isCurrent, isShowCaller }: { player: any; isCurren
             className="text-[9px] font-black text-neon-green"
           >▶</motion.span>
         )}
-        {isShowCaller && (
-          <span className="text-[9px] font-black text-yellow-400">📢</span>
-        )}
+        {isShowCaller && <span className="text-[9px] font-black text-yellow-400">📢</span>}
         {player.isEliminated && <span className="text-[9px] text-neon-red">OUT</span>}
       </div>
     </motion.div>

@@ -34,6 +34,7 @@ export interface Card {
   rank: Rank;
   value: number; // 0 for jokers, 1 for A, 10 for J/Q/K, face value otherwise
   isJoker: boolean;
+  discardedBy?: string;
 }
 
 export interface PlayerState {
@@ -82,6 +83,8 @@ export interface GameState {
   roundResult: RoundResult | null;
   chatMessages: ChatMessage[];
   consecutiveTimeouts: Record<string, number>; // playerId → consecutive timeout count
+  disableElimination?: boolean; // when true, humans are never eliminated by timeouts (used in Team Arena / Survival)
+  teamGroups?: string[][]; // each sub-array is a list of userIds on the same team; used for team-mode scoring
 }
 
 export interface RoundResult {
@@ -130,6 +133,9 @@ export interface RoomConfig {
   allowBots: boolean;
   botCount: number;
   entryFee: number; // 0 = free game, >0 = cash game
+  botPersonality?: string; // single-bot personality
+  botPersonalities?: string[]; // per-bot personalities for multi-bot stages
+  botNames?: string[]; // display names per bot
 }
 
 // ---- Wallet types ----
@@ -139,7 +145,8 @@ export type TransactionType =
   | "withdrawal"
   | "winning"
   | "entry_fee"
-  | "refund";
+  | "refund"
+  | "bonus";
 
 export interface WalletTransaction {
   _id: string;
@@ -147,6 +154,8 @@ export interface WalletTransaction {
   amount: number;
   status: "pending" | "completed" | "failed";
   description: string;
+  balanceBefore: number;
+  balanceAfter: number;
   createdAt: string;
 }
 
@@ -204,6 +213,12 @@ export interface ClientGameState {
   myPlayerId: string;
 }
 
+export interface PlayerBadge {
+  emoji: string;
+  name: string;
+  rarity: "common" | "rare" | "epic" | "legendary";
+}
+
 export interface ClientPlayerState {
   id: string;
   userId: string;
@@ -216,6 +231,10 @@ export interface ClientPlayerState {
   isEliminated: boolean;
   seatIndex: number;
   isBot: boolean;
+  badge?: PlayerBadge;
+  // Spectator-only: present for human players, absent for bots
+  hand?: Card[];
+  handTotal?: number;
 }
 
 // ---- Socket event payloads ----
@@ -262,6 +281,15 @@ export interface AdminFeatureFlags {
   spectatorModeEnabled: boolean;
   publicRoomsEnabled: boolean;
   tournamentBannerEnabled: boolean;
+  survivalEnabled: boolean;
+  survivalTiers: {
+    beginner: boolean;
+    pro: boolean;
+    elite: boolean;
+    boss_arena: boolean;
+  };
+  teamArenaEnabled: boolean;
+  teamArenaDisabledReason: string; // shown to users when disabled, e.g. "Maintenance"
 }
 
 export interface AdminGameConfig {
@@ -282,10 +310,23 @@ export interface AdminWalletConfig {
   qrCodeUrl: string;
 }
 
+export interface AdminSurvivalTierConfig {
+  entryPoints: number;
+  stageRewards: number[];
+}
+
+export interface AdminSurvivalConfig {
+  beginner: AdminSurvivalTierConfig;
+  pro: AdminSurvivalTierConfig;
+  elite: AdminSurvivalTierConfig;
+  boss_arena: AdminSurvivalTierConfig;
+}
+
 export interface PublicAdminConfig {
   featureFlags: AdminFeatureFlags;
   gameConfig: AdminGameConfig;
   walletConfig: AdminWalletConfig;
+  survivalConfig: AdminSurvivalConfig;
 }
 
 // ---- User / Auth ----

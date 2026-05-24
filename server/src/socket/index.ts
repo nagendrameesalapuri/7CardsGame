@@ -1,12 +1,20 @@
-import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import { User } from '../models/User';
-import { registerRoomHandlers } from './handlers/roomHandler';
-import { registerGameHandlers, getActiveGame, getActiveGameByUserId } from './handlers/gameHandler';
-import { registerChatHandlers } from './handlers/chatHandler';
-import { registerVoiceHandlers } from './handlers/voiceHandler';
-import { registerSpectatorHandlers } from './handlers/spectatorHandler';
-import { registerTournamentHandlers } from './handlers/tournamentHandler';
+import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
+import { User } from "../models/User";
+import { registerRoomHandlers, cancelPendingAbandon } from "./handlers/roomHandler";
+import {
+  registerGameHandlers,
+  getActiveGame,
+  getActiveGameByUserId,
+  getAllActiveGamesByUserId,
+} from "./handlers/gameHandler";
+import { registerChatHandlers } from "./handlers/chatHandler";
+import { registerVoiceHandlers } from "./handlers/voiceHandler";
+import { registerSpectatorHandlers } from "./handlers/spectatorHandler";
+import { registerSurvivalHandlers } from "./handlers/survivalHandler";
+import { registerSurvivalTeamHandlers } from "./handlers/survivalTeamHandler";
+import { PlayerProgress } from "../models/PlayerProgress";
+import { computeAndCacheBadge, getBadge } from "../utils/badgeCache";
 
 // In-memory set of online user IDs
 const onlineUsers = new Map<string, string>(); // userId → socketId
@@ -26,17 +34,19 @@ export function initSocketIO(io: Server) {
       const isSpectator = socket.handshake.auth.spectator === true;
       if (isSpectator) {
         (socket as any).userId = `spectator_${socket.id}`;
-        (socket as any).username = 'Spectator';
-        (socket as any).avatar = 'spectator';
+        (socket as any).username = "Spectator";
+        (socket as any).avatar = "spectator";
         (socket as any).isSpectator = true;
         return next();
       }
 
       if (token) {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+          userId: string;
+        };
         const user = await User.findById(decoded.userId);
-        if (!user) return next(new Error('User not found'));
-        if (user.isBanned) return next(new Error('Account banned'));
+        if (!user) return next(new Error("User not found"));
+        if (user.isBanned) return next(new Error("Account banned"));
 
         (socket as any).userId = user.id;
         (socket as any).username = user.username;
@@ -44,33 +54,49 @@ export function initSocketIO(io: Server) {
         (socket as any).isGuest = false;
       } else if (guestToken) {
         const user = await User.findOne({ guestToken });
-        if (!user) return next(new Error('Guest session expired'));
-        if (user.isBanned) return next(new Error('Account banned'));
+        if (!user) return next(new Error("Guest session expired"));
+        if (user.isBanned) return next(new Error("Account banned"));
 
         (socket as any).userId = user.id;
         (socket as any).username = user.username;
         (socket as any).avatar = user.avatar;
         (socket as any).isGuest = true;
       } else {
-        return next(new Error('Authentication required'));
+        return next(new Error("Authentication required"));
       }
 
       next();
     } catch (err) {
-      next(new Error('Invalid token'));
+      next(new Error("Invalid token"));
     }
   });
 
   // ── Connection ──────────────────────────────────────────────────────────────
-  io.on('connection', (socket) => {
+  io.on("connection", (socket) => {
     const uid: string = (socket as any).userId;
     const isSpectator: boolean = (socket as any).isSpectator ?? false;
 
-    console.log(`[Socket] ${(socket as any).username} connected (${socket.id})`);
+    console.log(
+      `[Socket] ${(socket as any).username} connected (${socket.id})`,
+    );
 
     // Track online users (skip spectator virtual IDs)
     if (!isSpectator) {
       onlineUsers.set(uid, socket.id);
+      // Join personal room so progression events reach this user
+      socket.join(`user:${uid}`);
+      // Prime the badge cache for this user
+      PlayerProgress.findOne({ userId: uid })
+        .then((p) => {
+          if (p)
+            computeAndCacheBadge(
+              uid,
+              p.achievements.map((a) => a.id),
+            );
+        })
+        .catch(() => {});
+      // Record last seen on connect
+      User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
     }
 
     registerRoomHandlers(io, socket);
@@ -78,55 +104,73 @@ export function initSocketIO(io: Server) {
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
     registerSpectatorHandlers(io, socket);
-    registerTournamentHandlers(io, socket);
+    registerSurvivalHandlers(io, socket);
+    registerSurvivalTeamHandlers(io, socket);
 
-    // Notify client if they have an active game they can resume
+    // Notify client of all active games they can resume
     if (!isSpectator) {
-      const active = getActiveGameByUserId(uid);
-      if (active) {
-        socket.emit('game:can_resume', { roomCode: active.roomCode });
+      const actives = getAllActiveGamesByUserId(uid);
+      if (actives.length > 0) {
+        socket.emit("game:can_resume", {
+          roomCodes: actives.map((a) => a.roomCode),
+        });
       }
     }
 
+    socket.on("game:resume_request", () => {
+      if (isSpectator) return;
+      const actives = getAllActiveGamesByUserId(uid);
+      if (actives.length > 0) {
+        socket.emit("game:can_resume", {
+          roomCodes: actives.map((a) => a.roomCode),
+        });
+      }
+    });
+
     // Reconnection: restore game state
-    socket.on('game:reconnect', async (roomCode: string) => {
+    socket.on("game:reconnect", async (roomCode: string) => {
+      // Cancel any pending abandon timer — player is back within the grace window
+      cancelPendingAbandon(roomCode);
+
       const game = getActiveGame(roomCode);
       if (!game) {
-        socket.emit('game:error', 'Game not found or already finished');
+        socket.emit("game:error", "Game not found or already finished");
         return;
       }
 
       await socket.join(roomCode);
       socket.data.roomCode = roomCode;
 
-      const player = game.players.find(p => p.userId === uid);
+      const player = game.players.find((p) => p.userId === uid);
       if (player) {
         player.isConnected = true;
-        io.to(roomCode).emit('game:action', {
-          type: 'system',
+        io.to(roomCode).emit("game:action", {
+          type: "system",
           playerId: player.id,
           message: `${player.username} reconnected`,
           timestamp: new Date().toISOString(),
         });
       }
 
-      socket.emit('game:state', buildClientStateForSocket(game, uid));
+      socket.emit("game:state", buildClientStateForSocket(game, uid));
     });
 
-    socket.on('disconnect', () => {
+    socket.on("disconnect", () => {
       console.log(`[Socket] ${(socket as any).username} disconnected`);
 
       if (!isSpectator) {
         onlineUsers.delete(uid);
+        // Record last seen on disconnect so "last seen" is accurate
+        User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
       }
 
       const game = getActiveGame(socket.data.roomCode);
       if (game) {
-        const player = game.players.find(p => p.userId === uid);
+        const player = game.players.find((p) => p.userId === uid);
         if (player) {
           player.isConnected = false;
-          io.to(socket.data.roomCode).emit('game:action', {
-            type: 'system',
+          io.to(socket.data.roomCode).emit("game:action", {
+            type: "system",
             playerId: player.id,
             message: `${player.username} disconnected`,
             timestamp: new Date().toISOString(),
@@ -143,13 +187,21 @@ function buildClientStateForSocket(state: any, userId: string) {
     ...state,
     deck: undefined,
     players: state.players.map((p: any) => ({
-      id: p.id, userId: p.userId, username: p.username, avatar: p.avatar,
-      handCount: p.handCount, totalScore: p.totalScore, roundScore: p.roundScore,
-      isConnected: p.isConnected, isEliminated: p.isEliminated,
-      seatIndex: p.seatIndex, isBot: p.isBot,
+      id: p.id,
+      userId: p.userId,
+      username: p.username,
+      avatar: p.avatar,
+      handCount: p.handCount,
+      totalScore: p.totalScore,
+      roundScore: p.roundScore,
+      isConnected: p.isConnected,
+      isEliminated: p.isEliminated,
+      seatIndex: p.seatIndex,
+      isBot: p.isBot,
+      badge: p.isBot ? undefined : getBadge(p.userId),
     })),
     deckCount: state.deck?.length ?? 0,
     myHand: myPlayer?.hand ?? [],
-    myPlayerId: myPlayer?.id ?? '',
+    myPlayerId: myPlayer?.id ?? "",
   };
 }

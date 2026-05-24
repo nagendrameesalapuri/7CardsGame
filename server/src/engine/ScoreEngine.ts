@@ -21,7 +21,13 @@ export class ScoreEngine {
    *
    * Score of 1 is treated as 2 (minimum non-zero penalty).
    */
-  static calculateRoundResult(state: GameState, showPlayerId: string): RoundResult {
+  /**
+   * teamGroups: optional array of userId arrays (one per team).
+   * When provided, scoring is team-aware:
+   *   Show SUCCESS → entire show caller's team gets 0; enemy team pays individual hand totals.
+   *   Show FAIL   → entire enemy team gets 0; show caller pays full penalty; teammates pay individual hand totals.
+   */
+  static calculateRoundResult(state: GameState, showPlayerId: string, teamGroups?: string[][]): RoundResult {
     const activePlayers = state.players.filter(p => !p.isEliminated);
 
     // Score of 1 is rounded up to 2 (minimum non-zero penalty)
@@ -36,12 +42,35 @@ export class ScoreEngine {
     const showPlayerEntry = totals.find(t => t.player.id === showPlayerId)!;
     const showPlayerTotal = showPlayerEntry.handTotal;
 
-    // Show caller wins on tie — declared first gets the edge
-    const showPlayerWon = showPlayerTotal <= minTotal;
+    // showPlayerWon and winnerIds are computed differently for team vs individual mode.
+    let showPlayerWon: boolean;
+    let winnerIds: string[];
 
-    const winnerIds = showPlayerWon
-      ? [showPlayerId]
-      : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
+    if (teamGroups && teamGroups.length >= 2) {
+      const showPlayer = state.players.find(p => p.id === showPlayerId)!;
+      const showTeamUserIds = teamGroups.find(g => g.includes(showPlayer.userId)) ?? [showPlayer.userId];
+      const enemyTeamUserIds = teamGroups.find(g => !g.includes(showPlayer.userId)) ?? [];
+
+      // Compare show caller ONLY against opposing team — ignore own teammates' scores.
+      // This prevents a low-scoring ally from making the show appear to "fail".
+      const enemyTotals = totals.filter(t => enemyTeamUserIds.includes(t.player.userId));
+      const minEnemyTotal = enemyTotals.length > 0 ? Math.min(...enemyTotals.map(t => t.handTotal)) : Infinity;
+
+      // Tie → caller wins (declared first gets the edge), same as individual mode.
+      showPlayerWon = showPlayerTotal <= minEnemyTotal;
+
+      if (showPlayerWon) {
+        winnerIds = state.players.filter(p => showTeamUserIds.includes(p.userId)).map(p => p.id);
+      } else {
+        winnerIds = state.players.filter(p => enemyTeamUserIds.includes(p.userId)).map(p => p.id);
+      }
+    } else {
+      // Individual mode — original logic unchanged.
+      showPlayerWon = showPlayerTotal <= minTotal;
+      winnerIds = showPlayerWon
+        ? [showPlayerId]
+        : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
+    }
 
     const primaryWinnerId = winnerIds[0];
 
@@ -122,6 +151,26 @@ export class ScoreEngine {
     const activeResults = results.filter(r =>
       !state.players.find(p => p.id === r.playerId)?.isEliminated
     );
+
+    // Guard: if playerResults is missing (e.g. roundResult was not yet set), fall back
+    // to the in-memory player totals to avoid Math.min(...[]) === Infinity and a crash.
+    if (activeResults.length === 0) {
+      const activePlayers = state.players.filter(p => !p.isEliminated);
+      if (activePlayers.length === 0) return null;
+      const minTotal = Math.min(...activePlayers.map(p => p.totalScore));
+      const winners = activePlayers.filter(p => p.totalScore === minTotal);
+      const primary = winners[0];
+      return {
+        winnerId: primary.id,
+        winnerIds: winners.map(p => p.id),
+        winnerUsername: winners.map(p => p.username).join(' & '),
+        finalScores: state.players.map(p => ({
+          playerId: p.id,
+          username: p.username,
+          totalScore: p.totalScore,
+        })),
+      };
+    }
 
     const minScore = Math.min(...activeResults.map(r => r.totalScore));
     const matchWinners = activeResults.filter(r => r.totalScore === minScore);

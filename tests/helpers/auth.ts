@@ -13,8 +13,8 @@ export async function guestLogin(page: Page, username = 'PWTestPlayer') {
   // Step 2: fill "Your display name" — actual placeholder text in HomePage
   await page.getByPlaceholder(/your display name/i).fill(username);
 
-  // Step 3: click "Start Playing"
-  await page.getByRole('button', { name: /start playing/i }).click();
+  // Step 3: click "Enter the Arena"
+  await page.getByRole('button', { name: /enter the arena/i }).click();
 
   await page.waitForURL('**/lobby', { timeout: 15000 });
 }

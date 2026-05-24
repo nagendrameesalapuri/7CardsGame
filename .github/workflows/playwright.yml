@@ -1,0 +1,176 @@
+name: Playwright E2E Tests
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Test suite to run (leave empty for all)'
+        required: false
+        default: ''
+
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  JWT_SECRET: playwright-test-jwt-secret-32chars!!
+  ADMIN_SECRET: admin-test-123
+  SESSION_SECRET: test-session-secret-ci
+  MONGODB_URI_TEST: mongodb://localhost:27017/7cards_playwright_ci
+
+jobs:
+  e2e-tests:
+    name: E2E Tests — ${{ matrix.shard }}/${{ matrix.total-shards }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+        total-shards: [2]
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: server
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build client
+        run: npm run build
+        working-directory: client
+        env:
+          VITE_API_URL: http://localhost:5000
+
+      - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total-shards }})
+        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/${{ matrix.total-shards }} ${{ github.event.inputs.suite != '' && format('tests/e2e/{0}', github.event.inputs.suite) || '' }}
+        env:
+          CI: true
+          MONGODB_URI: ${{ env.MONGODB_URI_TEST }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-shard-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  merge-reports:
+    name: Merge & Publish Test Reports
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Playwright
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - name: Download all shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-results-shard-*
+          path: all-reports
+
+      - name: Merge reports
+        run: npx playwright merge-reports --reporter=html ./all-reports/playwright-results-shard-*/playwright-report
+        continue-on-error: true
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: playwright-report/
+          retention-days: 30
+
+  smoke-tests:
+    name: Smoke Tests (Auth + Lobby)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request'
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (all)
+        run: npm ci && (cd server && npm ci) && (cd client && npm ci)
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: npx playwright test tests/auth.spec.ts tests/lobby.spec.ts --project=chromium
+        env:
+          CI: true
+          MONGODB_URI: ${{ env.MONGODB_URI_TEST }}
+
+      - name: Upload smoke test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-report
+          path: playwright-report/
+          retention-days: 7

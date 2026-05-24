@@ -6,12 +6,18 @@
  */
 
 import {
-  GameState, PlayerState, Card, Rank, AttackChain,
-  GameAction, DrawSource, GameStatus,
-} from '../../../shared/src/types';
-import { DeckManager } from './DeckManager';
-import { ScoreEngine } from './ScoreEngine';
-import { v4 as uuidv4 } from 'uuid';
+  GameState,
+  PlayerState,
+  Card,
+  Rank,
+  AttackChain,
+  GameAction,
+  DrawSource,
+  GameStatus,
+} from "../../../shared/src/types";
+import { DeckManager } from "./DeckManager";
+import { ScoreEngine } from "./ScoreEngine";
+import { v4 as uuidv4 } from "uuid";
 
 export interface GameConfig {
   roomId: string;
@@ -24,6 +30,7 @@ export interface GameConfig {
   }>;
   roundCount: number;
   turnTimeLimit: number; // seconds
+  disableElimination?: boolean;
 }
 
 export interface ActionResult {
@@ -36,7 +43,6 @@ export interface ActionResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class GameEngine {
-
   // ── Game Setup ─────────────────────────────────────────────────────────────
 
   static initializeGame(config: GameConfig): GameState {
@@ -44,10 +50,14 @@ export class GameEngine {
     let deck = DeckManager.createDeck(copies);
     deck = DeckManager.shuffleDeck(deck);
 
-    const { jokerRank, jokerCard, remainingDeck } = DeckManager.selectJoker(deck);
+    const { jokerRank, jokerCard, remainingDeck } =
+      DeckManager.selectJoker(deck);
     const markedDeck = DeckManager.applyJoker(remainingDeck, jokerRank);
 
-    const { hands, remainingDeck: deckAfterDeal } = DeckManager.dealCards(markedDeck, config.players.length);
+    const { hands, remainingDeck: deckAfterDeal } = DeckManager.dealCards(
+      markedDeck,
+      config.players.length,
+    );
 
     const players: PlayerState[] = config.players.map((p, i) => ({
       id: p.id,
@@ -69,7 +79,7 @@ export class GameEngine {
     // 7 and J cannot be the starting open card — keep drawing until we get a valid one.
     const d = [...deckAfterDeal];
     let firstDiscard = d.shift()!;
-    while (firstDiscard.rank === '7' || firstDiscard.rank === 'J') {
+    while (firstDiscard.rank === "7" || firstDiscard.rank === "J") {
       d.push(firstDiscard); // put it back at the bottom
       firstDiscard = d.shift()!;
     }
@@ -77,7 +87,7 @@ export class GameEngine {
     return {
       id: uuidv4(),
       roomId: config.roomId,
-      status: 'playing',
+      status: "playing",
       players,
       deck: d,
       discardPile: [firstDiscard],
@@ -96,6 +106,7 @@ export class GameEngine {
       roundResult: null,
       chatMessages: [],
       consecutiveTimeouts: {},
+      disableElimination: config.disableElimination ?? false,
     };
   }
 
@@ -116,50 +127,58 @@ export class GameEngine {
     const err = GameEngine.validateTurn(state, playerId);
     if (err) return fail(err, state);
 
-    if (state.hasDrawnThisTurn) return fail('Already drew this turn', state);
-    if (state.status !== 'playing') return fail('Game not in playing state', state);
+    if (state.hasDrawnThisTurn) return fail("Already drew this turn", state);
+    if (state.status !== "playing")
+      return fail("Game not in playing state", state);
 
     // If this player is the attack target they cannot draw normally
     if (state.attackChain?.targetPlayerIndex === state.currentPlayerIndex) {
-      return fail('You must respond to the 7 attack first', state);
+      return fail("You must respond to the 7 attack first", state);
     }
 
     let s = { ...state };
     let drawnCard: Card;
 
-    if (source === 'deck') {
+    if (source === "deck") {
       s = GameEngine.refillDeckIfNeeded(s);
-      if (s.deck.length === 0) return fail('Deck is empty', state);
+      if (s.deck.length === 0) return fail("Deck is empty", state);
       drawnCard = s.deck[0];
       s = { ...s, deck: s.deck.slice(1) };
     } else {
-      if (s.discardPile.length === 0) return fail('Discard pile is empty', state);
+      if (s.discardPile.length === 0)
+        return fail("Discard pile is empty", state);
       const topCard = s.discardPile[s.discardPile.length - 1];
       // 7 and J (real, not joker) cannot be picked from the discard pile
-      if (!topCard.isJoker && (topCard.rank === '7' || topCard.rank === 'J')) {
-        return fail(`Cannot take ${topCard.rank} from the discard pile — draw from the deck instead`, state);
+      if (!topCard.isJoker && (topCard.rank === "7" || topCard.rank === "J")) {
+        return fail(
+          `Cannot take ${topCard.rank} from the discard pile — draw from the deck instead`,
+          state,
+        );
       }
       drawnCard = topCard;
       s = { ...s, discardPile: s.discardPile.slice(0, -1) };
     }
 
-    const player = s.players.find(p => p.id === playerId)!;
+    const player = s.players.find((p) => p.id === playerId)!;
     s = updatePlayer(s, playerId, {
       hand: [...player.hand, drawnCard],
       handCount: player.handCount + 1,
     });
     s = { ...s, drawnCard, hasDrawnThisTurn: true };
 
-    const actions: GameAction[] = [{
-      type: 'draw',
-      playerId,
-      source,
-      cards: [drawnCard],
-      message: source === 'deck'
-        ? `${player.username} drew from the deck`
-        : `${player.username} picked up ${drawnCard.rank}${DeckManager.suitSymbol(drawnCard.suit)} from discard`,
-      timestamp: new Date().toISOString(),
-    }];
+    const actions: GameAction[] = [
+      {
+        type: "draw",
+        playerId,
+        source,
+        cards: [drawnCard],
+        message:
+          source === "deck"
+            ? `${player.username} drew from the deck`
+            : `${player.username} picked up ${drawnCard.rank}${DeckManager.suitSymbol(drawnCard.suit)} from discard`,
+        timestamp: new Date().toISOString(),
+      },
+    ];
 
     return { success: true, state: s, actions };
   }
@@ -180,63 +199,93 @@ export class GameEngine {
     const err = GameEngine.validateTurn(state, playerId);
     if (err) return fail(err, state);
 
-    if (cardIds.length === 0) return fail('Select at least one card to discard', state);
+    if (cardIds.length === 0)
+      return fail("Select at least one card to discard", state);
 
-    const player = state.players.find(p => p.id === playerId)!;
-    const cardsToDiscard = player.hand.filter(c => cardIds.includes(c.id));
+    const player = state.players.find((p) => p.id === playerId)!;
+    const cardsToDiscard = player.hand.filter((c) => cardIds.includes(c.id));
 
-    if (cardsToDiscard.length !== cardIds.length) return fail('Invalid card selection', state);
+    if (cardsToDiscard.length !== cardIds.length)
+      return fail("Invalid card selection", state);
 
     // Multi-card discard: all cards must share the same rank
     if (cardIds.length > 1) {
       const firstRank = cardsToDiscard[0].rank;
-      if (!cardsToDiscard.every(c => c.rank === firstRank)) {
-        return fail('You can only discard multiple cards of the same rank (e.g. two 10s)', state);
+      if (!cardsToDiscard.every((c) => c.rank === firstRank)) {
+        return fail(
+          "You can only discard multiple cards of the same rank (e.g. two 10s)",
+          state,
+        );
       }
     }
 
-    const isRealSeven = (c: Card) => c.rank === '7' && !c.isJoker;
+    const isRealSeven = (c: Card) => c.rank === "7" && !c.isJoker;
 
     if (!state.hasDrawnThisTurn) {
       // Cut rule: if every card being discarded matches the rank of the top discard,
       // and none of them are real 7s (attack cards), allow discarding without drawing.
       const top = state.discardPile[state.discardPile.length - 1];
-      const isCut = top &&
+      const isCut =
+        top &&
         !isRealSeven(top) &&
-        cardsToDiscard.every(c => c.rank === top.rank && !isRealSeven(c));
-      if (!isCut) return fail('Draw a card first — or cut with a card matching the discard pile', state);
+        cardsToDiscard.every((c) => c.rank === top.rank && !isRealSeven(c));
+      if (!isCut)
+        return fail(
+          "Draw a card first — or cut with a card matching the discard pile",
+          state,
+        );
     }
 
-    const newHand = player.hand.filter(c => !cardIds.includes(c.id));
+    const discardedCards = cardsToDiscard.map((c) => ({
+      ...c,
+      discardedBy: player.userId,
+    }));
+    const newHand = player.hand.filter((c) => !cardIds.includes(c.id));
     let s: GameState = {
       ...state,
-      players: state.players.map(p =>
-        p.id === playerId ? { ...p, hand: newHand, handCount: newHand.length } : p
+      players: state.players.map((p) =>
+        p.id === playerId
+          ? { ...p, hand: newHand, handCount: newHand.length }
+          : p,
       ),
-      discardPile: [...state.discardPile, ...cardsToDiscard],
+      discardPile: [...state.discardPile, ...discardedCards],
       hasDrawnThisTurn: false,
       drawnCard: null,
     };
 
-    const actions: GameAction[] = [{
-      type: 'discard',
-      playerId,
-      cards: cardsToDiscard,
-      message: (() => {
-        const count = cardsToDiscard.length;
-        const rank = cardsToDiscard[0].rank;
-        const countWord = count === 1 ? 'one' : count === 2 ? 'two' : count === 3 ? 'three' : `${count}`;
-        const cardLabel = count === 1
-          ? `${rank}${DeckManager.suitSymbol(cardsToDiscard[0].suit)}`
-          : `${countWord} ${rank}s`;
-        return `${player.username} discarded ${cardLabel}`;
-      })(),
-      timestamp: new Date().toISOString(),
-    }];
+    const actions: GameAction[] = [
+      {
+        type: "discard",
+        playerId,
+        cards: discardedCards,
+        message: (() => {
+          const count = cardsToDiscard.length;
+          const rank = cardsToDiscard[0].rank;
+          const countWord =
+            count === 1
+              ? "one"
+              : count === 2
+                ? "two"
+                : count === 3
+                  ? "three"
+                  : `${count}`;
+          const cardLabel =
+            count === 1
+              ? `${rank}${DeckManager.suitSymbol(cardsToDiscard[0].suit)}`
+              : `${countWord} ${rank}s`;
+          return `${player.username} discarded ${cardLabel}`;
+        })(),
+        timestamp: new Date().toISOString(),
+      },
+    ];
 
     // Joker versions of 7 and J lose their power
-    const realSevens = cardsToDiscard.filter(c => c.rank === '7' && !c.isJoker);
-    const realJacks = cardsToDiscard.filter(c => c.rank === 'J' && !c.isJoker);
+    const realSevens = cardsToDiscard.filter(
+      (c) => c.rank === "7" && !c.isJoker,
+    );
+    const realJacks = cardsToDiscard.filter(
+      (c) => c.rank === "J" && !c.isJoker,
+    );
 
     if (realSevens.length > 0) {
       s = GameEngine.startSevenAttack(s, playerId, realSevens.length, actions);
@@ -259,42 +308,53 @@ export class GameEngine {
   static processAttackResponse(
     state: GameState,
     playerId: string,
-    action: 'throw' | 'take',
+    action: "throw" | "take",
     cardIds?: string[],
   ): ActionResult {
-    if (!state.attackChain) return fail('No active attack', state);
+    if (!state.attackChain) return fail("No active attack", state);
 
     const err = GameEngine.validateTurn(state, playerId);
     if (err) return fail(err, state);
 
     if (state.attackChain.targetPlayerIndex !== state.currentPlayerIndex) {
-      return fail('You are not the current attack target', state);
+      return fail("You are not the current attack target", state);
     }
 
-    const player = state.players.find(p => p.id === playerId)!;
+    const player = state.players.find((p) => p.id === playerId)!;
     const actions: GameAction[] = [];
     let s = { ...state };
 
-    if (action === 'throw') {
-      if (!cardIds?.length) return fail('Specify 7 cards to throw', state);
+    if (action === "throw") {
+      if (!cardIds?.length) return fail("Specify 7 cards to throw", state);
 
-      const cardsToThrow = player.hand.filter(c => cardIds.includes(c.id));
-      const validSevens = cardsToThrow.filter(c => c.rank === '7' && !c.isJoker);
+      const cardsToThrow = player.hand.filter((c) => cardIds.includes(c.id));
+      const validSevens = cardsToThrow.filter(
+        (c) => c.rank === "7" && !c.isJoker,
+      );
 
       if (validSevens.length !== cardIds.length || validSevens.length === 0) {
-        return fail('Only real 7 cards can be thrown to counter an attack', state);
+        return fail(
+          "Only real 7 cards can be thrown to counter an attack",
+          state,
+        );
       }
 
-      const newHand = player.hand.filter(c => !cardIds.includes(c.id));
+      const newHand = player.hand.filter((c) => !cardIds.includes(c.id));
+      const thrownCards = validSevens.map((c) => ({
+        ...c,
+        discardedBy: player.userId,
+      }));
       const newSevenCount = state.attackChain.sevensCount + validSevens.length;
       const nextTarget = GameEngine.nextActiveIndex(s, s.currentPlayerIndex, 1);
 
       s = {
         ...s,
-        players: s.players.map(p =>
-          p.id === playerId ? { ...p, hand: newHand, handCount: newHand.length } : p
+        players: s.players.map((p) =>
+          p.id === playerId
+            ? { ...p, hand: newHand, handCount: newHand.length }
+            : p,
         ),
-        discardPile: [...s.discardPile, ...validSevens],
+        discardPile: [...s.discardPile, ...thrownCards],
         attackChain: {
           sourcePlayerId: playerId,
           targetPlayerIndex: nextTarget,
@@ -307,14 +367,13 @@ export class GameEngine {
       };
 
       actions.push({
-        type: 'attack',
+        type: "attack",
         playerId,
         cards: validSevens,
         targetPlayerIds: [s.players[nextTarget].id],
-        message: `${player.username} counters with ${validSevens.length === 1 ? 'a 7' : `${validSevens.length} 7s`}! Penalty grows to ${newSevenCount * 2} cards!`,
+        message: `${player.username} counters with ${validSevens.length === 1 ? "a 7" : `${validSevens.length} 7s`}! Penalty grows to ${newSevenCount * 2} cards!`,
         timestamp: new Date().toISOString(),
       });
-
     } else {
       // Take penalty cards
       const penaltyCount = state.attackChain.penaltyCards;
@@ -330,8 +389,10 @@ export class GameEngine {
       const newHand = [...player.hand, ...penaltyCards];
       s = {
         ...s,
-        players: s.players.map(p =>
-          p.id === playerId ? { ...p, hand: newHand, handCount: newHand.length } : p
+        players: s.players.map((p) =>
+          p.id === playerId
+            ? { ...p, hand: newHand, handCount: newHand.length }
+            : p,
         ),
         deck: d,
         attackChain: null,
@@ -339,11 +400,11 @@ export class GameEngine {
       };
 
       actions.push({
-        type: 'penalty',
+        type: "penalty",
         playerId,
         penaltyCount,
         cards: penaltyCards,
-        message: `${player.username} takes ${penaltyCount} penalty card${penaltyCount > 1 ? 's' : ''}!`,
+        message: `${player.username} takes ${penaltyCount} penalty card${penaltyCount > 1 ? "s" : ""}!`,
         timestamp: new Date().toISOString(),
       });
     }
@@ -365,61 +426,80 @@ export class GameEngine {
     if (err) return fail(err, state);
 
     if (state.attackChain?.targetPlayerIndex === state.currentPlayerIndex) {
-      return fail('Cannot SHOW while under a 7 attack', state);
+      return fail("Cannot SHOW while under a 7 attack", state);
     }
 
     if (state.hasDrawnThisTurn) {
-      return fail('Discard a card first before calling SHOW', state);
+      return fail("Discard a card first before calling SHOW", state);
     }
 
-    const player = state.players.find(p => p.id === playerId)!;
+    const player = state.players.find((p) => p.id === playerId)!;
     const handTotal = DeckManager.calculateHandTotal(player.hand);
 
     if (handTotal > 5) {
-      return fail(`Your hand total is ${handTotal} — must be 5 or less to SHOW`, state);
+      return fail(
+        `Your hand total is ${handTotal} — must be 5 or less to SHOW`,
+        state,
+      );
     }
 
-    const roundResult = ScoreEngine.calculateRoundResult(state, playerId);
+    const roundResult = ScoreEngine.calculateRoundResult(state, playerId, state.teamGroups);
 
     const s: GameState = {
       ...state,
-      status: 'show_called',
+      status: "show_called",
       showPlayerId: playerId,
       roundResult,
     };
 
-    const actions: GameAction[] = [{
-      type: 'show',
-      playerId,
-      message: `${player.username} calls SHOW! (${handTotal} pts)`,
-      timestamp: new Date().toISOString(),
-    }];
+    const actions: GameAction[] = [
+      {
+        type: "show",
+        playerId,
+        message: `${player.username} calls SHOW! (${handTotal} pts)`,
+        timestamp: new Date().toISOString(),
+      },
+    ];
 
     return { success: true, state: s, actions };
   }
 
   // ── New Round ───────────────────────────────────────────────────────────────
 
-  static startNewRound(state: GameState, previousResult: NonNullable<GameState['roundResult']>): GameState {
-    const updatedPlayers = state.players.map(p => {
-      const r = previousResult.playerResults.find(pr => pr.playerId === p.id);
+  static startNewRound(
+    state: GameState,
+    previousResult: NonNullable<GameState["roundResult"]>,
+  ): GameState {
+    const updatedPlayers = state.players.map((p) => {
+      const r = previousResult.playerResults.find((pr) => pr.playerId === p.id);
       return r
-        ? { ...p, totalScore: r.totalScore, roundScore: null, hand: [], handCount: 0 }
+        ? {
+            ...p,
+            totalScore: r.totalScore,
+            roundScore: null,
+            hand: [],
+            handCount: 0,
+          }
         : p;
     });
 
-    const active = updatedPlayers.filter(p => !p.isEliminated);
-    if (active.length <= 1) return { ...state, status: 'match_end', players: updatedPlayers };
+    const active = updatedPlayers.filter((p) => !p.isEliminated);
+    if (active.length <= 1)
+      return { ...state, status: "match_end", players: updatedPlayers };
 
     const copies = active.length >= 4 ? 2 : 1;
     let deck = DeckManager.createDeck(copies);
     deck = DeckManager.shuffleDeck(deck);
-    const { jokerRank, jokerCard, remainingDeck } = DeckManager.selectJoker(deck);
+    const { jokerRank, jokerCard, remainingDeck } =
+      DeckManager.selectJoker(deck);
     const markedDeck = DeckManager.applyJoker(remainingDeck, jokerRank);
-    const { hands, remainingDeck: deckAfterDeal } = DeckManager.dealCards(markedDeck, active.length);
+    const { hands, remainingDeck: deckAfterDeal } = DeckManager.dealCards(
+      markedDeck,
+      active.length,
+    );
 
     let activeIndex = 0;
-    const newPlayers = updatedPlayers.map(p => {
+    const newPlayers = updatedPlayers.map((p) => {
       if (p.isEliminated) return p;
       const hand = DeckManager.applyJoker(hands[activeIndex++], jokerRank);
       return { ...p, hand, handCount: 7, roundScore: null };
@@ -427,16 +507,18 @@ export class GameEngine {
 
     const d = [...deckAfterDeal];
     let firstDiscard = d.shift()!;
-    while (firstDiscard.rank === '7' || firstDiscard.rank === 'J') {
+    while (firstDiscard.rank === "7" || firstDiscard.rank === "J") {
       d.push(firstDiscard);
       firstDiscard = d.shift()!;
     }
-    const winnerSeat = newPlayers.findIndex(p => p.id === previousResult.winnerId);
+    const winnerSeat = newPlayers.findIndex(
+      (p) => p.id === previousResult.winnerId,
+    );
     const startIndex = winnerSeat >= 0 ? winnerSeat : 0;
 
     return {
       ...state,
-      status: 'playing',
+      status: "playing",
       players: newPlayers,
       deck: d,
       discardPile: [firstDiscard],
@@ -460,47 +542,62 @@ export class GameEngine {
   static processTimeout(state: GameState): ActionResult {
     const player = state.players[state.currentPlayerIndex];
     const newCount = (state.consecutiveTimeouts[player.id] ?? 0) + 1;
-    const timeouts = { ...state.consecutiveTimeouts, [player.id]: newCount };
+    let timeouts = { ...state.consecutiveTimeouts, [player.id]: newCount };
 
-    // After 3 consecutive timeouts, remove the player from the game
-    if (newCount >= 3 && !player.isBot) {
-      const actions: GameAction[] = [{
-        type: 'system',
-        playerId: player.id,
-        message: `${player.username} was removed for being inactive 3 turns in a row`,
-        timestamp: new Date().toISOString(),
-      }];
+    // After 3 consecutive timeouts, remove the player from the game (unless elimination is disabled)
+    if (newCount >= 3 && !player.isBot && !state.disableElimination) {
+      const actions: GameAction[] = [
+        {
+          type: "system",
+          playerId: player.id,
+          message: `${player.username} was removed for being inactive 3 turns in a row`,
+          timestamp: new Date().toISOString(),
+        },
+      ];
 
       const discardPile = [...state.discardPile, ...player.hand];
       let s: GameState = {
         ...state,
         consecutiveTimeouts: { ...timeouts, [player.id]: 0 },
         discardPile,
-        players: state.players.map(p =>
-          p.id === player.id ? { ...p, isEliminated: true, hand: [], handCount: 0 } : p
+        players: state.players.map((p) =>
+          p.id === player.id
+            ? { ...p, isEliminated: true, hand: [], handCount: 0 }
+            : p,
         ),
       };
 
-      const active = s.players.filter(p => !p.isEliminated);
+      const active = s.players.filter((p) => !p.isEliminated);
       if (active.length <= 1) {
-        return { success: true, state: { ...s, status: 'match_end' }, actions };
+        return { success: true, state: { ...s, status: "match_end" }, actions };
       }
 
       s = GameEngine.advanceTurn(s);
       return { success: true, state: s, actions };
     }
 
-    const actions: GameAction[] = [{
-      type: 'system',
-      playerId: player.id,
-      message: `${player.username}'s turn timed out (${newCount}/3) — auto-action applied`,
-      timestamp: new Date().toISOString(),
-    }];
+    // When elimination is disabled and threshold is reached, reset counter so messages stay sensible
+    if (newCount >= 3 && !player.isBot && state.disableElimination) {
+      timeouts = { ...timeouts, [player.id]: 0 };
+    }
+
+    const actions: GameAction[] = [
+      {
+        type: "system",
+        playerId: player.id,
+        message: `${player.username}'s turn timed out (${newCount}/3) — auto-action applied`,
+        timestamp: new Date().toISOString(),
+      },
+    ];
 
     // Under attack → auto-take penalty so the attack chain resolves cleanly
     const myIdx = state.currentPlayerIndex;
     if (state.attackChain && state.attackChain.targetPlayerIndex === myIdx) {
-      const takeResult = GameEngine.processAttackResponse(state, player.id, 'take');
+      const takeResult = GameEngine.processAttackResponse(
+        state,
+        player.id,
+        "take",
+      );
       if (takeResult.success) {
         return {
           ...takeResult,
@@ -521,8 +618,8 @@ export class GameEngine {
         s = {
           ...s,
           deck: d,
-          players: s.players.map(p =>
-            p.id === player.id ? { ...p, hand, handCount: hand.length } : p
+          players: s.players.map((p) =>
+            p.id === player.id ? { ...p, hand, handCount: hand.length } : p,
           ),
           drawnCard,
           hasDrawnThisTurn: true,
@@ -531,15 +628,19 @@ export class GameEngine {
     }
 
     // Auto-discard: highest-value non-joker card
-    const p = s.players.find(pl => pl.id === player.id)!;
+    const p = s.players.find((pl) => pl.id === player.id)!;
     if (p.hand.length > 0) {
-      const sorted = [...p.hand].sort((a, b) => DeckManager.getCardValue(b) - DeckManager.getCardValue(a));
-      const toDiscard = sorted[0];
-      const newHand = p.hand.filter(c => c.id !== toDiscard.id);
+      const sorted = [...p.hand].sort(
+        (a, b) => DeckManager.getCardValue(b) - DeckManager.getCardValue(a),
+      );
+      const toDiscard = { ...sorted[0], discardedBy: player.userId };
+      const newHand = p.hand.filter((c) => c.id !== toDiscard.id);
       s = {
         ...s,
-        players: s.players.map(pl =>
-          pl.id === player.id ? { ...pl, hand: newHand, handCount: newHand.length } : pl
+        players: s.players.map((pl) =>
+          pl.id === player.id
+            ? { ...pl, hand: newHand, handCount: newHand.length }
+            : pl,
         ),
         discardPile: [...s.discardPile, toDiscard],
         hasDrawnThisTurn: false,
@@ -554,14 +655,21 @@ export class GameEngine {
   // Reset timeout count when a player takes a real action
   static resetTimeouts(state: GameState, playerId: string): GameState {
     if (!state.consecutiveTimeouts[playerId]) return state;
-    return { ...state, consecutiveTimeouts: { ...state.consecutiveTimeouts, [playerId]: 0 } };
+    return {
+      ...state,
+      consecutiveTimeouts: { ...state.consecutiveTimeouts, [playerId]: 0 },
+    };
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
 
-  private static validateTurn(state: GameState, playerId: string): string | null {
-    if (state.status !== 'playing') return 'Game is not in progress';
-    if (state.players[state.currentPlayerIndex].id !== playerId) return "It's not your turn";
+  private static validateTurn(
+    state: GameState,
+    playerId: string,
+  ): string | null {
+    if (state.status !== "playing") return "Game is not in progress";
+    if (state.players[state.currentPlayerIndex].id !== playerId)
+      return "It's not your turn";
     return null;
   }
 
@@ -572,14 +680,18 @@ export class GameEngine {
     sevenCount: number,
     actions: GameAction[],
   ): GameState {
-    const targetIndex = GameEngine.nextActiveIndex(state, state.currentPlayerIndex, 1);
-    const attacker = state.players.find(p => p.id === attackerId)!;
+    const targetIndex = GameEngine.nextActiveIndex(
+      state,
+      state.currentPlayerIndex,
+      1,
+    );
+    const attacker = state.players.find((p) => p.id === attackerId)!;
 
     actions.push({
-      type: 'attack',
+      type: "attack",
       playerId: attackerId,
       targetPlayerIds: [state.players[targetIndex].id],
-      message: `${attacker.username} attacks with ${sevenCount === 1 ? 'a 7' : `${sevenCount} 7s`}! Take ${sevenCount * 2} cards or counter!`,
+      message: `${attacker.username} attacks with ${sevenCount === 1 ? "a 7" : `${sevenCount} 7s`}! Take ${sevenCount * 2} cards or counter!`,
       timestamp: new Date().toISOString(),
     });
 
@@ -604,7 +716,7 @@ export class GameEngine {
     jCount: number,
     actions: GameAction[],
   ): GameState {
-    const player = state.players.find(p => p.id === playerId)!;
+    const player = state.players.find((p) => p.id === playerId)!;
     const skipped: string[] = [];
 
     let idx = state.currentPlayerIndex;
@@ -615,12 +727,12 @@ export class GameEngine {
     const nextIdx = GameEngine.nextActiveIndex(state, idx, 1);
 
     actions.push({
-      type: 'skip',
+      type: "skip",
       playerId,
-      targetPlayerIds: skipped.map(name =>
-        state.players.find(p => p.username === name)?.id ?? ''
+      targetPlayerIds: skipped.map(
+        (name) => state.players.find((p) => p.username === name)?.id ?? "",
       ),
-      message: `${player.username} plays ${jCount === 1 ? 'a J' : `${jCount} Js`} — ${skipped.join(' & ')} skipped!`,
+      message: `${player.username} plays ${jCount === 1 ? "a J" : `${jCount} Js`} — ${skipped.join(" & ")} skipped!`,
       timestamp: new Date().toISOString(),
     });
 
@@ -634,7 +746,11 @@ export class GameEngine {
   }
 
   static advanceTurn(state: GameState): GameState {
-    const nextIdx = GameEngine.nextActiveIndex(state, state.currentPlayerIndex, 1);
+    const nextIdx = GameEngine.nextActiveIndex(
+      state,
+      state.currentPlayerIndex,
+      1,
+    );
     return {
       ...state,
       currentPlayerIndex: nextIdx,
@@ -646,7 +762,11 @@ export class GameEngine {
   }
 
   /** Walk the player array `steps` positions forward, skipping eliminated players. */
-  static nextActiveIndex(state: GameState, from: number, steps: number): number {
+  static nextActiveIndex(
+    state: GameState,
+    from: number,
+    steps: number,
+  ): number {
     let idx = from;
     let remaining = steps;
     const total = state.players.length;
@@ -676,9 +796,15 @@ function fail(error: string, state: GameState): ActionResult {
   return { success: false, error, state, actions: [] };
 }
 
-function updatePlayer(state: GameState, playerId: string, updates: Partial<PlayerState>): GameState {
+function updatePlayer(
+  state: GameState,
+  playerId: string,
+  updates: Partial<PlayerState>,
+): GameState {
   return {
     ...state,
-    players: state.players.map(p => (p.id === playerId ? { ...p, ...updates } : p)),
+    players: state.players.map((p) =>
+      p.id === playerId ? { ...p, ...updates } : p,
+    ),
   };
 }

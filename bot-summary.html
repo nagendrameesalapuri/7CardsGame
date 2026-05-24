@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>7 Cards Show — Bot Summary</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0a0c10;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 32px 16px 64px;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .page-header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+    .page-header p {
+      margin-top: 8px;
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+    .badge-version {
+      display: inline-block;
+      margin-top: 10px;
+      background: rgba(168,85,247,0.15);
+      border: 1px solid rgba(168,85,247,0.35);
+      color: #a855f7;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      text-transform: uppercase;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto 48px;
+    }
+
+    .card {
+      background: rgba(12,14,18,0.95);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 18px 18px 0 0;
+    }
+    .card.safe::before    { background: #00ff88; }
+    .card.aggressive::before { background: #ff6b6b; }
+    .card.bluff::before   { background: #fbbf24; }
+    .card.smart::before   { background: #00d4ff; }
+    .card.boss::before    { background: linear-gradient(90deg,#a855f7,#ff6b6b,#fbbf24); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .bot-icon {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+    .safe    .bot-icon { background: rgba(0,255,136,0.12); }
+    .aggressive .bot-icon { background: rgba(255,107,107,0.12); }
+    .bluff   .bot-icon { background: rgba(251,191,36,0.12); }
+    .smart   .bot-icon { background: rgba(0,212,255,0.12); }
+    .boss    .bot-icon { background: rgba(168,85,247,0.12); }
+
+    .card-header-text h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .card-header-text .tagline {
+      font-size: 0.78rem;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+
+    .win-rate-bar-wrap {
+      margin-bottom: 18px;
+    }
+    .win-rate-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: #6b7280;
+      margin-bottom: 5px;
+    }
+    .win-rate-label span:last-child { font-weight: 700; }
+    .bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 1s ease;
+    }
+    .safe    .bar-fill { background: #00ff88; width: 87%; }
+    .aggressive .bar-fill { background: #ff6b6b; width: 70%; }
+    .bluff   .bar-fill { background: #fbbf24; width: 55%; }
+    .smart   .bar-fill { background: #00d4ff; width: 40%; }
+    .boss    .bar-fill { background: linear-gradient(90deg,#a855f7,#ff3b5c); width: 20%; }
+
+    .description {
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: #8b949e;
+      margin-bottom: 18px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .stat-pill {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .stat-pill .label {
+      font-size: 0.68rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+    }
+    .stat-pill .value {
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .safe    .stat-pill .value { color: #00ff88; }
+    .aggressive .stat-pill .value { color: #ff6b6b; }
+    .bluff   .stat-pill .value { color: #fbbf24; }
+    .smart   .stat-pill .value { color: #00d4ff; }
+    .boss    .stat-pill .value { color: #a855f7; }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .feature-tag {
+      font-size: 0.7rem;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-weight: 600;
+    }
+    .tag-yes  { background: rgba(0,255,136,0.1);  color: #00ff88; border: 1px solid rgba(0,255,136,0.25); }
+    .tag-no   { background: rgba(107,114,128,0.1); color: #6b7280; border: 1px solid rgba(107,114,128,0.2); }
+    .tag-partial { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+    .tag-special { background: rgba(168,85,247,0.1); color: #a855f7; border: 1px solid rgba(168,85,247,0.25); }
+
+    /* Survival stages */
+    .stages-section {
+      max-width: 1200px;
+      margin: 0 auto 48px;
+    }
+    .stages-section h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .stages-track {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      background: rgba(12,14,18,0.95);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .stage-block {
+      flex: 1;
+      padding: 18px 14px;
+      text-align: center;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+    .stage-block:last-child { border-right: none; }
+    .stage-num {
+      font-size: 0.65rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .stage-icon { font-size: 1.4rem; margin-bottom: 6px; }
+    .stage-name {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .stage-rate {
+      font-size: 0.7rem;
+      margin-top: 4px;
+      font-weight: 600;
+    }
+    .stage-bar {
+      height: 3px;
+      border-radius: 99px;
+      margin-top: 8px;
+    }
+
+    /* Comparison table */
+    .table-section {
+      max-width: 1200px;
+      margin: 0 auto 24px;
+    }
+    .table-section h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(12,14,18,0.95);
+      font-size: 0.82rem;
+    }
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      white-space: nowrap;
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: #8b949e;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    td:first-child { color: #fff; font-weight: 600; }
+    .dot-green  { color: #00ff88; font-weight: 700; }
+    .dot-red    { color: #ff6b6b; font-weight: 700; }
+    .dot-yellow { color: #fbbf24; font-weight: 700; }
+    .dot-blue   { color: #00d4ff; font-weight: 700; }
+    .dot-purple { color: #a855f7; font-weight: 700; }
+
+    .footer {
+      text-align: center;
+      font-size: 0.72rem;
+      color: #374151;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .page-header h1 { font-size: 1.4rem; }
+      .stage-block { padding: 12px 6px; }
+      .stage-name { font-size: 0.7rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>7 Cards Show — Bot Personalities</h1>
+    <p>Complete reference for all AI opponents</p>
+    <span class="badge-version">v3.1 AI Engine</span>
+  </div>
+
+  <!-- Bot cards -->
+  <div class="grid">
+
+    <!-- SAFE -->
+    <div class="card safe">
+      <div class="card-header">
+        <div class="bot-icon">🛡️</div>
+        <div class="card-header-text">
+          <h2>Safe Bot</h2>
+          <div class="tagline">Beginner-friendly · Pure self-preservation</div>
+        </div>
+      </div>
+      <div class="win-rate-bar-wrap">
+        <div class="win-rate-label"><span>Bot Win Rate</span><span>85 – 90%</span></div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+      <p class="description">
+        Plays pure self-preservation. Draws from the deck almost always, avoids risky cuts, and calls SHOW the moment its hand total hits ≤5. It never bluffs, never baits, and throws 7s immediately without holding them for pressure. Ideal as the Stage 1 opponent — loses often enough to be a confidence builder.
+      </p>
+      <div class="stats-grid">
+        <div class="stat-pill"><div class="label">Show Threshold</div><div class="value">≤ 5 pts</div></div>
+        <div class="stat-pill"><div class="label">Think Delay</div><div class="value">400 – 900ms</div></div>
+        <div class="stat-pill"><div class="label">Randomness</div><div class="value">0%</div></div>
+        <div class="stat-pill"><div class="label">Denial Weight</div><div class="value">0.20</div></div>
+        <div class="stat-pill"><div class="label">Killer Instinct</div><div class="value">0.30</div></div>
+        <div class="stat-pill"><div class="label">7-Attack At</div><div class="value">≤ 4 cards</div></div>
+      </div>
+      <div class="features">
+        <span class="feature-tag tag-no">No Lookahead</span>
+        <span class="feature-tag tag-no">No Opp. Model</span>
+        <span class="feature-tag tag-no">No Bluffing</span>
+        <span class="feature-tag tag-no">No Phases</span>
+        <span class="feature-tag tag-yes">Deterministic</span>
+        <span class="feature-tag tag-yes">Stage 1</span>
+      </div>
+    </div>
+
+    <!-- AGGRESSIVE -->
+    <div class="card aggressive">
+      <div class="card-header">
+        <div class="bot-icon">⚔️</div>
+        <div class="card-header-text">
+          <h2>Aggressive Bot</h2>
+          <div class="tagline">Fast and hard · Punishes passive play</div>
+        </div>
+      </div>
+      <div class="win-rate-bar-wrap">
+        <div class="win-rate-label"><span>Bot Win Rate</span><span>65 – 75%</span></div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+      <p class="description">
+        Plays fast and hard. Draws from the discard pile frequently, cuts often, and holds 7s specifically to attack. Its killer instinct kicks in when you're weakened — it fires 7-attacks at ≤6 cards and never lets up. Calls SHOW at ≤7 pts even when the hand isn't fully optimised, trading perfection for speed.
+      </p>
+      <div class="stats-grid">
+        <div class="stat-pill"><div class="label">Show Threshold</div><div class="value">≤ 7 pts</div></div>
+        <div class="stat-pill"><div class="label">Think Delay</div><div class="value">300 – 750ms</div></div>
+        <div class="stat-pill"><div class="label">Randomness</div><div class="value">8%</div></div>
+        <div class="stat-pill"><div class="label">Denial Weight</div><div class="value">0.45</div></div>
+        <div class="stat-pill"><div class="label">Killer Instinct</div><div class="value">0.75</div></div>
+        <div class="stat-pill"><div class="label">7-Attack At</div><div class="value">≤ 6 cards</div></div>
+      </div>
+      <div class="features">
+        <span class="feature-tag tag-no">No Lookahead</span>
+        <span class="feature-tag tag-partial">Partial Opp. Model</span>
+        <span class="feature-tag tag-no">No Bluffing</span>
+        <span class="feature-tag tag-no">No Phases</span>
+        <span class="feature-tag tag-yes">Discard Pickup</span>
+        <span class="feature-tag tag-yes">Stage 2</span>
+      </div>
+    </div>
+
+    <!-- BLUFF -->
+    <div class="card bluff">
+      <div class="card-header">
+        <div class="bot-icon">🎭</div>
+        <div class="card-header-text">
+          <h2>Bluff Bot</h2>
+          <div class="tagline">Most deceptive · Creates real uncertainty</div>
+        </div>
+      </div>
+      <div class="win-rate-bar-wrap">
+        <div class="win-rate-label"><span>Bot Win Rate</span><span>50 – 60%</span></div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+      <p class="description">
+        The most deceptive bot. Has a 20% chance each turn to execute a "bluff tactical line" — deliberately discards one card from a medium-value pair (5–8 pts) to look like it's clearing, while keeping the partner. Uses fake hesitation spikes (+600–1400ms extra delay 18% of the time) to simulate deep thinking. Shows at ≤9 pts — sometimes winning, sometimes failing — making it genuinely hard to read.
+      </p>
+      <div class="stats-grid">
+        <div class="stat-pill"><div class="label">Show Threshold</div><div class="value">≤ 9 pts</div></div>
+        <div class="stat-pill"><div class="label">Think Delay</div><div class="value">700ms + spikes</div></div>
+        <div class="stat-pill"><div class="label">Randomness</div><div class="value">20% intentional</div></div>
+        <div class="stat-pill"><div class="label">Denial Weight</div><div class="value">0.55</div></div>
+        <div class="stat-pill"><div class="label">Killer Instinct</div><div class="value">0.40</div></div>
+        <div class="stat-pill"><div class="label">Hesitation Spike</div><div class="value">18% chance</div></div>
+      </div>
+      <div class="features">
+        <span class="feature-tag tag-no">No Lookahead</span>
+        <span class="feature-tag tag-no">No Opp. Model</span>
+        <span class="feature-tag tag-yes">Bluffing (20%)</span>
+        <span class="feature-tag tag-special">Fake Delays</span>
+        <span class="feature-tag tag-yes">Delayed Show Lines</span>
+        <span class="feature-tag tag-yes">Stage 3</span>
+      </div>
+    </div>
+
+    <!-- SMART -->
+    <div class="card smart">
+      <div class="card-header">
+        <div class="bot-icon">🧠</div>
+        <div class="card-header-text">
+          <h2>Smart Bot</h2>
+          <div class="tagline">Full strategist · Reads your game</div>
+        </div>
+      </div>
+      <div class="win-rate-bar-wrap">
+        <div class="win-rate-label"><span>Bot Win Rate</span><span>35 – 45%</span></div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+      <p class="description">
+        A full strategic opponent. Runs 2-turn lookahead before every discard, scores the opponent benefit of each card it considers throwing (jokers=4.0, Aces=2.8, 2s=2.2 — avoids giving you what you need), and tracks your behavior over time to identify your archetype. Its 4% controlled imperfection keeps it human-feeling and unsolvable.
+      </p>
+      <div class="stats-grid">
+        <div class="stat-pill"><div class="label">Show Threshold</div><div class="value">≤ 6 pts + stability</div></div>
+        <div class="stat-pill"><div class="label">Think Delay</div><div class="value">500 – 1100ms</div></div>
+        <div class="stat-pill"><div class="label">Randomness</div><div class="value">4% controlled</div></div>
+        <div class="stat-pill"><div class="label">Denial Weight</div><div class="value">0.72</div></div>
+        <div class="stat-pill"><div class="label">Killer Instinct</div><div class="value">0.60</div></div>
+        <div class="stat-pill"><div class="label">Jack Bias</div><div class="value">High</div></div>
+      </div>
+      <div class="features">
+        <span class="feature-tag tag-yes">2-Turn Lookahead</span>
+        <span class="feature-tag tag-yes">Opp. Modeling</span>
+        <span class="feature-tag tag-yes">Discard Denial</span>
+        <span class="feature-tag tag-yes">Jack Tempo Control</span>
+        <span class="feature-tag tag-special">Imperfection (4%)</span>
+        <span class="feature-tag tag-yes">Stage 4</span>
+      </div>
+    </div>
+
+    <!-- BOSS -->
+    <div class="card boss">
+      <div class="card-header">
+        <div class="bot-icon">👑</div>
+        <div class="card-header-text">
+          <h2>Boss Bot</h2>
+          <div class="tagline">Maximum pressure · Never plays the same twice</div>
+        </div>
+      </div>
+      <div class="win-rate-bar-wrap">
+        <div class="win-rate-label"><span>Bot Win Rate</span><span>15 – 25%</span></div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+      <p class="description">
+        The full system at maximum pressure. Has 8 sub-personalities that rotate dynamically based on a match variant seed (rolled once per match) and an emotional phase state machine: building → pressure (3 turns of max aggression) → cooldown → bait → surge → repeat. Uses 15% controlled imperfection, the highest denial weight, and enters anti-show mode when you're close to declaring.
+      </p>
+      <div class="stats-grid">
+        <div class="stat-pill"><div class="label">Show Threshold</div><div class="value">≤ 5 pts</div></div>
+        <div class="stat-pill"><div class="label">Think Delay</div><div class="value">200ms + spikes</div></div>
+        <div class="stat-pill"><div class="label">Randomness</div><div class="value">15% controlled</div></div>
+        <div class="stat-pill"><div class="label">Denial Weight</div><div class="value">0.88</div></div>
+        <div class="stat-pill"><div class="label">Killer Instinct</div><div class="value">0.82</div></div>
+        <div class="stat-pill"><div class="label">Sub-personalities</div><div class="value">8 dynamic</div></div>
+      </div>
+      <div class="features">
+        <span class="feature-tag tag-yes">2-Turn Lookahead</span>
+        <span class="feature-tag tag-yes">Opp. Modeling</span>
+        <span class="feature-tag tag-special">Emotional Phases</span>
+        <span class="feature-tag tag-special">Match Variant Seed</span>
+        <span class="feature-tag tag-yes">Anti-Show Mode</span>
+        <span class="feature-tag tag-yes">Stage 5</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Survival stages -->
+  <div class="stages-section">
+    <h2>Survival Mode — Stage Progression</h2>
+    <div class="stages-track">
+      <div class="stage-block">
+        <div class="stage-num">Stage 1</div>
+        <div class="stage-icon">🛡️</div>
+        <div class="stage-name">Safe</div>
+        <div class="stage-rate dot-green">Easy</div>
+        <div class="stage-bar" style="background:#00ff88;width:90%;margin:8px auto 0;"></div>
+      </div>
+      <div class="stage-block">
+        <div class="stage-num">Stage 2</div>
+        <div class="stage-icon">⚔️</div>
+        <div class="stage-name">Aggressive</div>
+        <div class="stage-rate dot-green">Moderate</div>
+        <div class="stage-bar" style="background:#ff6b6b;width:70%;margin:8px auto 0;"></div>
+      </div>
+      <div class="stage-block">
+        <div class="stage-num">Stage 3</div>
+        <div class="stage-icon">🎭</div>
+        <div class="stage-name">Bluff</div>
+        <div class="stage-rate dot-yellow">Hard</div>
+        <div class="stage-bar" style="background:#fbbf24;width:55%;margin:8px auto 0;"></div>
+      </div>
+      <div class="stage-block">
+        <div class="stage-num">Stage 4</div>
+        <div class="stage-icon">🧠</div>
+        <div class="stage-name">Smart</div>
+        <div class="stage-rate dot-blue">Very Hard</div>
+        <div class="stage-bar" style="background:#00d4ff;width:38%;margin:8px auto 0;"></div>
+      </div>
+      <div class="stage-block">
+        <div class="stage-num">Stage 5</div>
+        <div class="stage-icon">👑</div>
+        <div class="stage-name">Boss</div>
+        <div class="stage-rate dot-purple">Extreme</div>
+        <div class="stage-bar" style="background:#a855f7;width:20%;margin:8px auto 0;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="table-section">
+    <h2>Quick Comparison</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Bot</th>
+            <th>Win Rate</th>
+            <th>Show At</th>
+            <th>Randomness</th>
+            <th>Denial Wt.</th>
+            <th>Killer Inst.</th>
+            <th>Lookahead</th>
+            <th>Opp. Model</th>
+            <th>Bluffing</th>
+            <th>Phases</th>
+            <th>Stage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="dot-green">🛡️ Safe</td>
+            <td>85–90%</td>
+            <td>≤ 5</td>
+            <td>0%</td>
+            <td>0.20</td>
+            <td>0.30</td>
+            <td style="color:#6b7280">No</td>
+            <td style="color:#6b7280">No</td>
+            <td style="color:#6b7280">No</td>
+            <td style="color:#6b7280">None</td>
+            <td class="dot-green">1</td>
+          </tr>
+          <tr>
+            <td class="dot-red">⚔️ Aggressive</td>
+            <td>65–75%</td>
+            <td>≤ 7</td>
+            <td>8%</td>
+            <td>0.45</td>
+            <td>0.75</td>
+            <td style="color:#6b7280">No</td>
+            <td class="dot-yellow">Partial</td>
+            <td style="color:#6b7280">No</td>
+            <td style="color:#6b7280">None</td>
+            <td class="dot-red">2</td>
+          </tr>
+          <tr>
+            <td class="dot-yellow">🎭 Bluff</td>
+            <td>50–60%</td>
+            <td>≤ 9</td>
+            <td>20%</td>
+            <td>0.55</td>
+            <td>0.40</td>
+            <td style="color:#6b7280">No</td>
+            <td style="color:#6b7280">No</td>
+            <td class="dot-yellow">Yes (20%)</td>
+            <td class="dot-yellow">Fake Delays</td>
+            <td class="dot-yellow">3</td>
+          </tr>
+          <tr>
+            <td class="dot-blue">🧠 Smart</td>
+            <td>35–45%</td>
+            <td>≤ 6</td>
+            <td>4%</td>
+            <td>0.72</td>
+            <td>0.60</td>
+            <td class="dot-blue">2 turns</td>
+            <td class="dot-blue">Yes</td>
+            <td style="color:#6b7280">No</td>
+            <td class="dot-blue">Imperfection</td>
+            <td class="dot-blue">4</td>
+          </tr>
+          <tr>
+            <td class="dot-purple">👑 Boss</td>
+            <td>15–25%</td>
+            <td>≤ 5</td>
+            <td>15%</td>
+            <td>0.88</td>
+            <td>0.82</td>
+            <td class="dot-purple">2 turns</td>
+            <td class="dot-purple">Yes</td>
+            <td class="dot-purple">Occasional</td>
+            <td class="dot-purple">Full (5 phases)</td>
+            <td class="dot-purple">5</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Boss sub-personalities -->
+  <div class="table-section" style="margin-top:32px;">
+    <h2>Boss Bot — 8 Sub-Personalities</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sub-personality</th>
+            <th>Trigger</th>
+            <th>Behaviour</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>neutral</td>
+            <td>Default / building phase</td>
+            <td>Balanced play — optimises hand without heavy pressure</td>
+          </tr>
+          <tr>
+            <td>aggressive</td>
+            <td>Pressure phase + punisher seed</td>
+            <td>Max attack frequency, draws from discard, early SHOW calls</td>
+          </tr>
+          <tr>
+            <td>defensive</td>
+            <td>Cooldown phase</td>
+            <td>Backs off pressure, conserves 7s, lets opponent breathe briefly</td>
+          </tr>
+          <tr>
+            <td>trap</td>
+            <td>Tactician seed</td>
+            <td>Baits opponent into drawing a bad card then punishes immediately</td>
+          </tr>
+          <tr>
+            <td>anti_show</td>
+            <td>Opponent hand ≤ 4 cards</td>
+            <td>Saves all 7s, throws them the moment opponent looks ready to SHOW</td>
+          </tr>
+          <tr>
+            <td>pressure_mode</td>
+            <td>Pressurer seed + pressure phase</td>
+            <td>Sustained multi-turn aggression — Jack denials + 7-attacks combined</td>
+          </tr>
+          <tr>
+            <td>killer</td>
+            <td>Opponent weak / recovering</td>
+            <td>Maximum killer instinct — does not relent when opponent is down</td>
+          </tr>
+          <tr>
+            <td>combo_preserve</td>
+            <td>Bait phase</td>
+            <td>Holds paired cards, looks vulnerable to bait an early SHOW from opponent</td>
+          </tr>
+          <tr>
+            <td>tempo_control</td>
+            <td>Tactician seed</td>
+            <td>Burns Jacks aggressively to skip opponent turns and control round pace</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">7 Cards Show · AI Engine v3.1 · All win rates are target ranges under standard play</div>
+
+</body>
+</html>

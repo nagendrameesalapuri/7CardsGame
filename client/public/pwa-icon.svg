@@ -1,13 +1,85 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="80" fill="#0d1117"/>
-  <rect x="40" y="40" width="432" height="432" rx="60" fill="#161b22"/>
-  <!-- Card suit decorations -->
-  <text x="80" y="160" font-size="80" fill="#ff3b5c" opacity="0.6">♥</text>
-  <text x="340" y="400" font-size="80" fill="#ff3b5c" opacity="0.6">♦</text>
-  <text x="80" y="400" font-size="80" fill="#e6edf3" opacity="0.6">♠</text>
-  <text x="340" y="160" font-size="80" fill="#e6edf3" opacity="0.6">♣</text>
-  <!-- Center card -->
-  <rect x="156" y="156" width="200" height="200" rx="20" fill="#00ff88" opacity="0.15"/>
-  <rect x="156" y="156" width="200" height="200" rx="20" fill="none" stroke="#00ff88" stroke-width="4"/>
-  <text x="256" y="282" font-size="100" text-anchor="middle" fill="#00ff88">7</text>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c14"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="seven" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#12102a"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="sevenglow">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Outer glow ring -->
+  <rect x="6" y="6" width="500" height="500" rx="92" fill="none" stroke="url(#border)" stroke-width="4" opacity="0.7"/>
+
+  <!-- Inner subtle ring -->
+  <rect x="18" y="18" width="476" height="476" rx="82" fill="none" stroke="rgba(99,102,241,0.18)" stroke-width="1.5"/>
+
+  <!-- Corner suit symbols -->
+  <text x="44" y="115" font-size="62" font-family="serif" fill="#6366f1" opacity="0.35">♠</text>
+  <text x="390" y="115" font-size="62" font-family="serif" fill="#a855f7" opacity="0.35">♣</text>
+  <text x="44" y="470" font-size="62" font-family="serif" fill="#f43f5e" opacity="0.35">♥</text>
+  <text x="390" y="470" font-size="62" font-family="serif" fill="#f43f5e" opacity="0.35">♦</text>
+
+  <!-- Center card shape -->
+  <rect x="146" y="126" width="220" height="260" rx="22" fill="url(#card)" stroke="rgba(99,102,241,0.5)" stroke-width="2.5"/>
+
+  <!-- Card inner highlight -->
+  <rect x="155" y="135" width="202" height="242" rx="16" fill="none" stroke="rgba(139,92,246,0.2)" stroke-width="1"/>
+
+  <!-- Glow behind 7 -->
+  <ellipse cx="256" cy="262" rx="70" ry="70" fill="#6366f1" opacity="0.12" filter="url(#glow)"/>
+
+  <!-- The 7 -->
+  <text x="256" y="310"
+    font-size="160"
+    font-family="Georgia, serif"
+    font-weight="bold"
+    text-anchor="middle"
+    fill="url(#seven)"
+    filter="url(#sevenglow)"
+    opacity="0.96">7</text>
+
+  <!-- Top-left card rank -->
+  <text x="164" y="170" font-size="26" font-family="Georgia, serif" font-weight="bold" fill="#a5b4fc" opacity="0.8">7</text>
+  <!-- Bottom-right card rank (inverted) -->
+  <text x="348" y="375" font-size="26" font-family="Georgia, serif" font-weight="bold" fill="#a5b4fc" opacity="0.8" transform="rotate(180,348,375)">7</text>
+
+  <!-- Crown above the card -->
+  <g transform="translate(219,82)" fill="#f59e0b" opacity="0.85">
+    <polygon points="37,0 0,28 12,28 12,42 62,42 62,28 74,28" opacity="0.9"/>
+    <polygon points="37,0 18,22 37,16 56,22" fill="#fbbf24"/>
+    <rect x="12" y="36" width="50" height="8" rx="2" fill="#f59e0b"/>
+  </g>
+
+  <!-- Bottom label -->
+  <text x="256" y="446"
+    font-size="26"
+    font-family="Arial, sans-serif"
+    font-weight="900"
+    text-anchor="middle"
+    letter-spacing="3"
+    fill="#6366f1"
+    opacity="0.75">ARENA</text>
 </svg>

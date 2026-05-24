@@ -42,7 +42,7 @@ export function ShowButton() {
           </p>
           <p className="text-dark-muted text-sm mb-6">
             All players will reveal their cards. If you don't have the lowest score,
-            you'll receive everyone else's points as penalty!
+            you'll receive the sum of all players' hand totals as penalty!
           </p>
 
           <div className="bg-dark-bg rounded-xl p-3 mb-6 text-sm text-dark-muted">

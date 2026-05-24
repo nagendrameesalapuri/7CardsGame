@@ -74,21 +74,59 @@ export const usersApi = {
   leaderboard: () => api.get<{ leaderboard: any[] }>("/users/leaderboard"),
   profile: (id: string) =>
     api.get<{ user: any; recentGames: any[] }>(`/users/${id}/profile`),
-  updateMe: (data: { username?: string; avatar?: string }) =>
+  updateMe: (data: { username?: string; avatar?: string; selectedBadgeId?: string | null }) =>
     api.patch("/users/me", data),
+  search: (q: string) =>
+    api.get<{ users: Array<{ id: string; username: string; avatar: string }> }>(
+      `/users/search?q=${encodeURIComponent(q)}&limit=30`
+    ),
 };
 
 export const gamesApi = {
   history: () => api.get<{ games: any[] }>("/games/history"),
 };
 
-export const tournamentsApi = {
-  history: () => api.get<{ tournaments: any[] }>("/tournaments"),
+export type NotificationCategory =
+  | 'tournament' | 'boss_arena' | 'rewards' | 'daily_missions'
+  | 'multiplayer' | 'survival_streak' | 'events' | 'system';
+
+export interface AppNotificationRecord {
+  _id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  type: 'info' | 'warning' | 'success';
+  actionUrl?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPrefs {
+  tournament: boolean;
+  boss_arena: boolean;
+  rewards: boolean;
+  daily_missions: boolean;
+  survival_streak: boolean;
+  multiplayer: boolean;
+  events: boolean;
+  system: boolean;
+}
+
+export const notificationsApi = {
+  list: (page = 1) =>
+    api.get<{ notifications: AppNotificationRecord[]; total: number; unread: number; pages: number }>(
+      `/notifications?page=${page}`
+    ),
+  markAllRead: () => api.patch('/notifications/read', {}),
+  markRead:    (id: string) => api.patch(`/notifications/${id}/read`, {}),
+  clear:       () => api.delete('/notifications'),
+  getPrefs:    () => api.get<{ preferences: NotificationPrefs }>('/notifications/preferences'),
+  savePrefs:   (prefs: Partial<NotificationPrefs>) => api.patch('/notifications/preferences', prefs),
 };
 
 export const configApi = {
   getPublic: () =>
-    api.get<{ featureFlags: any; gameConfig: any; walletConfig: any }>(
+    api.get<{ featureFlags: any; gameConfig: any; walletConfig: any; survivalConfig: any }>(
       "/admin/config/public",
     ),
 };
@@ -104,6 +142,7 @@ export const walletApi = {
     api.get<{
       balance: number;
       isGuest: boolean;
+      lockedRewards: number;
       transactions: any[];
       withdrawalRequests: any[];
       depositRequests: any[];
@@ -113,6 +152,18 @@ export const walletApi = {
       amount,
       utrNumber,
     }),
+  voucherExtract: (imageBase64: string, brand: string) =>
+    api.post<{ voucherNumber: string; voucherPin: string; voucherExpiry: string }>('/wallet/voucher/extract', { imageBase64, brand }),
+  voucherSubmit: (data: {
+    voucherBrand: string;
+    voucherNumber: string;
+    voucherPin: string;
+    voucherExpiry: string;
+    amount: number;
+    screenshotUrl?: string;
+  }) => api.post<{ message: string }>("/wallet/voucher/submit", data),
+  redeem: (data: { amount: number; voucherBrand: string }) =>
+    api.post<{ balance: number; message: string }>("/wallet/redeem", data),
   withdraw: (data: {
     amount: number;
     upiId?: string;
@@ -138,6 +189,15 @@ export const admin = {
     status: "approved" | "rejected",
     adminNote?: string,
   ) => adminApi.patch(`/withdrawals/${id}`, { status, adminNote }),
+  deliverVoucher: (
+    id: string,
+    data: {
+      deliveredVoucherNumber: string;
+      deliveredVoucherPin: string;
+      deliveredVoucherExpiry: string;
+      adminMessage?: string;
+    },
+  ) => adminApi.patch(`/withdrawals/${id}/deliver`, data),
   getWallets: () => adminApi.get<{ wallets: any[] }>("/wallets"),
   getAdminCredits: () => adminApi.get<{ credits: any[] }>("/wallets/credits"),
   creditWallet: (userId: string, amount: number, note?: string) =>
@@ -166,9 +226,9 @@ export const admin = {
   kickFromRoom: (code: string, userId: string) =>
     adminApi.post(`/rooms/${code}/kick/${userId}`),
 
-  getTournaments: (params?: { page?: number; status?: string }) =>
+  getSurvivalChampionship: (params?: { page?: number; tier?: string }) =>
     adminApi.get<{
-      tournaments: any[];
+      records: any[];
       total: number;
       page: number;
       pages: number;
@@ -189,6 +249,8 @@ export const admin = {
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>("/leaderboard"),
   resetLeaderboard: () => adminApi.post("/leaderboard/reset"),
+  getProgressionLeaderboard: (category: 'xp' | 'achievements') =>
+    adminApi.get<{ leaderboard: any[]; category: string }>(`/progression/leaderboard?category=${category}`),
 
   getSupport: (status?: string) =>
     adminApi.get<{ tickets: any[]; summary: any }>("/support", {
@@ -201,6 +263,140 @@ export const admin = {
 
   sendNotification: (title: string, message: string, type: "info" | "warning" | "success") =>
     adminApi.post<{ success: boolean; recipients: number }>("/notify", { title, message, type }),
+
+  sendPushNotification: (opts: {
+    title: string;
+    message: string;
+    category?: string;
+    type?: "info" | "warning" | "success";
+    actionUrl?: string;
+    global?: boolean;
+    userIds?: string[];
+    inactiveHours?: number;
+  }) => adminApi.post<{ ok: boolean; mode: string; count?: number }>("/push/send", opts),
+
+  getPushUsers: () => adminApi.get<{ users: Record<string, { deviceCount: number; lastActiveAt: string; devices: string[] }>; total: number }>("/push/users"),
+  getPushHealth: () => adminApi.get<{ envVarsSet: boolean; projectId: string | null; tokenCount: number; hint: string }>("/push/health"),
+  getPushBroadcasts: (page = 1) => adminApi.get<{
+    broadcasts: Array<{
+      _id: string;
+      title: string;
+      message: string;
+      category: string;
+      type: string;
+      targetType: 'global' | 'targeted' | 'inactive';
+      intendedCount: number;
+      deliveredCount: number;
+      readCount: number;
+      createdAt: string;
+    }>;
+    total: number;
+    page: number;
+    pages: number;
+  }>(`/push/broadcasts?page=${page}`),
+
+  getAnalytics: () => adminApi.get<any>("/analytics"),
+  resetAnalytics: () => adminApi.post("/analytics/reset"),
+
+  // ── Player Intelligence ──────────────────────────────────────────────────
+  playerIntelSearch: (q: string) =>
+    adminApi.get<{ users: any[] }>(`/player-intel/search?q=${encodeURIComponent(q)}`),
+
+  playerIntelProfile: (userId: string) =>
+    adminApi.get<{ user: any; progress: any; financial: any; activity: any; risk: any; noteCount: number }>(
+      `/player-intel/${userId}/profile`
+    ),
+
+  playerIntelTransactions: (userId: string, params: { page?: number; type?: string; from?: string; to?: string }) =>
+    adminApi.get<{ transactions: any[]; total: number; page: number; pages: number }>(
+      `/player-intel/${userId}/transactions`, { params }
+    ),
+
+  playerIntelGames: (userId: string, page = 1) =>
+    adminApi.get<{ games: any[]; total: number; page: number; pages: number }>(
+      `/player-intel/${userId}/games?page=${page}`
+    ),
+
+  playerIntelTournaments: (userId: string, page = 1) =>
+    adminApi.get<{ solo: any; team: any }>(`/player-intel/${userId}/tournaments?page=${page}`),
+
+  playerIntelRisk: (userId: string) =>
+    adminApi.get<{ computed: any; stored: any; recentNotes: any[] }>(`/player-intel/${userId}/risk`),
+
+  playerIntelNotes: (userId: string) =>
+    adminApi.get<{ notes: any[] }>(`/player-intel/${userId}/notes`),
+
+  playerIntelAddNote: (userId: string, content: string, type: string) =>
+    adminApi.post<{ note: any }>(`/player-intel/${userId}/notes`, { content, type }),
+
+  playerIntelDeleteNote: (userId: string, noteId: string) =>
+    adminApi.delete(`/player-intel/${userId}/notes/${noteId}`),
+
+  playerIntelAction: (userId: string, action: string, reason?: string, amount?: number) =>
+    adminApi.post<any>(`/player-intel/${userId}/action`, { action, reason, amount }),
+
+  playerIntelWalletRequests: (userId: string) =>
+    adminApi.get<{ deposits: any[]; withdrawals: any[] }>(`/player-intel/${userId}/wallet-requests`),
+
+  getGameReview: (roomId: string) =>
+    adminApi.get<{ game: any; transactions: any[] }>(`/game-review/${roomId}`),
+
+  getMissedPayouts: (page = 1) =>
+    adminApi.get<{
+      failed: any[];
+      orphaned: any[];
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/missed-payouts?page=${page}`),
+
+  repayMissedPayout: (data: { userId: string; amount: number; roomCode?: string; note?: string }) =>
+    adminApi.post<{ ok: boolean; balance: number; username: string }>("/missed-payouts/repay", data),
+
+  getTeamArenaAnalytics: () => adminApi.get<{
+    overview: {
+      totalRuns: number; completedRuns: number; abandonedRuns: number;
+      earlyAbandons: number; completionRate: number; abandonRate: number;
+      avgStageReached: number;
+    };
+    stageClearRates: Array<{ stage: number; cleared: number; clearRate: number }>;
+    stage5WinRate: number;
+    tierBreakdown: Array<{ tier: string; count: number; wins: number; winRate: number }>;
+    feeModeBreakdown: Array<{ mode: string; count: number }>;
+  }>("/team-arena/analytics"),
+
+  getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
+  createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>
+    adminApi.post<{ announcement: any }>("/announcements", data),
+  updateAnnouncement: (id: string, data: { active?: boolean; message?: string; type?: string }) =>
+    adminApi.patch<{ announcement: any }>(`/announcements/${id}`, data),
+  deleteAnnouncement: (id: string) => adminApi.delete(`/announcements/${id}`),
+};
+
+export const announcementsApi = {
+  getActive: () => api.get<{ announcements: any[] }>("/announcements"),
+};
+
+export const progressionApi = {
+  get:       () => api.get<{ progress: any }>('/progression'),
+  daily:     () => api.post<{ reward: any; newDay: number; loginStreak: number; leveled: boolean; rankedUp: boolean; newLevel: number; newRank: string; newAchievements: any[]; progress: any }>('/progression/daily'),
+  luckySpin: () => api.post<{ outcome: any; progress: any }>('/progression/lucky-spin'),
+  leaderboard: (category: 'xp' | 'streak' | 'survival') =>
+    api.get<{ leaderboard: any[]; category: string }>(`/progression/leaderboard?category=${category}`),
+  achievements: () => api.get<{ achievements: any[] }>('/progression/achievements'),
+};
+
+export const survivalApi = {
+  history:     (page = 1) => api.get<{ records: any[]; total: number; page: number; pages: number }>(`/survival/history?page=${page}`),
+  teamHistory: (page = 1) => api.get<{ records: any[]; total: number; page: number; pages: number }>(`/survival/team-history?page=${page}`),
+  status:  () => api.get<{ survival: any }>('/survival/status'),
+  stats:   () => api.get<{
+    runsPlayed: number; runsWon: number; runsLost: number; runsAbandoned: number;
+    stagesPlayed: number; stagesWon: number; stageWinRate: number;
+    runWinRate: number; bestStage: number;
+    totalEarned: number; totalSpent: number; netPoints: number;
+  }>('/survival/stats'),
+  active:  () => api.get<{ battles: any[] }>('/survival/active'),
 };
 
 export default api;

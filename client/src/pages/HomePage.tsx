@@ -4,6 +4,22 @@ import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '../components/ui/Button';
 
+const FEATURES = [
+  { icon: '🤖', label: 'AI Opponents',    desc: '5 unique personalities' },
+  { icon: '⚔️', label: 'Arena Battles',   desc: 'Casual to Boss Rush' },
+  { icon: '🏆', label: 'Survival Mode',   desc: 'Beat all 5 AI stages' },
+  { icon: '⚡', label: 'Real-time PvP',   desc: 'Play with friends' },
+  { icon: '🎯', label: 'Skill Ranking',   desc: 'Climb the leaderboard' },
+  { icon: '🎁', label: 'Earn Rewards',    desc: 'Win tournament credits' },
+];
+
+const SUIT_POS = [
+  { suit: '♠', left: '8%',  top: '18%', delay: 0 },
+  { suit: '♥', left: '82%', top: '12%', delay: 0.6 },
+  { suit: '♦', left: '75%', top: '65%', delay: 1.2 },
+  { suit: '♣', left: '12%', top: '70%', delay: 0.9 },
+];
+
 export function HomePage() {
   const { isAuthenticated, guestLogin, googleLogin, isLoading } = useAuthStore();
   const navigate = useNavigate();
@@ -11,7 +27,6 @@ export function HomePage() {
   const [guestError, setGuestError] = useState('');
   const [mode, setMode] = useState<'home' | 'guest'>('home');
 
-  // Show error if redirected back from server with an error code
   const urlError = new URLSearchParams(window.location.search).get('error');
   const googleNotConfigured = urlError === 'google_not_configured';
   const tooManyRequests = urlError === 'too_many_requests';
@@ -22,11 +37,7 @@ export function HomePage() {
   }
 
   const handleGuestLogin = async () => {
-    // Hidden admin trigger — all caps "ADMIN"
-    if (guestName.trim() === 'ADMIN') {
-      navigate('/admin/login');
-      return;
-    }
+    if (guestName.trim() === 'ADMIN') { navigate('/admin/login'); return; }
     if (!guestName.trim() || guestName.trim().length < 2) {
       setGuestError('Name must be at least 2 characters');
       return;
@@ -40,68 +51,74 @@ export function HomePage() {
     }
   };
 
-  const handleGuestNameChange = (value: string) => {
-    setGuestName(value);
-    // Clear any lingering error
-    if (guestError) setGuestError('');
-  };
-
   return (
-    <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4 overflow-hidden">
-      {/* Background felt texture */}
-      <div className="absolute inset-0 bg-felt-dark opacity-30 bg-felt-pattern" />
+    <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative"
+      style={{ background: 'radial-gradient(ellipse 120% 80% at 50% 0%, rgba(30,20,60,1) 0%, rgba(6,6,18,1) 60%)' }}>
 
-      {/* Floating cards decoration */}
-      {['♥', '♦', '♣', '♠'].map((suit, i) => (
-        <motion.div
-          key={suit}
-          className="absolute text-6xl opacity-5 select-none pointer-events-none text-white"
-          animate={{ y: [0, -20, 0], rotate: [0, 5, -5, 0] }}
-          transition={{ duration: 4 + i, repeat: Infinity, delay: i * 0.5 }}
-          style={{ left: `${15 + i * 20}%`, top: `${20 + (i % 2) * 40}%` }}
-        >
+      {/* Ambient orbs */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[10%] left-[15%] w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.18),transparent 70%)', filter: 'blur(40px)' }} />
+        <div className="absolute top-[50%] right-[10%] w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.12),transparent 70%)', filter: 'blur(50px)' }} />
+        <div className="absolute bottom-[10%] left-[30%] w-56 h-56 rounded-full" style={{ background: 'radial-gradient(circle,rgba(34,197,94,0.08),transparent 70%)', filter: 'blur(40px)' }} />
+        {/* Grid overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.5) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
+      </div>
+
+      {/* Floating suit symbols */}
+      {SUIT_POS.map(({ suit, left, top, delay }) => (
+        <motion.div key={suit}
+          className="absolute text-7xl sm:text-9xl select-none pointer-events-none font-black"
+          style={{ left, top, color: suit === '♥' || suit === '♦' ? 'rgba(180,30,30,0.07)' : 'rgba(255,255,255,0.05)' }}
+          animate={{ y: [0, -24, 0], rotate: [0, 4, -4, 0] }}
+          transition={{ duration: 5 + delay, repeat: Infinity, delay, ease: 'easeInOut' }}>
           {suit}
         </motion.div>
       ))}
 
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 w-full max-w-md"
-      >
-        {/* Logo */}
+      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+        className="relative z-10 w-full max-w-md">
+
+        {/* Hero brand */}
         <div className="text-center mb-8">
-          <motion.div
-            animate={{ rotate: [-5, 5, -5] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            className="text-8xl mb-4 inline-block"
-          >
-            🃏
+          <motion.div animate={{ rotate: [-3, 3, -3] }} transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+            className="inline-block mb-4">
+            <div className="w-20 h-20 rounded-3xl mx-auto flex items-center justify-center text-4xl"
+              style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.25))', border: '1px solid rgba(99,102,241,0.5)', boxShadow: '0 0 40px rgba(99,102,241,0.25)' }}>
+              ⚔️
+            </div>
           </motion.div>
-          <h1 className="text-5xl font-bold font-game text-white mb-2">7 Cards Show</h1>
-          <p className="text-dark-muted">The ultimate Indian multiplayer card game</p>
+
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight leading-none mb-2"
+            style={{ background: 'linear-gradient(135deg,#ffffff 0%,#c7d2fe 40%,#a78bfa 70%,#818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+            Arena of Sevens
+          </h1>
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <div className="h-px flex-1 max-w-16" style={{ background: 'linear-gradient(90deg,transparent,rgba(99,102,241,0.5))' }} />
+            <p className="text-xs font-black uppercase tracking-[0.25em]" style={{ color: '#818cf8' }}>Master the SHOW</p>
+            <div className="h-px flex-1 max-w-16" style={{ background: 'linear-gradient(90deg,rgba(99,102,241,0.5),transparent)' }} />
+          </div>
+          <p className="text-dark-muted text-sm mt-3">
+            Strategic AI card tournament · Skill-based competition
+          </p>
         </div>
 
         {/* Auth card */}
-        <div className="bg-dark-surface border border-dark-border rounded-2xl p-8 shadow-2xl">
+        <div className="rounded-3xl p-6 sm:p-8 shadow-2xl"
+          style={{ background: 'rgba(10,12,24,0.95)', border: '1px solid rgba(255,255,255,0.09)', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
           {mode === 'home' ? (
             <div className="space-y-4">
               {googleNotConfigured && (
-                <p className="text-yellow-400 text-xs text-center bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
-                  Google login not configured on this server. Use Guest login instead.
+                <p className="text-yellow-400 text-xs text-center bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2">
+                  Google login not available on this server. Use Guest login instead.
                 </p>
               )}
               {tooManyRequests && (
-                <p className="text-neon-red text-xs text-center bg-neon-red/10 border border-neon-red/30 rounded-lg px-3 py-2">
+                <p className="text-red-400 text-xs text-center bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
                   Too many login attempts. Please wait a few minutes and try again.
                 </p>
               )}
-              <Button
-                variant="primary"
-                fullWidth
-                size="lg"
-                onClick={googleLogin}
-              >
+
+              <Button variant="primary" fullWidth size="lg" onClick={googleLogin}>
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -116,68 +133,52 @@ export function HomePage() {
                   <div className="w-full border-t border-dark-border" />
                 </div>
                 <div className="relative flex justify-center">
-                  <span className="px-3 bg-dark-surface text-dark-muted text-sm">or</span>
+                  <span className="px-3 text-dark-muted text-sm" style={{ background: 'rgba(10,12,24,0.95)' }}>or</span>
                 </div>
               </div>
 
-              <Button
-                variant="secondary"
-                fullWidth
-                size="lg"
-                onClick={() => setMode('guest')}
-              >
+              <Button variant="secondary" fullWidth size="lg" onClick={() => setMode('guest')}>
                 👤 Play as Guest
               </Button>
 
-              <p className="text-center text-dark-muted text-xs mt-4">
-                Guest progress is not saved. Sign in with Google to track your stats.
+              <p className="text-center text-dark-muted text-xs">
+                Guest progress is not saved. Sign in to track your arena ranking.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
-              <button
-                onClick={() => setMode('home')}
-                className="flex items-center gap-1 text-dark-muted text-sm hover:text-dark-text transition-colors mb-2"
-              >
+              <button onClick={() => setMode('home')}
+                className="flex items-center gap-1 text-dark-muted text-sm hover:text-white transition-colors mb-2">
                 ← Back
               </button>
-
-              <h2 className="text-xl font-bold text-dark-text">Choose a username</h2>
-
+              <h2 className="text-xl font-black text-white">Choose your arena name</h2>
               <input
                 value={guestName}
-                onChange={e => handleGuestNameChange(e.target.value)}
+                onChange={e => { setGuestName(e.target.value); if (guestError) setGuestError(''); }}
                 onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
                 placeholder="Your display name"
                 maxLength={20}
                 autoFocus
-                className="w-full bg-dark-bg border-2 border-dark-border rounded-xl px-4 py-3 text-dark-text placeholder-dark-muted focus:outline-none focus:border-neon-green transition-colors text-lg"
+                className="w-full bg-dark-bg border-2 border-dark-border rounded-2xl px-4 py-3 text-white placeholder-dark-muted focus:outline-none focus:border-indigo-500 transition-colors text-lg"
               />
-
-              {guestError && (
-                <p className="text-neon-red text-sm">{guestError}</p>
-              )}
-
-              <Button
-                variant="neon"
-                fullWidth
-                size="lg"
-                onClick={handleGuestLogin}
-                loading={isLoading}
-                disabled={guestName.trim().length < 2}
-              >
-                Start Playing
+              {guestError && <p className="text-red-400 text-sm">{guestError}</p>}
+              <Button variant="neon" fullWidth size="lg" onClick={handleGuestLogin}
+                loading={isLoading} disabled={guestName.trim().length < 2}>
+                Enter the Arena
               </Button>
             </div>
           )}
         </div>
 
         {/* Feature chips */}
-        <div className="mt-6 flex flex-wrap gap-2 justify-center">
-          {['🎮 2-5 Players', '🤖 AI Bots', '⚡ Real-time', '🏆 Leaderboard', '🎨 Premium UI'].map(f => (
-            <span key={f} className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-dark-muted">
-              {f}
-            </span>
+        <div className="mt-6 grid grid-cols-3 gap-2">
+          {FEATURES.map(f => (
+            <div key={f.label} className="flex flex-col items-center gap-1 p-2.5 rounded-2xl text-center"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-xl">{f.icon}</span>
+              <span className="text-[10px] font-bold text-white leading-tight">{f.label}</span>
+              <span className="text-[9px] text-dark-muted">{f.desc}</span>
+            </div>
           ))}
         </div>
       </motion.div>

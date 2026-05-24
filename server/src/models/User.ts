@@ -5,6 +5,7 @@ export interface IUser extends Document {
   username: string;
   email?: string;
   avatar: string;
+  selectedBadgeId?: string;
   isGuest: boolean;
   isBanned: boolean;
   guestToken?: string;
@@ -19,6 +20,7 @@ export interface IUser extends Document {
     showSuccesses: number;
   };
   friends: mongoose.Types.ObjectId[];
+  lastSeenAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +31,7 @@ const UserSchema = new Schema<IUser>(
     username: { type: String, required: true, trim: true, minlength: 2, maxlength: 20 },
     email: { type: String, sparse: true, unique: true, lowercase: true },
     avatar: { type: String, default: 'avatar_1' },
+    selectedBadgeId: { type: String, default: null },
     isGuest: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
     guestToken:    { type: String, sparse: true, unique: true },
@@ -43,6 +46,7 @@ const UserSchema = new Schema<IUser>(
       showSuccesses: { type: Number, default: 0 },
     },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    lastSeenAt: { type: Date },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

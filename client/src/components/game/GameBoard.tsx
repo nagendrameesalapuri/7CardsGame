@@ -1,31 +1,244 @@
-import React, { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { clsx } from 'clsx';
-import { useGameStore } from '../../store/gameStore';
-import { useAuthStore } from '../../store/authStore';
-import { PlayerHand } from './PlayerHand';
-import { DeckArea } from './DeckArea';
-import { TurnTimer } from './TurnTimer';
-import { ShowButton } from './ShowButton';
-import { ScoreBoard } from './ScoreBoard';
-import { WinnerCelebration } from './WinnerCelebration';
-import { ChatPanel } from './ChatPanel';
-import { LiveScorePanel } from './LiveScorePanel';
-import { ShowDeclaredOverlay } from './ShowDeclaredOverlay';
-import { ActionButtons } from './ActionButtons';
-import { VoiceChat } from './VoiceChat';
-import { useTournamentStore } from '../../store/tournamentStore';
+import React, { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { clsx } from "clsx";
+import { useGameStore } from "../../store/gameStore";
+import { useAuthStore } from "../../store/authStore";
+import { AchievementBadge } from "../AchievementBadge";
+import { PlayerHand } from "./PlayerHand";
+import { DeckArea } from "./DeckArea";
+import { TurnTimer } from "./TurnTimer";
+import { ShowButton } from "./ShowButton";
+import { ScoreBoard } from "./ScoreBoard";
+import { WinnerCelebration } from "./WinnerCelebration";
+import { ChatPanel } from "./ChatPanel";
+import { LiveScorePanel } from "./LiveScorePanel";
+import { ShowDeclaredOverlay } from "./ShowDeclaredOverlay";
+import { ActionButtons } from "./ActionButtons";
+import { VoiceChat } from "./VoiceChat";
+import { useSurvivalStore } from "../../store/survivalStore";
+import { useNetworkQuality } from "../../hooks/useNetworkQuality";
+import { notify } from "../../services/notify";
+
+// ── Premium game-mode badge ───────────────────────────────────────────────────
+function GameModeBadge({
+  isSurvival,
+  survivalStage,
+  survivalTier,
+  entryFee,
+  teamState,
+}: {
+  isSurvival: boolean;
+  survivalStage: number;
+  survivalTier: string | null;
+  entryFee: number;
+  teamState: import('../../store/survivalStore').TeamState | null;
+}) {
+  const STAGE_COLORS = ["#22c55e", "#f59e0b", "#a855f7", "#3b82f6", "#ef4444"];
+
+  if (teamState?.status === 'playing') {
+    const stage = teamState.currentStage;
+    const color = STAGE_COLORS[(stage - 1) % 5];
+    const tierLabel = teamState.tier.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    return (
+      <div
+        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
+        style={{
+          background: `linear-gradient(135deg,${color}22,rgba(168,85,247,0.12))`,
+          border: `1px solid ${color}55`,
+        }}
+      >
+        <span className="text-sm">👥</span>
+        <div className="flex flex-col leading-none">
+          <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: `${color}cc` }}>
+            Team · {tierLabel}
+          </span>
+          <span className="text-[11px] font-black text-white">
+            Stage <span style={{ color }}>{stage}</span>/5
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSurvival) {
+    const color = STAGE_COLORS[(survivalStage - 1) % 5];
+    const tierLabel = survivalTier
+      ? survivalTier.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
+      : "";
+    return (
+      <div
+        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 flex-shrink-0"
+        style={{
+          background: `linear-gradient(135deg,${color}22,rgba(99,102,241,0.12))`,
+          border: `1px solid ${color}55`,
+        }}
+      >
+        <span className="text-sm">🏆</span>
+        <div className="flex flex-col leading-none">
+          <span
+            className="text-[9px] font-semibold uppercase tracking-widest"
+            style={{ color: `${color}cc` }}
+          >
+            Survival · {tierLabel}
+          </span>
+          <span className="text-[11px] font-black text-white">
+            Stage <span style={{ color }}>{survivalStage}</span>/5
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (entryFee > 0) {
+    return (
+      <span
+        className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
+        style={{
+          background: "rgba(251,191,36,0.18)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251,191,36,0.3)",
+          boxShadow: "0 0 12px rgba(251,191,36,0.15)",
+        }}
+      >
+        ⚔️ Wager ₹{entryFee}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
+      style={{
+        background: "rgba(99,102,241,0.15)",
+        color: "#a5b4fc",
+        border: "1px solid rgba(99,102,241,0.25)",
+        boxShadow: "0 0 10px rgba(99,102,241,0.12)",
+      }}
+    >
+      🎮 Free Play
+    </span>
+  );
+}
+
+// ── Premium felt background ───────────────────────────────────────────────────
+function PremiumTableBg() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {/* Deep felt base */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 90% 70% at 50% 45%, rgba(0,72,36,0.85) 0%, rgba(0,48,22,0.92) 40%, rgba(0,24,10,0.98) 80%, rgba(0,12,6,1) 100%)",
+        }}
+      />
+      {/* Spotlight center glow */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 50% 42%, rgba(0,120,60,0.25) 0%, transparent 70%)",
+        }}
+      />
+      {/* Edge vignette */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 100% 100% at 50% 50%, transparent 50%, rgba(0,0,0,0.55) 100%)",
+        }}
+      />
+      {/* Subtle felt texture lines */}
+      <div
+        className="absolute inset-0 opacity-[0.04]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 4px)",
+        }}
+      />
+      {/* Card suit watermarks at corners */}
+      <div
+        className="absolute top-6 left-6 text-6xl sm:text-8xl font-black select-none"
+        style={{ color: "rgba(0,100,40,0.18)", lineHeight: 1 }}
+      >
+        ♠
+      </div>
+      <div
+        className="absolute top-6 right-6 text-6xl sm:text-8xl font-black select-none"
+        style={{ color: "rgba(80,0,0,0.14)", lineHeight: 1 }}
+      >
+        ♥
+      </div>
+      <div
+        className="absolute bottom-28 left-6 text-6xl sm:text-8xl font-black select-none"
+        style={{ color: "rgba(80,0,0,0.14)", lineHeight: 1 }}
+      >
+        ♦
+      </div>
+      <div
+        className="absolute bottom-28 right-6 text-6xl sm:text-8xl font-black select-none"
+        style={{ color: "rgba(0,100,40,0.18)", lineHeight: 1 }}
+      >
+        ♣
+      </div>
+      {/* Oval table rim */}
+      <div
+        className="absolute top-[18%] left-[5%] right-[5%] bottom-[20%] rounded-[40%] pointer-events-none"
+        style={{
+          border: "2px solid rgba(0,180,80,0.08)",
+          boxShadow: "inset 0 0 40px rgba(0,0,0,0.3)",
+        }}
+      />
+    </div>
+  );
+}
 
 export function GameBoard() {
   const { user } = useAuthStore();
   const {
-    game, room, matchResult, isMyTurn, canShow, underAttack, handTotal,
-    roundReadyUpdate, readyForNextRound,
-    subscribeToEvents, leaveRoom,
+    game,
+    room,
+    matchResult,
+    isMyTurn,
+    canShow,
+    underAttack,
+    handTotal,
+    roundReadyUpdate,
+    readyForNextRound,
+    subscribeToEvents,
+    leaveRoom,
   } = useGameStore();
   const entryFee: number = (room?.config as any)?.entryFee ?? 0;
-  const { active: isTournament, entryFee: tournamentFee } = useTournamentStore();
+  const {
+    active: isSurvival,
+    currentStage: survivalStage,
+    tier: survivalTier,
+    teamState,
+  } = useSurvivalStore();
   const [showAnnouncing, setShowAnnouncing] = React.useState(false);
+  const networkQuality = useNetworkQuality();
+
+  // Warn user when connection degrades
+  const prevQualityRef = React.useRef(networkQuality);
+  useEffect(() => {
+    const prev = prevQualityRef.current;
+    prevQualityRef.current = networkQuality;
+    if (networkQuality === prev) return;
+    if (networkQuality === "offline") {
+      notify.error("Connection lost — trying to reconnect…", {
+        id: "network-quality",
+        duration: Infinity,
+      });
+    } else if (networkQuality === "reconnecting") {
+      notify.warning("Poor connection — reconnecting…", {
+        id: "network-quality",
+        duration: Infinity,
+      });
+    } else if (prev !== "good") {
+      notify.success("Connection restored!", {
+        id: "network-quality",
+        duration: 3000,
+      });
+    }
+  }, [networkQuality]);
 
   useEffect(() => {
     const unsub = subscribeToEvents();
@@ -33,113 +246,194 @@ export function GameBoard() {
   }, [subscribeToEvents]);
 
   useEffect(() => {
-    if (game?.showPlayerId && game.status === 'show_called') {
+    if (game?.showPlayerId && game.status === "show_called") {
       setShowAnnouncing(true);
     }
   }, [game?.showPlayerId]);
 
-  if (!game) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-dark-muted animate-pulse">Loading game...</div>
-    </div>
-  );
+  if (!game)
+    return (
+      <div
+        className="flex items-center justify-center h-full min-h-screen"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(0,48,22,0.9), rgba(0,12,6,1))",
+        }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+            className="w-10 h-10 rounded-full border-2 border-transparent"
+            style={{
+              borderTopColor: "#22c55e",
+              borderRightColor: "rgba(34,197,94,0.3)",
+            }}
+          />
+          <p className="text-sm font-semibold text-green-400/70 animate-pulse">
+            Loading game…
+          </p>
+        </div>
+      </div>
+    );
 
   const currentPlayer = game.players[game.currentPlayerIndex];
   const myHand = game?.myHand ?? [];
-  const allOpponents = game.players.filter(p => p.id !== game.myPlayerId && !p.isEliminated);
+  const allOpponents = game.players.filter(
+    (p) => p.id !== game.myPlayerId && !p.isEliminated,
+  );
 
   return (
-    <div className="relative w-full h-[100dvh] bg-felt bg-felt-pattern overflow-hidden flex flex-col">
+    <div className="relative w-full h-[100dvh] overflow-hidden flex flex-col">
+      <PremiumTableBg />
 
-      {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10 z-10">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
+      {/* ── Premium Top Bar ── */}
+      <div
+        className="relative z-10 grid grid-cols-3 items-center px-3 py-2 flex-shrink-0"
+        style={{
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(20px)",
+          borderBottom: "1px solid rgba(0,180,80,0.12)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Left: Leave + Round + Game mode */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <motion.button
             onClick={leaveRoom}
-            className="text-dark-muted hover:text-neon-red transition-colors text-sm flex items-center gap-1"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-1 text-sm font-semibold px-2.5 py-1.5 rounded-xl transition-all flex-shrink-0"
+            style={{
+              color: "rgba(255,255,255,0.45)",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
             ← Leave
-          </button>
-          <div className="flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-full">
-            <span className="text-dark-muted text-[10px] uppercase tracking-wider">Round</span>
-            <span className="text-dark-text font-black text-sm">{game.roundNumber}</span>
-            <span className="text-dark-muted text-[10px]">/{game.roundCount}</span>
+          </motion.button>
+          <div
+            className="flex items-center gap-1 px-2 py-1 rounded-xl flex-shrink-0"
+            style={{
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            <span className="text-dark-muted text-[10px] uppercase tracking-wider font-semibold">
+              R
+            </span>
+            <span className="text-white font-black text-sm">
+              {game.roundNumber}
+            </span>
+            <span className="text-dark-muted text-[10px]">
+              /{game.roundCount}
+            </span>
           </div>
-          {isTournament ? (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
-              ⚔️ Tournament ₹{tournamentFee}
-            </span>
-          ) : entryFee > 0 ? (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 flex-shrink-0">
-              💰 Bet ₹{entryFee}
-            </span>
-          ) : (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex-shrink-0">
-              🎮 Free
-            </span>
-          )}
+          <div className="hidden sm:block min-w-0">
+            <GameModeBadge
+              isSurvival={isSurvival}
+              survivalStage={survivalStage}
+              survivalTier={survivalTier}
+              entryFee={entryFee}
+              teamState={teamState}
+            />
+          </div>
         </div>
 
-        <TurnTimer
-          turnStartTime={game.turnStartTime}
-          turnTimeLimit={game.turnTimeLimit}
-          isMyTurn={isMyTurn}
-          currentPlayerName={currentPlayer?.username ?? ''}
-        />
-
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <VoiceChat />
-          <ChatPanel
-            messages={game.chatMessages}
-            playerCount={game.players.filter(p => !p.isEliminated && p.isConnected && !p.isBot).length || game.players.length}
+        {/* Center: Turn timer (always centered) */}
+        <div className="flex justify-center">
+          <TurnTimer
+            turnStartTime={game.turnStartTime}
+            turnTimeLimit={game.turnTimeLimit}
+            isMyTurn={isMyTurn}
+            currentPlayerName={currentPlayer?.username ?? ""}
           />
+        </div>
+
+        {/* Right: mic + chat + network dot */}
+        <div className="flex items-center justify-end gap-2">
+          <VoiceChat size="sm" />
+          <ChatPanel
+            size="sm"
+            messages={game.chatMessages}
+            playerCount={
+              game.players.filter(
+                (p) => !p.isEliminated && p.isConnected && !p.isBot,
+              ).length || game.players.length
+            }
+          />
+          <NetworkDot quality={networkQuality} />
         </div>
       </div>
 
-      {/* ── Mobile scores bar ───────────────────────────────────────────────── */}
-      <div className="sm:hidden flex items-center gap-2 px-3 py-1.5 bg-black/50 border-b border-white/5 overflow-x-auto z-10">
+      {/* ── Mobile mini-scores bar ── */}
+      <div
+        className="relative z-10 sm:hidden flex items-center gap-2 px-3 py-1.5 overflow-x-auto flex-shrink-0"
+        style={{
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "1px solid rgba(255,255,255,0.04)",
+        }}
+      >
         {[...game.players]
           .sort((a, b) => a.totalScore - b.totalScore)
           .map((p, rank) => (
-            <div key={p.id} className={clsx(
-              'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0',
-              p.id === game.myPlayerId
-                ? 'bg-neon-green/20 text-neon-green border border-neon-green/30'
-                : 'bg-white/5 text-dark-muted',
-            )}>
-              <span>{rank === 0 ? '👑' : `#${rank + 1}`}</span>
-              <span>{p.id === game.myPlayerId ? 'You' : p.username}</span>
-              <span className="font-bold">{p.totalScore}pt</span>
+            <div
+              key={p.id}
+              className={clsx(
+                "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0",
+                p.id === game.myPlayerId ? "text-green-300" : "text-dark-muted",
+              )}
+              style={
+                p.id === game.myPlayerId
+                  ? {
+                      background: "rgba(34,197,94,0.15)",
+                      border: "1px solid rgba(34,197,94,0.25)",
+                    }
+                  : { background: "rgba(255,255,255,0.05)" }
+              }
+            >
+              <span>{rank === 0 ? "👑" : `#${rank + 1}`}</span>
+              <span>{p.id === game.myPlayerId ? "You" : p.username}</span>
+              <span className="font-black">{p.totalScore}pt</span>
             </div>
           ))}
       </div>
 
-      {/* ── Main game area ───────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 gap-2 sm:gap-3 relative overflow-hidden">
-
-        {/* Live score leaderboard — desktop only */}
+      {/* ── Main game area ── */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-between p-2 sm:p-4 gap-2 sm:gap-3 overflow-hidden">
+        {/* Desktop live score — hidden on mobile */}
         <div className="hidden sm:block">
           <LiveScorePanel
             players={game.players}
             myPlayerId={game.myPlayerId}
             roundNumber={game.roundNumber}
             roundCount={game.roundCount}
+            teamState={teamState}
           />
         </div>
 
-        {/* ── All opponents side by side ── */}
+        {/* ── Opponents ── */}
         <div className="flex gap-2 sm:gap-3 justify-center overflow-x-auto w-full px-1 flex-shrink-0 py-0.5">
-          {allOpponents.map(opp => (
+          {allOpponents.map((opp) => (
             <OpponentChip
               key={opp.id}
               player={opp}
-              isCurrentTurn={game.players[game.currentPlayerIndex]?.id === opp.id}
-              isAttackTarget={!!(game.attackChain && game.players[game.attackChain.targetPlayerIndex]?.id === opp.id)}
+              isCurrentTurn={
+                game.players[game.currentPlayerIndex]?.id === opp.id
+              }
+              isAttackTarget={
+                !!(
+                  game.attackChain &&
+                  game.players[game.attackChain.targetPlayerIndex]?.id ===
+                    opp.id
+                )
+              }
             />
           ))}
         </div>
 
-        {/* ── Action notification — sits between opponents and deck ── */}
+        {/* Action toast */}
         <ActionToast />
 
         {/* Deck area */}
@@ -147,6 +441,7 @@ export function GameBoard() {
           <DeckArea
             deckCount={game.deckCount}
             discardPile={game.discardPile}
+            players={game.players}
             jokerRank={game.jokerRank}
             jokerCard={game.jokerCard}
             isMyTurn={isMyTurn}
@@ -155,8 +450,8 @@ export function GameBoard() {
           />
         </div>
 
-        {/* Player section: action bar + hand + SHOW button */}
-        <div className="w-full flex flex-col gap-2">
+        {/* Player hand area */}
+        <div className="w-full flex flex-col gap-1.5">
           {/* Mobile action bar */}
           <div className="sm:hidden w-full px-1">
             <ActionButtons
@@ -167,52 +462,135 @@ export function GameBoard() {
             />
           </div>
 
-          <div className="w-full bg-black/30 backdrop-blur rounded-2xl p-2 sm:p-4 border border-white/10">
-            <PlayerHand
-              hand={myHand}
-              isMyTurn={isMyTurn}
-              hasDrawnThisTurn={game.hasDrawnThisTurn}
-              underAttack={underAttack}
-              handTotal={handTotal}
+          {/* Hand container — full width, score in header */}
+          <div
+            className="w-full rounded-2xl relative overflow-hidden"
+            style={{
+              background: isMyTurn ? "rgba(5,18,10,0.88)" : "rgba(5,5,18,0.85)",
+              backdropFilter: "blur(28px)",
+              border: isMyTurn
+                ? "1px solid rgba(34,197,94,0.35)"
+                : "1px solid rgba(255,255,255,0.07)",
+              boxShadow: isMyTurn
+                ? "0 0 0 1px rgba(34,197,94,0.2), 0 -8px 40px rgba(34,197,94,0.1), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(34,197,94,0.1)"
+                : "0 -4px 24px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
+              transition: "all 0.4s ease",
+            }}
+          >
+            {/* Top glow bar */}
+            <div
+              className="absolute inset-x-0 top-0 h-px"
+              style={{
+                background: isMyTurn
+                  ? "linear-gradient(90deg,transparent,rgba(34,197,94,0.7),transparent)"
+                  : "linear-gradient(90deg,transparent,rgba(99,102,241,0.3),transparent)",
+              }}
             />
+
+            {/* Hand header: label + score */}
+            <div className="flex items-center justify-between px-3 pt-2 pb-1">
+              <span
+                className="text-[10px] font-semibold uppercase tracking-widest"
+                style={{
+                  color: isMyTurn
+                    ? "rgba(34,197,94,0.6)"
+                    : "rgba(255,255,255,0.25)",
+                }}
+              >
+                Your Hand
+              </span>
+              <div className="flex items-center gap-2">
+                {handTotal <= 5 && (
+                  <motion.span
+                    animate={{ opacity: [1, 0.4, 1] }}
+                    transition={{ repeat: Infinity, duration: 0.8 }}
+                    className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{
+                      background: "rgba(34,197,94,0.2)",
+                      color: "#4ade80",
+                      border: "1px solid rgba(34,197,94,0.4)",
+                    }}
+                  >
+                    {isMyTurn ? "✓ SHOW!" : "READY"}
+                  </motion.span>
+                )}
+                <span
+                  className="text-[11px] font-black px-2.5 py-0.5 rounded-full"
+                  style={{
+                    background:
+                      handTotal > 80
+                        ? "rgba(239,68,68,0.18)"
+                        : handTotal > 50
+                          ? "rgba(245,158,11,0.18)"
+                          : "rgba(34,197,94,0.12)",
+                    color:
+                      handTotal > 80
+                        ? "#f87171"
+                        : handTotal > 50
+                          ? "#fbbf24"
+                          : "#4ade80",
+                    border: `1px solid ${handTotal > 80 ? "rgba(239,68,68,0.35)" : handTotal > 50 ? "rgba(245,158,11,0.35)" : "rgba(34,197,94,0.3)"}`,
+                  }}
+                >
+                  Hand: {handTotal}pts
+                </span>
+              </div>
+            </div>
+
+            <div className="px-2 pb-2">
+              <PlayerHand
+                hand={myHand}
+                isMyTurn={isMyTurn}
+                hasDrawnThisTurn={game.hasDrawnThisTurn}
+                underAttack={underAttack}
+                handTotal={handTotal}
+              />
+            </div>
           </div>
 
-          {/* SHOW button — full width at bottom */}
+          {/* SHOW button */}
           <AnimatePresence>
             {canShow && <ShowButton key="show-btn" />}
           </AnimatePresence>
         </div>
       </div>
 
-      {/* ── SHOW declared announcement ───────────────────────────────────────── */}
+      {/* ── Show declared overlay ── */}
       <AnimatePresence>
         {showAnnouncing && game.showPlayerId && (
           <ShowDeclaredOverlay
             key="show-announced"
-            showPlayer={game.players.find(p => p.id === game.showPlayerId)}
+            showPlayer={game.players.find((p) => p.id === game.showPlayerId)}
             isMe={game.showPlayerId === game.myPlayerId}
             onDone={() => setShowAnnouncing(false)}
           />
         )}
       </AnimatePresence>
 
-      {/* ── Score board (round end) ──────────────────────────────────────────── */}
+      {/* ── Score board (round end) ── */}
       <AnimatePresence>
-        {!showAnnouncing && game.status === 'show_called' && game.roundResult && (
-          <ScoreBoard
-            key="scoreboard"
-            roundResult={game.roundResult}
-            players={game.players}
-            roundNumber={game.roundNumber}
-            roundCount={game.roundCount}
-            myUserId={user?.id ?? ''}
-            roundReadyUpdate={roundReadyUpdate}
-            onReady={readyForNextRound}
-          />
-        )}
+        {!showAnnouncing &&
+          game.status === "show_called" &&
+          game.roundResult && (
+            <ScoreBoard
+              key="scoreboard"
+              roundResult={game.roundResult}
+              players={game.players}
+              roundNumber={game.roundNumber}
+              roundCount={game.roundCount}
+              myUserId={user?.id ?? ""}
+              roundReadyUpdate={roundReadyUpdate}
+              onReady={readyForNextRound}
+              teamMemberUserIds={
+                teamState?.status === 'playing'
+                  ? new Set(teamState.members.map(m => m.userId))
+                  : undefined
+              }
+            />
+          )}
       </AnimatePresence>
 
-      {/* ── Match winner ─────────────────────────────────────────────────────── */}
+      {/* ── Match winner ── */}
       <AnimatePresence>
         {matchResult && (
           <WinnerCelebration
@@ -222,42 +600,145 @@ export function GameBoard() {
           />
         )}
       </AnimatePresence>
-
     </div>
   );
 }
 
-const ACTION_STYLE: Record<string, { icon: string; iconBg: string; bg: string; border: string }> = {
-  draw:    { icon: '🃏', iconBg: '#2563eb', bg: 'rgba(5,10,30,0.97)',  border: 'rgba(37,99,235,0.5)' },
-  discard: { icon: '♠️', iconBg: '#475569', bg: 'rgba(10,10,15,0.97)', border: 'rgba(71,85,105,0.5)' },
-  skip:    { icon: '⏭️', iconBg: '#d97706', bg: 'rgba(25,18,5,0.97)',  border: 'rgba(217,119,6,0.5)' },
-  attack:  { icon: '⚔️', iconBg: '#dc2626', bg: 'rgba(30,5,5,0.97)',   border: 'rgba(220,38,38,0.5)' },
-  penalty: { icon: '💀', iconBg: '#b91c1c', bg: 'rgba(30,5,5,0.97)',   border: 'rgba(220,38,38,0.5)' },
-  show:    { icon: '🎉', iconBg: '#16a34a', bg: 'rgba(5,25,10,0.97)',  border: 'rgba(22,163,74,0.5)' },
-  system:  { icon: 'ℹ️', iconBg: '#1d4ed8', bg: 'rgba(5,10,28,0.97)', border: 'rgba(29,78,216,0.5)' },
+// ── Network quality dot ───────────────────────────────────────────────────────
+import type { NetworkQuality } from "../../services/socket";
+
+function NetworkDot({ quality }: { quality: NetworkQuality }) {
+  const cfg = {
+    good: {
+      color: "#22c55e",
+      glow: "rgba(34,197,94,0.7)",
+      label: "Connected",
+      pulse: false,
+    },
+    reconnecting: {
+      color: "#f59e0b",
+      glow: "rgba(245,158,11,0.7)",
+      label: "Reconnecting…",
+      pulse: true,
+    },
+    offline: {
+      color: "#ef4444",
+      glow: "rgba(239,68,68,0.8)",
+      label: "Offline",
+      pulse: true,
+    },
+  }[quality];
+
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      title={cfg.label}
+    >
+      {cfg.pulse && (
+        <motion.span
+          animate={{ scale: [1, 2, 1], opacity: [0.6, 0, 0.6] }}
+          transition={{ repeat: Infinity, duration: 1.2, ease: "easeOut" }}
+          className="absolute w-3 h-3 rounded-full pointer-events-none"
+          style={{ background: cfg.color }}
+        />
+      )}
+      <span
+        className="w-2.5 h-2.5 rounded-full relative z-10"
+        style={{ background: cfg.color, boxShadow: `0 0 6px ${cfg.glow}` }}
+      />
+    </div>
+  );
+}
+
+// ── Action toast styles ───────────────────────────────────────────────────────
+const ACTION_STYLE: Record<
+  string,
+  { icon: string; iconBg: string; bg: string; border: string; glow: string }
+> = {
+  draw: {
+    icon: "🃏",
+    iconBg: "#1d4ed8",
+    bg: "rgba(5,10,30,0.97)",
+    border: "rgba(37,99,235,0.5)",
+    glow: "rgba(37,99,235,0.15)",
+  },
+  discard: {
+    icon: "♠️",
+    iconBg: "#475569",
+    bg: "rgba(10,10,15,0.97)",
+    border: "rgba(71,85,105,0.5)",
+    glow: "rgba(71,85,105,0.1)",
+  },
+  skip: {
+    icon: "⏭️",
+    iconBg: "#b45309",
+    bg: "rgba(25,18,5,0.97)",
+    border: "rgba(217,119,6,0.5)",
+    glow: "rgba(217,119,6,0.12)",
+  },
+  attack: {
+    icon: "⚔️",
+    iconBg: "#b91c1c",
+    bg: "rgba(30,5,5,0.97)",
+    border: "rgba(220,38,38,0.55)",
+    glow: "rgba(220,38,38,0.18)",
+  },
+  penalty: {
+    icon: "💀",
+    iconBg: "#991b1b",
+    bg: "rgba(30,5,5,0.97)",
+    border: "rgba(220,38,38,0.55)",
+    glow: "rgba(220,38,38,0.15)",
+  },
+  show: {
+    icon: "🎉",
+    iconBg: "#15803d",
+    bg: "rgba(5,25,10,0.97)",
+    border: "rgba(22,163,74,0.5)",
+    glow: "rgba(22,163,74,0.18)",
+  },
+  system: {
+    icon: "ℹ️",
+    iconBg: "#1d4ed8",
+    bg: "rgba(5,10,28,0.97)",
+    border: "rgba(29,78,216,0.5)",
+    glow: "rgba(29,78,216,0.12)",
+  },
 };
 
+// ── Opponent chip color palette ───────────────────────────────────────────────
 const CHIP_COLORS = [
-  'from-purple-500 to-indigo-600',
-  'from-blue-500 to-cyan-600',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-rose-500 to-pink-600',
-  'from-violet-500 to-purple-700',
+  "from-purple-500 to-indigo-600",
+  "from-blue-500 to-cyan-600",
+  "from-emerald-500 to-teal-600",
+  "from-orange-500 to-amber-600",
+  "from-rose-500 to-pink-600",
+  "from-violet-500 to-purple-700",
 ];
 
 function getChipColor(username: string): string {
   let hash = 0;
-  for (let i = 0; i < username.length; i++) hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  for (let i = 0; i < username.length; i++)
+    hash = (hash * 31 + username.charCodeAt(i)) | 0;
   return CHIP_COLORS[Math.abs(hash) % CHIP_COLORS.length];
 }
 
+// ── Opponent chip ─────────────────────────────────────────────────────────────
 function OpponentChip({
   player,
   isCurrentTurn,
   isAttackTarget,
 }: {
-  player: { id: string; username: string; avatar?: string; handCount: number; totalScore: number; isEliminated?: boolean; isBot?: boolean };
+  player: {
+    id: string;
+    username: string;
+    avatar?: string;
+    handCount: number;
+    totalScore: number;
+    isEliminated?: boolean;
+    isBot?: boolean;
+    badge?: import("../../types").PlayerBadge;
+  };
   isCurrentTurn: boolean;
   isAttackTarget: boolean;
 }) {
@@ -265,77 +746,169 @@ function OpponentChip({
   const initials = player.username.slice(0, 2).toUpperCase();
 
   return (
-    <div className={clsx(
-      'flex flex-col items-center gap-1 px-2 sm:px-3 py-2 rounded-2xl border flex-shrink-0 min-w-[72px] sm:min-w-[92px] transition-all duration-200',
-      isCurrentTurn
-        ? 'border-neon-green/80 bg-neon-green/10 shadow-neon-green'
-        : isAttackTarget
-        ? 'border-neon-red/80 bg-neon-red/10'
-        : 'border-white/10 bg-black/30',
-    )}>
+    <motion.div
+      animate={isCurrentTurn ? { y: [0, -3, 0] } : { y: 0 }}
+      transition={
+        isCurrentTurn
+          ? { repeat: Infinity, duration: 1.6, ease: "easeInOut" }
+          : {}
+      }
+      className="flex flex-col items-center gap-1 px-2 sm:px-3 py-2 rounded-2xl flex-shrink-0 min-w-[72px] sm:min-w-[88px] relative overflow-hidden"
+      style={{
+        background: isCurrentTurn
+          ? "rgba(34,197,94,0.12)"
+          : isAttackTarget
+            ? "rgba(239,68,68,0.1)"
+            : "rgba(0,0,0,0.4)",
+        border: isCurrentTurn
+          ? "1px solid rgba(34,197,94,0.55)"
+          : isAttackTarget
+            ? "1px solid rgba(239,68,68,0.55)"
+            : "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(16px)",
+        boxShadow: isCurrentTurn
+          ? "0 0 20px rgba(34,197,94,0.2), inset 0 1px 0 rgba(34,197,94,0.15)"
+          : isAttackTarget
+            ? "0 0 20px rgba(239,68,68,0.18)"
+            : "0 4px 16px rgba(0,0,0,0.3)",
+        transition: "border 0.2s, box-shadow 0.2s",
+      }}
+    >
+      {/* Top glow line for active turn */}
+      {isCurrentTurn && (
+        <div
+          className="absolute inset-x-0 top-0 h-0.5 rounded-full"
+          style={{
+            background:
+              "linear-gradient(90deg,transparent,rgba(34,197,94,0.8),transparent)",
+          }}
+        />
+      )}
+
+      {/* Turn / attack badge */}
       {isCurrentTurn && (
         <motion.div
-          animate={{ opacity: [1, 0.2, 1] }}
-          transition={{ repeat: Infinity, duration: 0.75 }}
-          className="bg-neon-green text-dark-bg text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none"
+          animate={{ opacity: [1, 0.3, 1] }}
+          transition={{ repeat: Infinity, duration: 0.7 }}
+          className="text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none"
+          style={{
+            background: "rgba(34,197,94,0.25)",
+            color: "#4ade80",
+            border: "1px solid rgba(34,197,94,0.4)",
+          }}
         >
           TURN
         </motion.div>
       )}
       {isAttackTarget && (
-        <div className="bg-neon-red text-white text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none animate-pulse">
+        <div
+          className="text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider leading-none animate-pulse"
+          style={{
+            background: "rgba(239,68,68,0.25)",
+            color: "#f87171",
+            border: "1px solid rgba(239,68,68,0.4)",
+          }}
+        >
           ⚔️ ATK
         </div>
       )}
 
-      {/* Avatar: profile picture or initials fallback */}
-      <div className={clsx(
-        'w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden flex items-center justify-center font-black text-white shadow-md relative',
-        (!player.avatar || (!player.avatar.startsWith('http') && !player.avatar.startsWith('data:'))) && `bg-gradient-to-br ${color}`,
-        isCurrentTurn && 'ring-2 ring-neon-green ring-offset-1 ring-offset-black/50',
-        isAttackTarget && 'ring-2 ring-neon-red ring-offset-1 ring-offset-black/50',
-      )}>
-        {player.avatar && (player.avatar.startsWith('http') || player.avatar.startsWith('data:')) ? (
-          <img src={player.avatar} alt={player.username} className="w-full h-full object-cover" />
+      {/* Avatar */}
+      <div
+        className={clsx(
+          "w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden flex items-center justify-center font-black text-white shadow-lg relative flex-shrink-0",
+          (!player.avatar ||
+            (!player.avatar.startsWith("http") &&
+              !player.avatar.startsWith("data:"))) &&
+            `bg-gradient-to-br ${color}`,
+          isCurrentTurn &&
+            "ring-2 ring-green-400/70 ring-offset-1 ring-offset-black/50",
+          isAttackTarget &&
+            "ring-2 ring-red-400/70 ring-offset-1 ring-offset-black/50",
+        )}
+      >
+        {player.avatar &&
+        (player.avatar.startsWith("http") ||
+          player.avatar.startsWith("data:")) ? (
+          <img
+            src={player.avatar}
+            alt={player.username}
+            className="w-full h-full object-cover"
+          />
         ) : player.isBot ? (
-          <span className="text-[10px] font-black">AI</span>
+          <span className="text-base">🤖</span>
         ) : (
           <span className="text-sm">{initials}</span>
         )}
         {player.isBot && (
-          <span className="absolute -top-0.5 -right-0.5 bg-neon-blue rounded-full w-3.5 h-3.5 flex items-center justify-center text-[7px] font-black text-dark-bg leading-none">AI</span>
+          <div
+            className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black text-white leading-none"
+            style={{
+              background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+              boxShadow: "0 2px 6px rgba(99,102,241,0.5)",
+            }}
+          >
+            AI
+          </div>
         )}
       </div>
 
-      <span className="text-dark-text text-[10px] sm:text-xs font-semibold truncate w-full text-center leading-tight">
-        {player.username.length > 8 ? player.username.slice(0, 7) + '…' : player.username}
+      {/* Name */}
+      <span className="text-[10px] sm:text-xs font-semibold truncate w-full text-center text-white/80 leading-tight">
+        {player.username.length > 8
+          ? player.username.slice(0, 7) + "…"
+          : player.username}
       </span>
 
+      {player.badge && <AchievementBadge badge={player.badge} size="xs" />}
+
+      {/* Card count */}
       <div className="flex items-center gap-0.5">
-        <span className="text-dark-muted text-[10px] sm:text-xs">🃏 {player.handCount}</span>
+        <span className="text-[10px] sm:text-xs text-dark-muted">
+          🃏 {player.handCount}
+        </span>
         {player.handCount <= 3 && !player.isEliminated && (
           <motion.span
-            animate={{ scale: [1, 1.3, 1] }}
+            animate={{ scale: [1, 1.4, 1] }}
             transition={{ repeat: Infinity, duration: 0.6 }}
-            className="text-yellow-400 text-[10px]"
-          >⚠️</motion.span>
+            className="text-yellow-300 text-[10px]"
+          >
+            ⚠️
+          </motion.span>
         )}
       </div>
 
+      {/* Score */}
       {player.isEliminated ? (
-        <span className="bg-neon-red/20 text-neon-red text-[9px] font-bold px-2 py-0.5 rounded-full">OUT</span>
+        <span
+          className="text-[9px] font-black px-2 py-0.5 rounded-full"
+          style={{
+            background: "rgba(239,68,68,0.2)",
+            color: "#f87171",
+            border: "1px solid rgba(239,68,68,0.3)",
+          }}
+        >
+          OUT
+        </span>
       ) : (
-        <span className={clsx(
-          'text-[10px] sm:text-[11px] font-bold',
-          player.totalScore > 80 ? 'text-neon-red' : player.totalScore > 50 ? 'text-yellow-400' : 'text-dark-muted',
-        )}>
-          {player.totalScore} pts
+        <span
+          className={clsx(
+            "text-[10px] sm:text-[11px] font-black",
+            player.totalScore > 80
+              ? "text-red-400"
+              : player.totalScore > 50
+                ? "text-yellow-300"
+                : "text-dark-muted",
+          )}
+        >
+          {player.totalScore}pts
         </span>
       )}
-    </div>
+    </motion.div>
   );
 }
 
+// ── Action toast ──────────────────────────────────────────────────────────────
 function ActionToast() {
   const { lastAction } = useGameStore();
   const [visible, setVisible] = React.useState(false);
@@ -349,45 +922,52 @@ function ActionToast() {
     return () => clearTimeout(t);
   }, [lastAction]);
 
-  const style = ACTION_STYLE[action?.type ?? 'system'] ?? ACTION_STYLE.system;
+  const style = ACTION_STYLE[action?.type ?? "system"] ?? ACTION_STYLE.system;
 
-  // Render as inline flex item — sits between opponent strip and deck area in the layout.
-  // AnimatePresence removes it from the DOM when not visible, so it takes zero layout space.
   return (
     <AnimatePresence>
       {visible && action && (
         <motion.div
           key="action-toast"
-          initial={{ opacity: 0, y: -6, scaleY: 0.85 }}
-          animate={{ opacity: 1, y: 0, scaleY: 1 }}
-          exit={{ opacity: 0, y: -6, scaleY: 0.85 }}
-          className="w-full flex-shrink-0"
+          initial={{ opacity: 0, y: -8, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.9 }}
+          transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          className="w-full flex-shrink-0 flex items-center gap-2.5"
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
             background: style.bg,
             border: `1px solid ${style.border}`,
-            borderRadius: 12,
-            padding: '7px 14px 7px 10px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.55)',
-            backdropFilter: 'blur(16px)',
+            borderRadius: 14,
+            padding: "8px 14px 8px 10px",
+            boxShadow: `0 0 20px ${style.glow}, 0 6px 24px rgba(0,0,0,0.5)`,
+            backdropFilter: "blur(20px)",
           }}
         >
-          <div style={{
-            background: style.iconBg,
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            fontSize: 13,
-          }}>
+          <div
+            style={{
+              background: style.iconBg,
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              fontSize: 14,
+              boxShadow: `0 0 10px ${style.glow}`,
+            }}
+          >
             {style.icon}
           </div>
-          <span style={{ color: '#f1f5f9', fontSize: 12, fontWeight: 500, lineHeight: 1.4, flex: 1 }}>
+          <span
+            style={{
+              color: "#f1f5f9",
+              fontSize: 12,
+              fontWeight: 600,
+              lineHeight: 1.4,
+              flex: 1,
+            }}
+          >
             {action.message}
           </span>
         </motion.div>
