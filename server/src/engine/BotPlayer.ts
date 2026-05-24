@@ -31,7 +31,13 @@ export interface BotDecision {
   cardIds?: string[];
 }
 
-export type BotPersonality = "safe" | "aggressive" | "bluff" | "smart" | "boss" | "care";
+export type BotPersonality =
+  | "safe"
+  | "aggressive"
+  | "bluff"
+  | "smart"
+  | "boss"
+  | "care";
 export type PlayerArchetype =
   | "aggressive"
   | "defensive"
@@ -62,10 +68,10 @@ export type BossSubpersonality =
   | "defensive"
   | "trap"
   | "anti_show"
-  | "pressure_mode"   // NEW: relentless pressure
-  | "killer"          // NEW: close out vulnerable opponents
-  | "combo_preserve"  // NEW: build while denying
-  | "tempo_control";  // NEW: manipulate game rhythm
+  | "pressure_mode" // NEW: relentless pressure
+  | "killer" // NEW: close out vulnerable opponents
+  | "combo_preserve" // NEW: build while denying
+  | "tempo_control"; // NEW: manipulate game rhythm
 
 // ── Per-personality config ────────────────────────────────────────────────────
 
@@ -84,11 +90,11 @@ interface PersonalityConfig {
   pressureBias: number;
   tacticalVariance: number;
   // NEW fields
-  denialWeight: number;      // 0-1: how much to weight discard-denial vs self-optimisation
-  killerInstinct: number;    // 0-1: aggression multiplier when opponent is weak
+  denialWeight: number; // 0-1: how much to weight discard-denial vs self-optimisation
+  killerInstinct: number; // 0-1: aggression multiplier when opponent is weak
   showInterruptBias: number; // bonus aggression when show threat is high
   sevenSaveThreshold: number; // save 7s until opponent hand ≤ this many cards
-  jackUseBias: number;       // 0-1: willingness to burn J for tempo denial
+  jackUseBias: number; // 0-1: willingness to burn J for tempo denial
 }
 
 const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
@@ -134,14 +140,14 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
   },
   bluff: {
     thinkBaseMs: 700,
-    thinkJitterMs: 680,   // very wide jitter — creates psychological suspense
+    thinkJitterMs: 680, // very wide jitter — creates psychological suspense
     showBias: -0.12,
     riskTolerance: 0.55,
     bluffFactor: 0.5,
     attackAllAt: 2,
     attackOneAt: 4,
     skipAt: 3,
-    randomPlayChance: 0.20, // reduced from 0.32 — bluffing is intentional, not random
+    randomPlayChance: 0.2, // reduced from 0.32 — bluffing is intentional, not random
     alwaysAttack: false,
     comboPreservation: 0.6,
     pressureBias: 0.42,
@@ -174,7 +180,7 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
   },
   boss: {
     thinkBaseMs: 200,
-    thinkJitterMs: 180,   // wider jitter for human-like feel
+    thinkJitterMs: 180, // wider jitter for human-like feel
     showBias: 0.28,
     riskTolerance: 0.32,
     bluffFactor: 0.12,
@@ -187,7 +193,7 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
     pressureBias: 0.88,
     tacticalVariance: 0.1,
     denialWeight: 0.82,
-    killerInstinct: 0.82,   // reduced from 0.92 — controlled imperfection
+    killerInstinct: 0.82, // reduced from 0.92 — controlled imperfection
     showInterruptBias: 0.9,
     sevenSaveThreshold: 5,
     jackUseBias: 0.8,
@@ -206,7 +212,7 @@ const PERSONALITY: Record<BotPersonality, PersonalityConfig> = {
     alwaysAttack: false,
     comboPreservation: 0.97,
     pressureBias: 0.06,
-    tacticalVariance: 0.10,
+    tacticalVariance: 0.1,
     denialWeight: 0.12,
     killerInstinct: 0.04,
     showInterruptBias: 0.12,
@@ -222,12 +228,12 @@ const DISCARD_SAVE_THRESHOLD = 1;
 // Per-personality maximum hand total at which SHOW is ever considered.
 // Hard ceiling — confidence logic runs within this range.
 const SHOW_HARD_MAX: Record<BotPersonality, number> = {
-  safe:       5,
+  safe: 5,
   aggressive: 7,
-  bluff:      9,
-  smart:      6,
-  boss:       7,
-  care:       4,   // only shows when hand is extremely clean
+  bluff: 9,
+  smart: 6,
+  boss: 5,
+  care: 4, // only shows when hand is extremely clean
 };
 
 // Low-value cards that are extremely useful to opponents if discarded
@@ -235,22 +241,26 @@ const DENIAL_PRIORITY_RANKS = new Set(["A", "2", "3"]);
 
 // ── Emotional Pacing ──────────────────────────────────────────────────────────
 // Tracks per-bot rhythm so boss doesn't apply constant suffocation pressure.
-export type EmotionalPhase = "building" | "pressure" | "cooldown" | "bait" | "surge";
+export type EmotionalPhase =
+  | "building"
+  | "pressure"
+  | "cooldown"
+  | "bait"
+  | "surge";
 
 export interface BotMatchContext {
   consecutivePressureTurns: number; // turns in a row at high aggression
   emotionalPhase: EmotionalPhase;
-  matchVariantSeed: number;         // 0-1, rolled once per match for replayability
+  matchVariantSeed: number; // 0-1, rolled once per match for replayability
   turnCount: number;
   pressureTurnsThisRound: number;
-  lastImperfectionTurn: number;     // last turn boss chose sub-optimal line
-  farmingIndicator: number;         // 0-1: suspicion the human is exploiting patterns
+  lastImperfectionTurn: number; // last turn boss chose sub-optimal line
+  farmingIndicator: number; // 0-1: suspicion the human is exploiting patterns
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class BotPlayer {
-
   // ── Per-bot Match Context (keyed by botPlayerId) ──────────────────────────
   private static readonly ctxMap = new Map<string, BotMatchContext>();
 
@@ -267,11 +277,15 @@ export class BotPlayer {
   }
 
   private static getCtx(botPlayerId: string): BotMatchContext {
-    if (!BotPlayer.ctxMap.has(botPlayerId)) BotPlayer.initBotContext(botPlayerId);
+    if (!BotPlayer.ctxMap.has(botPlayerId))
+      BotPlayer.initBotContext(botPlayerId);
     return BotPlayer.ctxMap.get(botPlayerId)!;
   }
 
-  private static updateCtx(botPlayerId: string, updates: Partial<BotMatchContext>): void {
+  private static updateCtx(
+    botPlayerId: string,
+    updates: Partial<BotMatchContext>,
+  ): void {
     const ctx = BotPlayer.getCtx(botPlayerId);
     BotPlayer.ctxMap.set(botPlayerId, { ...ctx, ...updates });
   }
@@ -302,7 +316,7 @@ export class BotPlayer {
     }
 
     // Boss: occasional "deliberation" pause to feel human, not robotic
-    if (personality === "boss" && Math.random() < 0.10) {
+    if (personality === "boss" && Math.random() < 0.1) {
       delay += 400 + Math.random() * 500;
     }
 
@@ -373,7 +387,10 @@ export class BotPlayer {
     let bestScore = currentTotal;
     for (const option of candidates) {
       const remaining = BotPlayer.scoreAfterDiscard(hand, option);
-      if (remaining < bestScore) { bestScore = remaining; best = option; }
+      if (remaining < bestScore) {
+        bestScore = remaining;
+        best = option;
+      }
     }
     return { cards: best, score: bestScore };
   }
@@ -384,7 +401,8 @@ export class BotPlayer {
       if (!card.isJoker) byRank[card.rank] = (byRank[card.rank] || 0) + 1;
     }
     return Object.values(byRank).reduce(
-      (sum, count) => sum + Math.max(0, count - 1), 0,
+      (sum, count) => sum + Math.max(0, count - 1),
+      0,
     );
   }
 
@@ -397,12 +415,34 @@ export class BotPlayer {
     let hasJoker = false;
     for (const c of hand) {
       const v = DeckManager.getCardValue(c);
-      if (c.isJoker) { stability += 3.5; hasJoker = true; continue; }
-      if (v === 0)  { stability += 3.0; continue; }  // paper joker
-      if (v <= 1)   { stability += 2.5; lowCards++; continue; }
-      if (v <= 2)   { stability += 2.0; lowCards++; continue; }
-      if (v <= 3)   { stability += 1.5; lowCards++; continue; }
-      if (v <= 5)   { stability += 0.8; continue; }
+      if (c.isJoker) {
+        stability += 3.5;
+        hasJoker = true;
+        continue;
+      }
+      if (v === 0) {
+        stability += 3.0;
+        continue;
+      } // paper joker
+      if (v <= 1) {
+        stability += 2.5;
+        lowCards++;
+        continue;
+      }
+      if (v <= 2) {
+        stability += 2.0;
+        lowCards++;
+        continue;
+      }
+      if (v <= 3) {
+        stability += 1.5;
+        lowCards++;
+        continue;
+      }
+      if (v <= 5) {
+        stability += 0.8;
+        continue;
+      }
       // high cards hurt stability
       stability -= (v - 5) * 0.3;
     }
@@ -428,9 +468,12 @@ export class BotPlayer {
     if (v === 0) return 3.5;
 
     // Low-value cards are structurally dangerous to give away
-    if (v === 1) score += 2.8;       // Ace
-    else if (v === 2) score += 2.2;  // 2
-    else if (v === 3) score += 1.7;  // 3
+    if (v === 1)
+      score += 2.8; // Ace
+    else if (v === 2)
+      score += 2.2; // 2
+    else if (v === 3)
+      score += 1.7; // 3
     else if (v === 4) score += 1.1;
     else if (v === 5) score += 0.6;
     else if (v <= 7) score += 0.3;
@@ -469,11 +512,18 @@ export class BotPlayer {
 
     const minCards = Math.min(...allOpps.map((p) => p.handCount));
     const showPressure = BotPlayer.estimateOpponentShowPressure(opponents);
-    const showThreat = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
+    const showThreat = BotPlayer.detectShowThreat(
+      state,
+      botPlayerId,
+      opponents,
+    );
 
-    if (minCards <= 2 || showPressure >= 0.75 || showThreat >= 0.85) return "critical";
-    if (minCards <= 4 || showPressure >= 0.5 || showThreat >= 0.6)   return "high";
-    if (minCards <= 6 || showPressure >= 0.3 || showThreat >= 0.35)  return "medium";
+    if (minCards <= 2 || showPressure >= 0.75 || showThreat >= 0.85)
+      return "critical";
+    if (minCards <= 4 || showPressure >= 0.5 || showThreat >= 0.6)
+      return "high";
+    if (minCards <= 6 || showPressure >= 0.3 || showThreat >= 0.35)
+      return "medium";
     return "low";
   }
 
@@ -495,7 +545,7 @@ export class BotPlayer {
     for (const player of allOpps) {
       let threat = 0;
       // Very few cards = close to SHOW
-      if (player.handCount <= 2)  threat += 0.5;
+      if (player.handCount <= 2) threat += 0.5;
       else if (player.handCount <= 3) threat += 0.35;
       else if (player.handCount <= 4) threat += 0.2;
 
@@ -542,9 +592,9 @@ export class BotPlayer {
     const oppWeak = signals.weakSignal >= 0.4;
 
     // Opponent is recovering after taking penalty cards
-    const oppRecovering = opponents?.some(
-      (o) => o.recentAttackTakes >= 1 && o.handCount >= 5,
-    ) ?? false;
+    const oppRecovering =
+      opponents?.some((o) => o.recentAttackTakes >= 1 && o.handCount >= 5) ??
+      false;
 
     if (botStrong && (oppWeak || oppRecovering)) {
       return Math.random() < cfg.killerInstinct;
@@ -563,14 +613,26 @@ export class BotPlayer {
 
     for (const opp of opponents) {
       // Panic draw: many draws, few cuts, no shows
-      const panicDraw = opp.recentDraws >= 4 && opp.recentCuts <= 1 && opp.recentShows === 0;
+      const panicDraw =
+        opp.recentDraws >= 4 && opp.recentCuts <= 1 && opp.recentShows === 0;
       // Unstable: took attack cards recently and hand count jumped
       const hist = opp.handCountHistory;
-      const handJump = hist.length >= 2 && (hist[hist.length - 1] - hist[hist.length - 2]) >= 2;
+      const handJump =
+        hist.length >= 2 && hist[hist.length - 1] - hist[hist.length - 2] >= 2;
       const unstable = opp.recentAttackTakes >= 1 || handJump;
 
-      if (panicDraw) return { isPanicking: true, isUnstable: unstable, recoveryTarget: opp.userId };
-      if (unstable) return { isPanicking: false, isUnstable: true, recoveryTarget: opp.userId };
+      if (panicDraw)
+        return {
+          isPanicking: true,
+          isUnstable: unstable,
+          recoveryTarget: opp.userId,
+        };
+      if (unstable)
+        return {
+          isPanicking: false,
+          isUnstable: true,
+          recoveryTarget: opp.userId,
+        };
     }
     return { isPanicking: false, isUnstable: false };
   }
@@ -598,38 +660,54 @@ export class BotPlayer {
 
   private static inferOpponentSignals(opponents?: OpponentProfile[]) {
     if (!opponents || opponents.length === 0) {
-      return { weakSignal: 0, trapSignal: 0, fastShowSignal: 0, aggressiveSignal: 0, defensiveSignal: 0 };
+      return {
+        weakSignal: 0,
+        trapSignal: 0,
+        fastShowSignal: 0,
+        aggressiveSignal: 0,
+        defensiveSignal: 0,
+      };
     }
 
-    let weakSignal = 0, trapSignal = 0, fastShowSignal = 0, aggressiveSignal = 0, defensiveSignal = 0;
+    let weakSignal = 0,
+      trapSignal = 0,
+      fastShowSignal = 0,
+      aggressiveSignal = 0,
+      defensiveSignal = 0;
 
     for (const opp of opponents) {
-      const aggressiveScore = opp.recentAttackThrows - opp.recentAttackTakes + opp.recentDraws * 0.2;
-      const defensiveScore  = opp.recentAttackTakes - opp.recentAttackThrows + opp.recentShows * 0.15;
-      const showScore       = opp.recentShows + opp.recentCuts * 0.4;
-      const trapScore       = opp.handCountHistory.length > 0
-        ? opp.handCountHistory.reduce((s, v) => s + v, 0) / opp.handCountHistory.length : 0;
+      const aggressiveScore =
+        opp.recentAttackThrows - opp.recentAttackTakes + opp.recentDraws * 0.2;
+      const defensiveScore =
+        opp.recentAttackTakes - opp.recentAttackThrows + opp.recentShows * 0.15;
+      const showScore = opp.recentShows + opp.recentCuts * 0.4;
+      const trapScore =
+        opp.handCountHistory.length > 0
+          ? opp.handCountHistory.reduce((s, v) => s + v, 0) /
+            opp.handCountHistory.length
+          : 0;
 
-      if (opp.archetype === "fast_show")                         fastShowSignal += 1;
-      if (opp.archetype === "trap" || opp.archetype === "combo_hoarder") trapSignal += 1;
-      if (opp.archetype === "aggressive")                        aggressiveSignal += 1;
-      if (opp.archetype === "defensive")                         defensiveSignal += 1;
-      if (opp.archetype === "hold_7s")                           trapSignal += 0.5;
+      if (opp.archetype === "fast_show") fastShowSignal += 1;
+      if (opp.archetype === "trap" || opp.archetype === "combo_hoarder")
+        trapSignal += 1;
+      if (opp.archetype === "aggressive") aggressiveSignal += 1;
+      if (opp.archetype === "defensive") defensiveSignal += 1;
+      if (opp.archetype === "hold_7s") trapSignal += 0.5;
 
       if (aggressiveScore > 1.5) aggressiveSignal += 0.6;
-      if (defensiveScore > 1.5)  defensiveSignal += 0.6;
-      if (showScore >= 2)        fastShowSignal += 0.5;
-      if (trapScore >= 5)        trapSignal += 0.5;
-      if (opp.recentDraws >= 3 && opp.recentCuts <= 1)   weakSignal += 0.6;
-      if (opp.recentDraws >= 4 && opp.recentShows <= 1)  weakSignal += 0.4;
+      if (defensiveScore > 1.5) defensiveSignal += 0.6;
+      if (showScore >= 2) fastShowSignal += 0.5;
+      if (trapScore >= 5) trapSignal += 0.5;
+      if (opp.recentDraws >= 3 && opp.recentCuts <= 1) weakSignal += 0.6;
+      if (opp.recentDraws >= 4 && opp.recentShows <= 1) weakSignal += 0.4;
     }
 
     const n = opponents.length;
     return {
-      weakSignal:      Math.min(1, weakSignal / n),
-      trapSignal:      Math.min(1, trapSignal / n),
-      fastShowSignal:  Math.min(1, fastShowSignal / n),
-      aggressiveSignal:Math.min(1, aggressiveSignal / n),
+      weakSignal: Math.min(1, weakSignal / n),
+      trapSignal: Math.min(1, trapSignal / n),
+      fastShowSignal: Math.min(1, fastShowSignal / n),
+      aggressiveSignal: Math.min(1, aggressiveSignal / n),
       defensiveSignal: Math.min(1, defensiveSignal / n),
     };
   }
@@ -645,33 +723,50 @@ export class BotPlayer {
     const bot = state.players.find((p) => p.id === botPlayerId)!;
     const botIndex = state.players.indexOf(bot);
     const total = state.players.length;
-    const opponents = state.players.filter((p) => !p.isEliminated && p.id !== botPlayerId);
-    const minOpponentCards = opponents.length > 0
-      ? Math.min(...opponents.map((p) => p.handCount)) : Infinity;
+    const opponents = state.players.filter(
+      (p) => !p.isEliminated && p.id !== botPlayerId,
+    );
+    const minOpponentCards =
+      opponents.length > 0
+        ? Math.min(...opponents.map((p) => p.handCount))
+        : Infinity;
 
     let nextIdx = botIndex;
     let guard = total * 2;
-    do { nextIdx = (nextIdx + 1) % total; }
-    while (state.players[nextIdx].isEliminated && --guard > 0);
+    do {
+      nextIdx = (nextIdx + 1) % total;
+    } while (state.players[nextIdx].isEliminated && --guard > 0);
 
     const nextPlayer = state.players[nextIdx];
-    const nextPlayerCards = nextPlayer && !nextPlayer.isEliminated ? nextPlayer.handCount : Infinity;
+    const nextPlayerCards =
+      nextPlayer && !nextPlayer.isEliminated ? nextPlayer.handCount : Infinity;
     return { minOpponentCards, nextPlayerCards };
   }
 
   // ── Boss Personality Switching ────────────────────────────────────────────────
 
-  private static bossPersonalityForMode(mode: BossSubpersonality): BotPersonality {
+  private static bossPersonalityForMode(
+    mode: BossSubpersonality,
+  ): BotPersonality {
     switch (mode) {
-      case "aggressive":    return "aggressive";
-      case "defensive":     return "safe";
-      case "trap":          return "smart";
-      case "anti_show":     return "bluff";
-      case "pressure_mode": return "aggressive";
-      case "killer":        return "aggressive";
-      case "combo_preserve":return "smart";
-      case "tempo_control": return "smart";
-      default:              return "boss";
+      case "aggressive":
+        return "aggressive";
+      case "defensive":
+        return "safe";
+      case "trap":
+        return "smart";
+      case "anti_show":
+        return "bluff";
+      case "pressure_mode":
+        return "aggressive";
+      case "killer":
+        return "aggressive";
+      case "combo_preserve":
+        return "smart";
+      case "tempo_control":
+        return "smart";
+      default:
+        return "boss";
     }
   }
 
@@ -682,10 +777,13 @@ export class BotPlayer {
     chosenMode: BossSubpersonality,
   ): Partial<BotMatchContext> {
     const isAggressive =
-      chosenMode === "killer" || chosenMode === "pressure_mode" ||
-      chosenMode === "anti_show" || chosenMode === "aggressive";
+      chosenMode === "killer" ||
+      chosenMode === "pressure_mode" ||
+      chosenMode === "anti_show" ||
+      chosenMode === "aggressive";
 
-    let { consecutivePressureTurns, emotionalPhase, pressureTurnsThisRound } = ctx;
+    let { consecutivePressureTurns, emotionalPhase, pressureTurnsThisRound } =
+      ctx;
 
     if (isAggressive) {
       consecutivePressureTurns++;
@@ -732,7 +830,10 @@ export class BotPlayer {
     if (optionCount <= 1) return 0;
 
     // Boss: 15% chance to pick 2nd best, but only if not done recently
-    if (personality === "boss" && ctx.turnCount - ctx.lastImperfectionTurn >= 3) {
+    if (
+      personality === "boss" &&
+      ctx.turnCount - ctx.lastImperfectionTurn >= 3
+    ) {
       if (Math.random() < 0.15) return 1;
     }
     // Smart: 4% chance to pick from top-2 (anti-determinism)
@@ -751,7 +852,7 @@ export class BotPlayer {
     ctx: BotMatchContext,
   ): string[] | null {
     // Only execute a bluff line 20% of turns (not random — phase-gated)
-    if (Math.random() >= 0.20) return null;
+    if (Math.random() >= 0.2) return null;
 
     // Fake weakness: discard a card from a pair (as if we're unaware of its value)
     // This baits opponent into thinking our hand is bad
@@ -765,7 +866,8 @@ export class BotPlayer {
 
     // Find a medium-value pair (5-8 pts) — discard one card from it to look scattered
     const mediumPair = Object.values(byRank).find(
-      (group) => group.length >= 2 &&
+      (group) =>
+        group.length >= 2 &&
         DeckManager.getCardValue(group[0]) >= 5 &&
         DeckManager.getCardValue(group[0]) <= 8,
     );
@@ -774,7 +876,9 @@ export class BotPlayer {
     // Delayed show bluff: keep best option but delay by discarding 2nd-best instead
     if (discardOptions.length >= 3 && Math.random() < 0.4) {
       const idx = ctx.emotionalPhase === "bait" ? 2 : 1; // deeper fake when baiting
-      return discardOptions[Math.min(idx, discardOptions.length - 1)].cards.map(c => c.id);
+      return discardOptions[Math.min(idx, discardOptions.length - 1)].cards.map(
+        (c) => c.id,
+      );
     }
 
     return null;
@@ -790,8 +894,8 @@ export class BotPlayer {
   ): BossSubpersonality {
     // Cooldown / bait phases always force non-aggressive modes regardless of bias
     if (emotionalPhase === "cooldown") return "defensive";
-    if (emotionalPhase === "bait")     return "combo_preserve";
-    if (emotionalPhase === "surge")    return baseMode; // surge: full gas
+    if (emotionalPhase === "bait") return "combo_preserve";
+    if (emotionalPhase === "surge") return baseMode; // surge: full gas
 
     // Each match seed creates a "flavor" — boss leans toward certain modes
     // seed 0.0-0.25: punisher — favors killer + anti_show
@@ -799,7 +903,8 @@ export class BotPlayer {
     // seed 0.5-0.75: pressurer — favors pressure_mode + aggressive
     // seed 0.75-1.0: adapter — standard mode, no bias
     if (seed < 0.25) {
-      if (baseMode === "neutral" || baseMode === "pressure_mode") return "killer";
+      if (baseMode === "neutral" || baseMode === "pressure_mode")
+        return "killer";
       if (baseMode === "combo_preserve") return "anti_show";
     } else if (seed < 0.5) {
       if (baseMode === "killer") return "tempo_control";
@@ -820,7 +925,11 @@ export class BotPlayer {
     const signals = BotPlayer.inferOpponentSignals(opponents);
     const bot = state.players.find((p) => p.id === botPlayerId)!;
     const botTotal = DeckManager.calculateHandTotal(bot.hand);
-    const showThreat = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
+    const showThreat = BotPlayer.detectShowThreat(
+      state,
+      botPlayerId,
+      opponents,
+    );
     const pressureState = BotPlayer.detectPressureState(opponents);
     // Include all opponents (not just humans) so boss reacts when smart/aggressive bots close in
     const bestOpp = state.players
@@ -829,26 +938,42 @@ export class BotPlayer {
 
     // Cooldown / bait phases reduce aggression — creates pacing windows
     if (ctx.emotionalPhase === "cooldown") return "defensive";
-    if (ctx.emotionalPhase === "bait")     return "combo_preserve";
+    if (ctx.emotionalPhase === "bait") return "combo_preserve";
 
     // Critical SHOW threat overrides everything (even surge)
     if (showThreat >= 0.7 || signals.fastShowSignal >= 0.5) {
-      return BotPlayer.variantBiasedMode("anti_show", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "anti_show",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // Kill a vulnerable recovering opponent
     if (pressureState.isUnstable && botTotal <= 10) {
-      return BotPlayer.variantBiasedMode("killer", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "killer",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // Panic opponent — apply relentless pressure
     if (pressureState.isPanicking) {
-      return BotPlayer.variantBiasedMode("pressure_mode", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "pressure_mode",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // Opponent has trap setup — control tempo
     if (signals.trapSignal >= 0.5 && botTotal >= 8) {
-      return BotPlayer.variantBiasedMode("tempo_control", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "tempo_control",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // Opponent is aggressive — go defensive then counter
@@ -856,12 +981,20 @@ export class BotPlayer {
 
     // We're strong and opponent is close to showing — rush them
     if (bestOpp <= 3 && botTotal <= 10) {
-      return BotPlayer.variantBiasedMode("aggressive", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "aggressive",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // We're strong and opponents are weak — killer instinct
     if (botTotal <= 6 && signals.weakSignal >= 0.3) {
-      return BotPlayer.variantBiasedMode("killer", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "killer",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // We're in a good position but need to build — preserve combos
@@ -869,12 +1002,20 @@ export class BotPlayer {
 
     // Surge phase: maximum spike after bait window
     if (ctx.emotionalPhase === "surge") {
-      return BotPlayer.variantBiasedMode("killer", ctx.matchVariantSeed, ctx.emotionalPhase);
+      return BotPlayer.variantBiasedMode(
+        "killer",
+        ctx.matchVariantSeed,
+        ctx.emotionalPhase,
+      );
     }
 
     // Default: pressure (variant-weighted per match)
     const defaultMode = botTotal <= 9 ? "pressure_mode" : "neutral";
-    return BotPlayer.variantBiasedMode(defaultMode, ctx.matchVariantSeed, ctx.emotionalPhase);
+    return BotPlayer.variantBiasedMode(
+      defaultMode,
+      ctx.matchVariantSeed,
+      ctx.emotionalPhase,
+    );
   }
 
   // ── Show Confidence ───────────────────────────────────────────────────────────
@@ -905,11 +1046,15 @@ export class BotPlayer {
 
     const { minOpponentCards } = BotPlayer.assessThreat(state, botPlayerId);
     const oppSignals = BotPlayer.inferOpponentSignals(opponents);
-    const showThreat = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
+    const showThreat = BotPlayer.detectShowThreat(
+      state,
+      botPlayerId,
+      opponents,
+    );
 
     // Show sooner when opponent is close to showing
     if (minOpponentCards <= 3) score += cfg.pressureBias * 0.08;
-    if (showThreat >= 0.6)     score += 0.12; // race condition — show before they do
+    if (showThreat >= 0.6) score += 0.12; // race condition — show before they do
 
     score += oppSignals.weakSignal * 0.08;
     score -= oppSignals.fastShowSignal * 0.08;
@@ -935,7 +1080,11 @@ export class BotPlayer {
     if (!topDiscard) return "deck";
 
     // Never take real 7s or Jacks from discard — they're tempo weapons best kept unknown
-    if (!topDiscard.isJoker && (topDiscard.rank === "7" || topDiscard.rank === "J")) return "deck";
+    if (
+      !topDiscard.isJoker &&
+      (topDiscard.rank === "7" || topDiscard.rank === "J")
+    )
+      return "deck";
 
     const discardValue = DeckManager.getCardValue(topDiscard);
     const hand = bot.hand;
@@ -951,7 +1100,11 @@ export class BotPlayer {
     if (discardValue === 0) return "discard";
 
     const completesPair = hand.some(
-      (c) => c.rank === topDiscard.rank && !c.isJoker && c.rank !== "7" && c.rank !== "J",
+      (c) =>
+        c.rank === topDiscard.rank &&
+        !c.isJoker &&
+        c.rank !== "7" &&
+        c.rank !== "J",
     );
     if (completesPair && discardValue <= worstValue) return "discard";
 
@@ -959,14 +1112,27 @@ export class BotPlayer {
     const oppPressure = BotPlayer.estimateOpponentShowPressure(opponents);
 
     // If taking from discard reveals our target card to opponents — use deck in high-threat situations
-    const threatLevel = BotPlayer.computeThreatLevel(state, botPlayerId, opponents);
-    if ((threatLevel === "high" || threatLevel === "critical") && discardValue >= 4) return "deck";
+    const threatLevel = BotPlayer.computeThreatLevel(
+      state,
+      botPlayerId,
+      opponents,
+    );
+    if (
+      (threatLevel === "high" || threatLevel === "critical") &&
+      discardValue >= 4
+    )
+      return "deck";
 
-    if (projected <= 5 + Math.floor(boost * 3) - Math.floor(oppPressure * 2)) return "discard";
-    if (boost > 0.12 && discardValue <= worstValue && projected <= 7) return "discard";
+    if (projected <= 5 + Math.floor(boost * 3) - Math.floor(oppPressure * 2))
+      return "discard";
+    if (boost > 0.12 && discardValue <= worstValue && projected <= 7)
+      return "discard";
     if (discardValue <= worstValue - DISCARD_SAVE_THRESHOLD) return "discard";
 
-    const reducedScore = BotPlayer.bestReductionDiscard([...hand, topDiscard]).score;
+    const reducedScore = BotPlayer.bestReductionDiscard([
+      ...hand,
+      topDiscard,
+    ]).score;
     if (reducedScore <= 5 && discardValue < worstValue) return "discard";
 
     return "deck";
@@ -987,26 +1153,45 @@ export class BotPlayer {
     const boost = BotPlayer.normalizeBoost(difficultyBoost);
 
     const isRealSeven = (c: Card) => c.rank === "7" && !c.isJoker;
-    const isRealJack  = (c: Card) => c.rank === "J" && !c.isJoker;
+    const isRealJack = (c: Card) => c.rank === "J" && !c.isJoker;
 
-    const sevens  = hand.filter(isRealSeven);
-    const jacks   = hand.filter(isRealJack);
-    const nonPower = hand.filter((c) => !isRealSeven(c) && !isRealJack(c) && !c.isJoker);
+    const sevens = hand.filter(isRealSeven);
+    const jacks = hand.filter(isRealJack);
+    const nonPower = hand.filter(
+      (c) => !isRealSeven(c) && !isRealJack(c) && !c.isJoker,
+    );
 
-    const { minOpponentCards, nextPlayerCards } = BotPlayer.assessThreat(state, botPlayerId);
-    const currentTotal   = DeckManager.calculateHandTotal(hand);
-    const { cards: normalBest, score: normalBestScore } = BotPlayer.bestReductionDiscard(hand);
+    const { minOpponentCards, nextPlayerCards } = BotPlayer.assessThreat(
+      state,
+      botPlayerId,
+    );
+    const currentTotal = DeckManager.calculateHandTotal(hand);
+    const { cards: normalBest, score: normalBestScore } =
+      BotPlayer.bestReductionDiscard(hand);
     const discardOptions = BotPlayer.performanceDiscardOptions(hand);
 
     // ── Compute all context signals ──────────────────────────────────────────
-    const threatLevel  = BotPlayer.computeThreatLevel(state, botPlayerId, opponents);
-    const showThreat   = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
-    const oppPressure  = BotPlayer.estimateOpponentShowPressure(opponents);
+    const threatLevel = BotPlayer.computeThreatLevel(
+      state,
+      botPlayerId,
+      opponents,
+    );
+    const showThreat = BotPlayer.detectShowThreat(
+      state,
+      botPlayerId,
+      opponents,
+    );
+    const oppPressure = BotPlayer.estimateOpponentShowPressure(opponents);
     const pressureState = BotPlayer.detectPressureState(opponents);
-    const killer       = BotPlayer.killerInstinctActive(state, botPlayerId, personality, opponents);
-    const stability    = BotPlayer.evaluateLowScoreStability(hand);
-    const isCritical   = threatLevel === "critical";
-    const isHigh       = threatLevel === "high";
+    const killer = BotPlayer.killerInstinctActive(
+      state,
+      botPlayerId,
+      personality,
+      opponents,
+    );
+    const stability = BotPlayer.evaluateLowScoreStability(hand);
+    const isCritical = threatLevel === "critical";
+    const isHigh = threatLevel === "high";
 
     // ── 1. SHOW INTERRUPTION: when CRITICAL, all resources go anti-show ──────
     if (isCritical && (showThreat >= 0.6 || minOpponentCards <= 3)) {
@@ -1018,7 +1203,8 @@ export class BotPlayer {
         );
         // But avoid discarding denial-priority cards
         const safeWorst = worst.filter(
-          (c) => !DENIAL_PRIORITY_RANKS.has(c.rank) &&
+          (c) =>
+            !DENIAL_PRIORITY_RANKS.has(c.rank) &&
             BotPlayer.opponentBenefitScore(c, opponents) < 2.0,
         );
         if (safeWorst.length > 0) return [safeWorst[0].id];
@@ -1033,7 +1219,8 @@ export class BotPlayer {
     // ── 2. ATTACK: all 7s when opponent is very close ────────────────────────
     if (
       sevens.length > 0 &&
-      (cfg.alwaysAttack || minOpponentCards <= cfg.attackAllAt ||
+      (cfg.alwaysAttack ||
+        minOpponentCards <= cfg.attackAllAt ||
         (isCritical && minOpponentCards <= 5) ||
         (killer && minOpponentCards <= 6))
     ) {
@@ -1049,13 +1236,24 @@ export class BotPlayer {
 
     // ── 4. TACTICAL RANDOMNESS / SMART ANTI-DETERMINISM (near-optimal) ────────
     // Only when not in high-threat mode; picks between top options, never garbage
-    if (!isHigh && !isCritical && Math.random() < cfg.randomPlayChance && nonPower.length > 0) {
+    if (
+      !isHigh &&
+      !isCritical &&
+      Math.random() < cfg.randomPlayChance &&
+      nonPower.length > 0
+    ) {
       const ctx = BotPlayer.getCtx(botPlayerId);
-      const pickIdx = BotPlayer.controlledImperfection(personality, ctx, Math.min(3, discardOptions.length));
+      const pickIdx = BotPlayer.controlledImperfection(
+        personality,
+        ctx,
+        Math.min(3, discardOptions.length),
+      );
       const choice = discardOptions[pickIdx];
       if (choice) {
         const safe = !choice.cards.some(
-          (c) => DENIAL_PRIORITY_RANKS.has(c.rank) || BotPlayer.opponentBenefitScore(c, opponents) >= 2.5,
+          (c) =>
+            DENIAL_PRIORITY_RANKS.has(c.rank) ||
+            BotPlayer.opponentBenefitScore(c, opponents) >= 2.5,
         );
         if (safe) return choice.cards.map((c) => c.id);
       }
@@ -1076,7 +1274,9 @@ export class BotPlayer {
         (killer && minOpponentCards <= sevenThreshold + 2) ||
         (pressureState.isUnstable && minOpponentCards <= sevenThreshold) ||
         (oppPressure >= 0.45 && currentTotal - 7 <= normalBestScore + 8) ||
-        (boost > 0.18 && currentTotal - 7 <= normalBestScore + 8 && minOpponentCards <= sevenThreshold + 1);
+        (boost > 0.18 &&
+          currentTotal - 7 <= normalBestScore + 8 &&
+          minOpponentCards <= sevenThreshold + 1);
 
       if (shouldDeploy7) {
         // Only throw 7 if we won't cripple our own hand too badly
@@ -1090,12 +1290,19 @@ export class BotPlayer {
     if (jacks.length > 0 && sevens.length === 0) {
       const jackScore = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
       const shouldUseJ =
-        (nextPlayerCards <= cfg.skipAt + (boost > 0.18 ? 2 : 0)) ||
-        (isHigh && nextPlayerCards <= cfg.skipAt + 3 && Math.random() < cfg.jackUseBias) ||
-        (isCritical && nextPlayerCards <= 6 && Math.random() < cfg.jackUseBias * 1.2) ||
+        nextPlayerCards <= cfg.skipAt + (boost > 0.18 ? 2 : 0) ||
+        (isHigh &&
+          nextPlayerCards <= cfg.skipAt + 3 &&
+          Math.random() < cfg.jackUseBias) ||
+        (isCritical &&
+          nextPlayerCards <= 6 &&
+          Math.random() < cfg.jackUseBias * 1.2) ||
         (killer && nextPlayerCards <= cfg.skipAt + 2);
 
-      if (shouldUseJ && jackScore <= normalBestScore + 3 + (boost > 0.18 ? 2 : 0)) {
+      if (
+        shouldUseJ &&
+        jackScore <= normalBestScore + 3 + (boost > 0.18 ? 2 : 0)
+      ) {
         return [jacks[0].id];
       }
     }
@@ -1115,16 +1322,24 @@ export class BotPlayer {
     }
 
     const scored: ScoredOption[] = discardOptions.map((opt) => {
-      const selfScore    = opt.score;
-      const benefit      = opt.cards.reduce(
-        (sum, c) => sum + BotPlayer.opponentBenefitScore(c, opponents), 0,
-      ) / opt.cards.length;
+      const selfScore = opt.score;
+      const benefit =
+        opt.cards.reduce(
+          (sum, c) => sum + BotPlayer.opponentBenefitScore(c, opponents),
+          0,
+        ) / opt.cards.length;
       const denialPenalty = benefit * denialMultiplier;
-      const lookahead    = BotPlayer.multiTurnLookahead(hand, opt.cards);
+      const lookahead = BotPlayer.multiTurnLookahead(hand, opt.cards);
       // Negative bonus for show-in-2-turns options (we WANT to pick these)
-      const futureBonus  = lookahead.showIn2Turns ? -1.5 : 0;
+      const futureBonus = lookahead.showIn2Turns ? -1.5 : 0;
       const combinedScore = selfScore + denialPenalty + futureBonus;
-      return { cards: opt.cards, selfScore, denialPenalty, combinedScore, showIn2Turns: lookahead.showIn2Turns };
+      return {
+        cards: opt.cards,
+        selfScore,
+        denialPenalty,
+        combinedScore,
+        showIn2Turns: lookahead.showIn2Turns,
+      };
     });
 
     // Sort by combined score (lower = better for us)
@@ -1133,9 +1348,10 @@ export class BotPlayer {
     // ── 8. KILLER INSTINCT OVERRIDE: pick option that most denies recovery ────
     if (killer || pressureState.isPanicking) {
       // Prefer options that discard high-value cards (hurt us less) AND deny useful stuff
-      const killerOption = scored.find((s) =>
-        !s.cards.some((c) => DENIAL_PRIORITY_RANKS.has(c.rank)) &&
-        s.selfScore <= normalBestScore + 3,
+      const killerOption = scored.find(
+        (s) =>
+          !s.cards.some((c) => DENIAL_PRIORITY_RANKS.has(c.rank)) &&
+          s.selfScore <= normalBestScore + 3,
       );
       if (killerOption) return killerOption.cards.map((c) => c.id);
     }
@@ -1145,15 +1361,17 @@ export class BotPlayer {
     // for a tiny score improvement
     if (stability >= 6.0 && currentTotal <= 8) {
       // Only discard genuinely high cards
-      const highOnly = scored.find((s) =>
-        s.cards.every((c) => DeckManager.getCardValue(c) >= 6) &&
-        !s.cards.some((c) => c.isJoker || DENIAL_PRIORITY_RANKS.has(c.rank)),
+      const highOnly = scored.find(
+        (s) =>
+          s.cards.every((c) => DeckManager.getCardValue(c) >= 6) &&
+          !s.cards.some((c) => c.isJoker || DENIAL_PRIORITY_RANKS.has(c.rank)),
       );
       if (highOnly) return highOnly.cards.map((c) => c.id);
     }
 
     // ── 10. COMBO PRESERVATION ───────────────────────────────────────────────
-    const preserveCombo = BotPlayer.handResilience(hand) * cfg.comboPreservation;
+    const preserveCombo =
+      BotPlayer.handResilience(hand) * cfg.comboPreservation;
     const shouldKeepPair = preserveCombo > 1.2;
 
     // ── 11. FINAL PICK: denial-aware best option + controlled imperfection ──────
@@ -1167,9 +1385,15 @@ export class BotPlayer {
       // Boss / smart: occasionally pick 2nd-best to prevent pattern exploitation
       if (personality === "boss" || personality === "smart") {
         const ctx = BotPlayer.getCtx(botPlayerId);
-        const pickIdx = BotPlayer.controlledImperfection(personality, ctx, scored.length);
+        const pickIdx = BotPlayer.controlledImperfection(
+          personality,
+          ctx,
+          scored.length,
+        );
         if (pickIdx > 0) {
-          BotPlayer.updateCtx(botPlayerId, { lastImperfectionTurn: ctx.turnCount });
+          BotPlayer.updateCtx(botPlayerId, {
+            lastImperfectionTurn: ctx.turnCount,
+          });
           return scored[pickIdx].cards.map((c) => c.id);
         }
       }
@@ -1182,7 +1406,8 @@ export class BotPlayer {
     if (jacks.length > 0) return [jacks[0].id];
 
     const highest = hand.reduce(
-      (h, c) => DeckManager.getCardValue(c) > DeckManager.getCardValue(h) ? c : h,
+      (h, c) =>
+        DeckManager.getCardValue(c) > DeckManager.getCardValue(h) ? c : h,
       hand[0],
     );
     return [highest.id];
@@ -1206,15 +1431,30 @@ export class BotPlayer {
     if (total > SHOW_HARD_MAX[personality]) return false;
 
     const confidence = BotPlayer.estimateShowConfidence(
-      state, botPlayerId, personality, boost, opponents,
+      state,
+      botPlayerId,
+      personality,
+      boost,
+      opponents,
     );
-    const oppSignals   = BotPlayer.inferOpponentSignals(opponents);
-    const showThreat   = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
-    const threatLevel  = BotPlayer.computeThreatLevel(state, botPlayerId, opponents);
+    const oppSignals = BotPlayer.inferOpponentSignals(opponents);
+    const showThreat = BotPlayer.detectShowThreat(
+      state,
+      botPlayerId,
+      opponents,
+    );
+    const threatLevel = BotPlayer.computeThreatLevel(
+      state,
+      botPlayerId,
+      opponents,
+    );
 
     let threshold =
-      0.56 - cfg.showBias * 0.12 - Math.min(0.24, boost * 0.18) +
-      oppSignals.trapSignal * 0.08 - oppSignals.weakSignal * 0.04;
+      0.56 -
+      cfg.showBias * 0.12 -
+      Math.min(0.24, boost * 0.18) +
+      oppSignals.trapSignal * 0.08 -
+      oppSignals.weakSignal * 0.04;
 
     // Show more readily when opponent is close to showing first
     if (showThreat >= 0.6) threshold -= 0.08;
@@ -1222,10 +1462,12 @@ export class BotPlayer {
 
     const decision = confidence >= threshold;
 
-    if (boost > 0.18 && total <= 8 && confidence >= threshold - 0.05) return true;
+    if (boost > 0.18 && total <= 8 && confidence >= threshold - 0.05)
+      return true;
 
     if (personality === "bluff" && total <= 7) {
-      if (oppSignals.fastShowSignal > 0.4) return decision && Math.random() > 0.4;
+      if (oppSignals.fastShowSignal > 0.4)
+        return decision && Math.random() > 0.4;
       return Math.random() > 0.3 ? decision : !decision;
     }
     return decision;
@@ -1239,7 +1481,8 @@ export class BotPlayer {
   ): { action: "throw" | "take"; cardIds?: string[] } {
     const bot = state.players.find((p) => p.id === botPlayerId)!;
     const sevens = bot.hand.filter((c) => c.rank === "7" && !c.isJoker);
-    if (sevens.length > 0) return { action: "throw", cardIds: sevens.map((c) => c.id) };
+    if (sevens.length > 0)
+      return { action: "throw", cardIds: sevens.map((c) => c.id) };
     return { action: "take" };
   }
 
@@ -1260,14 +1503,21 @@ export class BotPlayer {
     BotPlayer.updateCtx(botPlayerId, { turnCount: ctx.turnCount + 1 });
 
     // Boss dynamically switches sub-personality every turn
-    const bossMode = personality === "boss"
-      ? BotPlayer.selectBossMode(state, botPlayerId, opponents) : "neutral";
-    const effectivePersonality = personality === "boss"
-      ? BotPlayer.bossPersonalityForMode(bossMode) : personality;
+    const bossMode =
+      personality === "boss"
+        ? BotPlayer.selectBossMode(state, botPlayerId, opponents)
+        : "neutral";
+    const effectivePersonality =
+      personality === "boss"
+        ? BotPlayer.bossPersonalityForMode(bossMode)
+        : personality;
 
     // Advance emotional phase after mode is selected (boss only)
     if (personality === "boss") {
-      const phaseUpdate = BotPlayer.advanceEmotionalPhase(BotPlayer.getCtx(botPlayerId), bossMode);
+      const phaseUpdate = BotPlayer.advanceEmotionalPhase(
+        BotPlayer.getCtx(botPlayerId),
+        bossMode,
+      );
       BotPlayer.updateCtx(botPlayerId, phaseUpdate);
     }
 
@@ -1289,7 +1539,11 @@ export class BotPlayer {
     if (
       !state.hasDrawnThisTurn &&
       BotPlayer.shouldCallShow(
-        state, botPlayerId, personality, difficultyBoost, opponents,
+        state,
+        botPlayerId,
+        personality,
+        difficultyBoost,
+        opponents,
       )
     ) {
       return { action: "show" };
@@ -1305,23 +1559,32 @@ export class BotPlayer {
         );
         if (matching.length > 0) {
           const cutValue = matching.reduce(
-            (s, c) => s + DeckManager.getCardValue(c), 0,
+            (s, c) => s + DeckManager.getCardValue(c),
+            0,
           );
           // Don't cut low-value cards when opponent benefit is high
           const benefit = BotPlayer.opponentBenefitScore(topDiscard, opponents);
-          const threatLevel = BotPlayer.computeThreatLevel(state, botPlayerId, opponents);
+          const threatLevel = BotPlayer.computeThreatLevel(
+            state,
+            botPlayerId,
+            opponents,
+          );
           const cutOk =
             cutValue >= 2 ||
             (threatLevel !== "critical" && benefit < 1.5) ||
             cutValue >= 4;
-          if (cutOk) return { action: "discard", cardIds: matching.map((c) => c.id) };
+          if (cutOk)
+            return { action: "discard", cardIds: matching.map((c) => c.id) };
         }
       }
 
       return {
         action: "draw",
         source: BotPlayer.decideDrawSource(
-          state, botPlayerId, difficultyBoost, opponents,
+          state,
+          botPlayerId,
+          difficultyBoost,
+          opponents,
         ),
       };
     }
@@ -1330,7 +1593,11 @@ export class BotPlayer {
     return {
       action: "discard",
       cardIds: BotPlayer.decideDiscard(
-        state, botPlayerId, effectivePersonality, difficultyBoost, opponents,
+        state,
+        botPlayerId,
+        effectivePersonality,
+        difficultyBoost,
+        opponents,
       ),
     };
   }

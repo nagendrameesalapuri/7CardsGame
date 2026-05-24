@@ -1,15 +1,19 @@
-import { trackHoldReleased, isHoldCooldownActive, _resetHoldExploitTracker } from '../roomHandler';
+import {
+  trackHoldReleased,
+  isHoldCooldownActive,
+  _resetHoldExploitTracker,
+} from "../roomHandler";
 
 jest.useFakeTimers();
 
-describe('Hold exploit tracker', () => {
+describe("Hold exploit tracker", () => {
   beforeEach(() => {
     _resetHoldExploitTracker();
     jest.setSystemTime(Date.now());
   });
 
-  test('debounces duplicate immediate releases and applies cooldown after threshold', () => {
-    const user = 'user1';
+  test("debounces duplicate immediate releases and applies cooldown after threshold", () => {
+    const user = "user1";
 
     // First release — should not flag
     let r1 = trackHoldReleased(user);
