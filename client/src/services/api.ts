@@ -320,7 +320,8 @@ export const progressionApi = {
 };
 
 export const survivalApi = {
-  history: (page = 1) => api.get<{ records: any[]; total: number; page: number; pages: number }>(`/survival/history?page=${page}`),
+  history:     (page = 1) => api.get<{ records: any[]; total: number; page: number; pages: number }>(`/survival/history?page=${page}`),
+  teamHistory: (page = 1) => api.get<{ records: any[]; total: number; page: number; pages: number }>(`/survival/team-history?page=${page}`),
   status:  () => api.get<{ survival: any }>('/survival/status'),
   stats:   () => api.get<{
     runsPlayed: number; runsWon: number; runsLost: number; runsAbandoned: number;

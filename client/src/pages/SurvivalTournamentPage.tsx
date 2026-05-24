@@ -957,9 +957,236 @@ function HistoryCard({ r, idx }: { r: any; idx: number }) {
   );
 }
 
+// ── Team History Card ─────────────────────────────────────────────────────────
+
+function TeamHistoryCard({ r, idx }: { r: any; idx: number }) {
+  const [expanded, setExpanded] = useState(idx === 0);
+  const meta = STATUS_META[r.status === 'completed' ? (r.stageResults?.length === 5 ? 'won' : 'lost') : r.status] ?? STATUS_META.active;
+  const lastResult: any = r.stageResults?.[r.stageResults.length - 1];
+  const tournamentWon = r.status === 'completed' && r.stageResults?.length === 5 && lastResult?.teamWon;
+  const statusMeta = STATUS_META[tournamentWon ? 'won' : r.status === 'completed' ? 'lost' : r.status] ?? STATUS_META.active;
+  const net = r.totalPointsEarned - (r.entryFeeMode === 'host_pays' && !r.isHost ? 0 : r.entryPoints);
+  const stageResults: any[] = r.stageResults ?? [];
+  const memberNames = (r.members ?? []).map((m: any) => m.username).join(' & ');
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}
+      className="rounded-2xl overflow-hidden"
+      style={{ background: 'rgba(12,14,18,0.9)', border: `1px solid ${statusMeta.border}` }}>
+
+      <button className="w-full p-4 text-left" onClick={() => setExpanded(e => !e)}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base">{statusMeta.emoji}</span>
+            <span className="font-bold text-sm" style={{ color: statusMeta.color }}>{statusMeta.label}</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+              style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>
+              👥 {r.tierLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-dark-muted">
+              {new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+            </span>
+            <span className="text-dark-muted text-xs">{expanded ? '▲' : '▼'}</span>
+          </div>
+        </div>
+        {memberNames && (
+          <p className="text-[10px] text-dark-muted mb-2">with {memberNames}</p>
+        )}
+        <div className="flex items-center gap-1">
+          {TEAM_STAGES.map(s => {
+            const res = stageResults.find((sr: any) => sr.stage === s.stage);
+            return (
+              <div key={s.stage} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{
+                  background: !res ? 'rgba(255,255,255,0.04)' : res.teamWon ? `${s.color}20` : 'rgba(255,107,107,0.15)',
+                  border: `1.5px solid ${!res ? 'rgba(255,255,255,0.08)' : res.teamWon ? s.color : '#ff6b6b'}`,
+                  color: !res ? '#4b5563' : res.teamWon ? s.color : '#ff6b6b',
+                }}>
+                {!res ? s.emojis[0] : res.teamWon ? '✓' : '✗'}
+              </div>
+            );
+          })}
+          <div className="ml-auto text-right">
+            <span className="text-sm font-bold" style={{ color: net >= 0 ? '#22c55e' : '#ff6b6b' }}>
+              {net >= 0 ? '+' : ''}{net.toLocaleString()} pts
+            </span>
+            <span className="text-[10px] text-dark-muted block">
+              ≡ ₹{(Math.abs(net) / 100).toFixed(0)} {net >= 0 ? 'profit' : 'loss'}
+            </span>
+          </div>
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+            style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="p-4 pt-3 space-y-2">
+              {TEAM_STAGES.map(s => {
+                const res = stageResults.find((sr: any) => sr.stage === s.stage);
+                if (!res && r.status !== 'active') {
+                  if (s.stage > (r.currentStage ?? 1) && r.status !== 'completed') return null;
+                }
+                return (
+                  <div key={s.stage} className="flex items-center gap-3 px-3 py-2 rounded-xl"
+                    style={{
+                      background: !res ? 'rgba(255,255,255,0.02)' : res.teamWon ? `${s.color}08` : 'rgba(255,107,107,0.06)',
+                      opacity: !res ? 0.5 : 1,
+                    }}>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"
+                      style={{
+                        background: !res ? 'rgba(255,255,255,0.04)' : res.teamWon ? `${s.color}20` : 'rgba(255,107,107,0.15)',
+                        border: `1px solid ${!res ? 'rgba(255,255,255,0.08)' : res.teamWon ? s.color : '#ff6b6b'}`,
+                      }}>
+                      {!res ? s.emojis[0] : res.teamWon ? '✓' : '✗'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-dark-text">{s.name}</p>
+                      {res && (
+                        <p className="text-[10px] text-dark-muted">
+                          Team {res.teamScore} — Bots {res.botTotalScore}
+                          {res.botNames?.length > 0 && ` (${res.botNames.join(', ')})`}
+                        </p>
+                      )}
+                    </div>
+                    {res ? (
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs font-bold" style={{ color: res.teamWon ? '#22c55e' : '#ff6b6b' }}>
+                          {res.teamWon ? `+${res.pointsEarned.toLocaleString()}` : '−0'} pts
+                        </p>
+                        {res.teamWon && (
+                          <p className="text-[9px] text-dark-muted">each member</p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-dark-muted/40">Not played</span>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div className="mt-3 pt-3 grid grid-cols-3 gap-2 text-center"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <div>
+                  <p className="text-[10px] text-dark-muted mb-0.5">Entry Fee</p>
+                  {r.entryFeeMode === 'host_pays' && !r.isHost ? (
+                    <>
+                      <p className="text-xs font-bold" style={{ color: '#22c55e' }}>Free</p>
+                      <p className="text-[9px] text-dark-muted">Host paid</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold text-red-400">−{r.entryPoints.toLocaleString()} pts</p>
+                      <p className="text-[9px] text-dark-muted">₹{(r.entryPoints / 100).toFixed(0)}</p>
+                    </>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] text-dark-muted mb-0.5">Earned</p>
+                  <p className="text-xs font-bold" style={{ color: '#22c55e' }}>
+                    +{r.totalPointsEarned.toLocaleString()} pts
+                  </p>
+                  <p className="text-[9px] text-dark-muted">₹{(r.totalPointsEarned / 100).toFixed(0)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-dark-muted mb-0.5">Net</p>
+                  <p className="text-xs font-bold" style={{ color: net >= 0 ? '#22c55e' : '#ff6b6b' }}>
+                    {net >= 0 ? '+' : ''}{net.toLocaleString()} pts
+                  </p>
+                  <p className="text-[9px] text-dark-muted">
+                    {net >= 0 ? '+' : '−'}₹{(Math.abs(net) / 100).toFixed(0)}
+                  </p>
+                </div>
+              </div>
+
+              {r.status === 'abandoned' && stageResults.length === 0 && (
+                <p className="text-[10px] text-center" style={{ color: '#22c55e' }}>
+                  ✓ Entry fee refunded (no rounds played)
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// ── Team History Sub-tab ───────────────────────────────────────────────────────
+
+function TeamHistorySubTab() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    survivalApi.teamHistory()
+      .then(r => setRecords(r.data.records))
+      .catch(() => setError('Failed to load team history. Please try again.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="flex justify-center py-12">
+      <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="text-center py-12 space-y-2">
+      <p className="text-3xl">⚠️</p>
+      <p className="text-red-400 text-sm">{error}</p>
+    </div>
+  );
+
+  if (records.length === 0) return (
+    <div className="text-center py-12 space-y-2">
+      <p className="text-5xl">👥</p>
+      <p className="text-dark-muted text-sm">No team arena history yet.</p>
+      <p className="text-dark-muted text-xs">Complete a team tournament to see your results here!</p>
+    </div>
+  );
+
+  const wonCount       = records.filter(r => r.status === 'completed' && r.stageResults?.length === 5 && r.stageResults[4]?.teamWon).length;
+  const lostCount      = records.filter(r => r.status === 'completed' && !(r.stageResults?.length === 5 && r.stageResults[4]?.teamWon)).length;
+  const abandonedCount = records.filter(r => r.status === 'abandoned').length;
+  const bestStageReached = records.reduce((best, r) => {
+    const maxStage = (r.stageResults ?? []).reduce((m: number, sr: any) => Math.max(m, sr.stage), 0);
+    return Math.max(best, maxStage);
+  }, 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl p-4" style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.15)' }}>
+        <p className="text-[10px] text-dark-muted uppercase tracking-[0.2em] mb-3 font-semibold text-center">Team Career Stats</p>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Champion', value: wonCount,          color: '#fbbf24', emoji: '🏆' },
+            { label: 'Eliminated', value: lostCount,       color: '#ff6b6b', emoji: '💀' },
+            { label: 'Abandoned', value: abandonedCount,   color: '#9ca3af', emoji: '↩️' },
+            { label: 'Best Stage', value: bestStageReached || '—', color: '#a855f7', emoji: '👥' },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl p-2 text-center"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-base">{s.emoji}</p>
+              <p className="text-base font-black leading-tight" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[9px] text-dark-muted leading-tight mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {records.map((r, idx) => <TeamHistoryCard key={String(r.id)} r={r} idx={idx} />)}
+    </div>
+  );
+}
+
 // ── History Tab with Career Stats ─────────────────────────────────────────────
 
-function SurvivalHistoryTab() {
+function SoloHistorySubTab() {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -992,15 +1219,10 @@ function SurvivalHistoryTab() {
     </div>
   );
 
-  const wonCount = records.filter(r => r.status === 'won').length;
-  const lostCount = records.filter(r => r.status === 'lost').length;
+  const wonCount       = records.filter(r => r.status === 'won').length;
+  const lostCount      = records.filter(r => r.status === 'lost').length;
   const abandonedCount = records.filter(r => r.status === 'abandoned').length;
-
-  // Compute replayability stats
-  const bossEncounters = records.filter(r =>
-    (r.stageResults ?? []).some((sr: any) => sr.stage === 5)
-  ).length;
-
+  const bossEncounters = records.filter(r => (r.stageResults ?? []).some((sr: any) => sr.stage === 5)).length;
   const bestStageReached = records.reduce((best, r) => {
     const maxStage = (r.stageResults ?? []).reduce((m: number, sr: any) => Math.max(m, sr.stage), 0);
     return Math.max(best, maxStage);
@@ -1008,14 +1230,13 @@ function SurvivalHistoryTab() {
 
   return (
     <div className="space-y-3">
-      {/* Career overview */}
       <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <p className="text-[10px] text-dark-muted uppercase tracking-[0.2em] mb-3 font-semibold text-center">Career Stats</p>
         <div className="grid grid-cols-4 gap-2">
           {[
-            { label: 'Champion', value: wonCount,     color: '#fbbf24', emoji: '🏆' },
-            { label: 'Eliminated', value: lostCount,  color: '#ff6b6b', emoji: '💀' },
-            { label: 'Boss Fights', value: bossEncounters, color: '#ef4444', emoji: '👑' },
+            { label: 'Champion',   value: wonCount,           color: '#fbbf24', emoji: '🏆' },
+            { label: 'Eliminated', value: lostCount,          color: '#ff6b6b', emoji: '💀' },
+            { label: 'Boss Fights',value: bossEncounters,     color: '#ef4444', emoji: '👑' },
             { label: 'Best Stage', value: bestStageReached || '—', color: '#60a5fa', emoji: '⚔️' },
           ].map(s => (
             <div key={s.label} className="rounded-xl p-2 text-center"
@@ -1028,11 +1249,10 @@ function SurvivalHistoryTab() {
         </div>
       </div>
 
-      {/* Run history */}
       <div className="grid grid-cols-3 gap-2 mb-2">
         {[
-          { label: 'Champion', value: wonCount,     color: '#fbbf24', emoji: '🏆' },
-          { label: 'Eliminated', value: lostCount,  color: '#ff6b6b', emoji: '💀' },
+          { label: 'Champion',  value: wonCount,       color: '#fbbf24', emoji: '🏆' },
+          { label: 'Eliminated',value: lostCount,      color: '#ff6b6b', emoji: '💀' },
           { label: 'Abandoned', value: abandonedCount, color: '#9ca3af', emoji: '↩️' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-2.5 text-center"
@@ -1045,6 +1265,47 @@ function SurvivalHistoryTab() {
       </div>
 
       {records.map((r, idx) => <HistoryCard key={String(r.id)} r={r} idx={idx} />)}
+    </div>
+  );
+}
+
+function SurvivalHistoryTab() {
+  const [historyTab, setHistoryTab] = useState<'solo' | 'team'>('solo');
+
+  return (
+    <div className="space-y-3">
+      {/* Sub-tab switcher */}
+      <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        {([
+          { id: 'solo', label: '⚔️ Solo', color: '#fbbf24' },
+          { id: 'team', label: '👥 Team Arena', color: '#a855f7' },
+        ] as const).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setHistoryTab(t.id)}
+            className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+            style={{
+              background: historyTab === t.id ? (t.id === 'team' ? 'rgba(168,85,247,0.2)' : 'rgba(251,191,36,0.15)') : 'transparent',
+              color: historyTab === t.id ? t.color : '#6b7280',
+              border: historyTab === t.id ? `1px solid ${t.id === 'team' ? 'rgba(168,85,247,0.4)' : 'rgba(251,191,36,0.3)'}` : '1px solid transparent',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {historyTab === 'solo' ? (
+          <motion.div key="solo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <SoloHistorySubTab />
+          </motion.div>
+        ) : (
+          <motion.div key="team" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <TeamHistorySubTab />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

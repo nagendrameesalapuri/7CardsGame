@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { SurvivalTournament, TIER_CONFIG } from '../models/SurvivalTournament';
+import { SurvivalTeam } from '../models/SurvivalTeam';
 import { getActiveGame } from '../socket/handlers/gameHandler';
 import { User } from '../models/User';
 
@@ -145,6 +146,54 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
     });
   } catch {
     res.status(500).json({ error: 'Failed to load history' });
+  }
+});
+
+router.get('/team-history', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const page   = Math.max(1, parseInt((req.query.page as string) ?? '1'));
+    const limit  = 20;
+    const [records, total] = await Promise.all([
+      SurvivalTeam.find({
+        'members.userId': userId,
+        status: { $in: ['completed', 'abandoned'] },
+      })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      SurvivalTeam.countDocuments({
+        'members.userId': userId,
+        status: { $in: ['completed', 'abandoned'] },
+      }),
+    ]);
+
+    res.json({
+      records: records.map(r => {
+        const humanMembers = (r.members as any[]).filter((m: any) => !m.isBot);
+        return {
+          id:                r._id,
+          tier:              r.tier,
+          tierLabel:         (TIER_CONFIG as any)[r.tier]?.label ?? r.tier,
+          currentStage:      r.currentStage,
+          status:            r.status,
+          entryPoints:       r.entryPoints,
+          entryFeeMode:      r.entryFeeMode,
+          totalPointsEarned: r.totalPointsEarned,
+          stageResults:      r.stageResults,
+          members:           humanMembers.map((m: any) => ({ userId: m.userId, username: m.username, avatar: m.avatar })),
+          isHost:            r.hostId === userId,
+          createdAt:         r.createdAt,
+          completedAt:       (r as any).completedAt ?? null,
+        };
+      }),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to load team history' });
   }
 });
 
