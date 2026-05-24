@@ -33,9 +33,6 @@ export interface ISurvivalTeam extends Document {
   stageResults: ITeamStageResult[];
   totalPointsEarned: number;
   entryPoints: number;
-  stageRewards?: number[];
-  tiebreakerPending?: boolean;
-  roundsPlayed?: number;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -71,12 +68,9 @@ const SurvivalTeamSchema = new Schema<ISurvivalTeam>(
       teamWon:       { type: Boolean },
       pointsEarned:  { type: Number, default: 0 },
     }],
-    totalPointsEarned:  { type: Number, default: 0 },
-    entryPoints:        { type: Number, required: true },
-    stageRewards:       [{ type: Number }],
-    tiebreakerPending:  { type: Boolean, default: false },
-    roundsPlayed:       { type: Number, default: 0 },
-    completedAt:        { type: Date },
+    totalPointsEarned: { type: Number, default: 0 },
+    entryPoints:       { type: Number, required: true },
+    completedAt:       { type: Date },
   },
   { timestamps: true },
 );

@@ -66,7 +66,6 @@ export interface ISurvivalTournament extends Document {
   currentStage: number;
   status: "active" | "won" | "lost" | "abandoned";
   entryPoints: number;
-  stageRewards: number[];
   stageResults: Array<{
     stage: number;
     personality: string;          // primary (lead) bot personality
@@ -99,8 +98,7 @@ const SurvivalTournamentSchema = new Schema<ISurvivalTournament>(
       enum: ["active", "won", "lost", "abandoned"],
       default: "active",
     },
-    entryPoints:  { type: Number, required: true },
-    stageRewards: [{ type: Number }],
+    entryPoints: { type: Number, required: true },
     stageResults: [
       {
         stage:        { type: Number },
