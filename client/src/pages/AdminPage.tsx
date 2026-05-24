@@ -5,6 +5,8 @@ import { clsx } from "clsx";
 import { admin } from "../services/api";
 import { on } from "../services/socket";
 import { Avatar } from "../components/ui/Avatar";
+import PlayerIntelligencePage from "./PlayerIntelligencePage";
+import GameReviewPage from "./GameReviewPage";
 
 // Status badge helper shared across sections
 function StatusBadge({ status }: { status: string }) {
@@ -42,7 +44,10 @@ type Section =
   | "announcements"
   | "survivalconfig"
   | "analytics"
-  | "aiguide";
+  | "aiguide"
+  | "playerintel"
+  | "missedpayouts"
+  | "gamereview";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -4802,6 +4807,171 @@ function AnnouncementsSection() {
   );
 }
 
+// ── Missed Payouts Section ───────────────────────────────────────────────────
+
+function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => void }) {
+  const [data, setData] = useState<any>(null);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [repaying, setRepaying] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const showToast = (msg: string, ok: boolean) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await admin.getMissedPayouts(page);
+      setData(r.data);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, [page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const repay = async (userId: string, amount: number, roomCode: string, username: string) => {
+    if (!confirm(`Repay ₹${amount} to ${username} for room ${roomCode}?`)) return;
+    setRepaying(userId + roomCode);
+    try {
+      const r = await admin.repayMissedPayout({ userId, amount, roomCode, note: "Admin repay via dashboard" });
+      showToast(`₹${amount} repaid to ${r.data.username}. New balance: ₹${r.data.balance}`, true);
+      load();
+    } catch (e: any) {
+      showToast(e?.response?.data?.error ?? "Repay failed", false);
+    } finally { setRepaying(null); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-white">Missed Prize Payouts</h2>
+        <p className="text-xs text-dark-muted mt-1">
+          Failed winning transactions and games where entry fees were paid but no prize was issued.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-dark-muted text-sm animate-pulse">Loading…</p>
+      ) : (
+        <>
+          {/* Failed transactions */}
+          <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+            <div className="px-4 py-3 flex items-center gap-2"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,59,92,0.06)" }}>
+              <span className="text-sm font-bold text-white">Failed Prize Transactions</span>
+              {(data?.total ?? 0) > 0 && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: "rgba(255,59,92,0.2)", color: "#ff6b6b" }}>{data.total}</span>
+              )}
+            </div>
+            {(data?.failed ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-dark-muted">No failed transactions</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {data.failed.map((t: any) => (
+                  <div key={t._id} className="px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white">{t.description}</p>
+                      <p className="text-[11px] text-dark-muted font-mono">{t.userId} · {new Date(t.createdAt).toLocaleString()}</p>
+                      {t.metadata?.failReason && (
+                        <p className="text-[10px] mt-0.5" style={{ color: "#ff6b6b" }}>Reason: {t.metadata.failReason}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold text-neon-red">₹{t.amount}</span>
+                      <button
+                        onClick={() => repay(t.userId, t.amount, t.metadata?.roomCode ?? "", t.userId)}
+                        disabled={repaying === t.userId + (t.metadata?.roomCode ?? "")}
+                        className="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40"
+                        style={{ background: "rgba(0,255,136,0.15)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.3)" }}
+                      >
+                        {repaying === t.userId + (t.metadata?.roomCode ?? "") ? "…" : "Repay"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Orphaned games — entry fee paid, no prize issued */}
+          <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+            <div className="px-4 py-3"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(251,191,36,0.06)" }}>
+              <span className="text-sm font-bold text-white">Games With No Prize Record</span>
+              <p className="text-[11px] text-dark-muted mt-0.5">Finished games where players paid but no prize transaction exists</p>
+            </div>
+            {(data?.orphaned ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-dark-muted">No orphaned games found</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {data.orphaned.map((g: any) => (
+                  <div key={g.roomId} className="px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white">Room: {g.roomId}</p>
+                      <p className="text-[11px] text-dark-muted">
+                        Winner: {g.winnerUsername ?? "unknown"} · {g.paidCount} paid player{g.paidCount !== 1 ? "s" : ""} · Pot: ₹{g.totalPot}
+                      </p>
+                      <p className="text-[11px] text-dark-muted">{g.endedAt ? new Date(g.endedAt).toLocaleString() : "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                      <span className="font-bold" style={{ color: "#fbbf24" }}>₹{g.totalPot}</span>
+                      {onReview && (
+                        <button
+                          onClick={() => onReview(g.roomId)}
+                          className="text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-colors"
+                          style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}
+                        >
+                          🕵️ Review
+                        </button>
+                      )}
+                      {g.winnerId && (
+                        <button
+                          onClick={() => repay(g.winnerId, g.totalPot, g.roomId, g.winnerUsername ?? g.winnerId)}
+                          disabled={!!repaying}
+                          className="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40"
+                          style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}
+                        >
+                          {repaying ? "…" : "Repay Winner"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination for failed transactions */}
+          {(data?.pages ?? 1) > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">← Prev</button>
+              <span className="text-xs text-dark-muted">{page} / {data.pages}</span>
+              <button onClick={() => setPage(p => Math.min(data.pages, p + 1))} disabled={page === data.pages}
+                className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">Next →</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl"
+          style={{
+            background: toast.ok ? "rgba(0,200,100,0.15)" : "rgba(220,50,50,0.15)",
+            border: toast.ok ? "1px solid rgba(0,200,100,0.4)" : "1px solid rgba(220,50,50,0.4)",
+            color: toast.ok ? "#00e676" : "#ff6b6b",
+          }}>
+          {toast.ok ? "✅" : "❌"} {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -4819,6 +4989,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "overview",      icon: "📊", label: "Dashboard" },
       { key: "rooms",         icon: "🎮", label: "Live Rooms" },
+      { key: "gamereview",    icon: "🕵️", label: "Game Review" },
       { key: "tournaments",   icon: "🤖", label: "AI Championship" },
       { key: "gameconfig",    icon: "🎯", label: "Game Config" },
       { key: "survivalconfig",  icon: "🛡️", label: "Survival Config" },
@@ -4832,6 +5003,7 @@ const NAV_GROUPS: NavGroup[] = [
     bg: "rgba(96,165,250,0.08)",
     items: [
       { key: "users",         icon: "👥", label: "Players" },
+      { key: "playerintel",   icon: "🔍", label: "Player Intel" },
       { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
       { key: "support",       icon: "🎧", label: "Support" },
       { key: "notify",        icon: "📢", label: "Notify Players" },
@@ -4846,6 +5018,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "deposits",      icon: "🎟️", label: "Voucher Queue" },
       { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
+      { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
       { key: "walletconfig",  icon: "⚙️", label: "Reward Config" },
     ],
   },
@@ -5067,6 +5240,11 @@ export function AdminPage() {
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
               {section === "analytics" && <AnalyticsSection />}
               {section === "aiguide" && <AiGuideSection />}
+              {section === "playerintel" && <PlayerIntelligencePage />}
+              {section === "missedpayouts" && (
+                <MissedPayoutsSection onReview={(roomId) => { setSection("gamereview"); setTimeout(() => { (window as any).__gameReviewCode = roomId; window.dispatchEvent(new CustomEvent("admin:reviewRoom", { detail: roomId })); }, 50); }} />
+              )}
+              {section === "gamereview" && <GameReviewPage />}
             </motion.div>
           </AnimatePresence>
         </div>

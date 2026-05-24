@@ -19,6 +19,7 @@ import {
 } from './gameHandler';
 import { GameState } from '../../../../shared/src/types';
 import { getBadge } from '../../utils/badgeCache';
+import { initTeamArenaGame, cleanupTeamArenaGame } from '../../engine/TeamArenaCoordinator';
 
 const POINTS_PER_RUPEE = 100;
 function pointsToRupees(p: number) { return p / POINTS_PER_RUPEE; }
@@ -171,6 +172,10 @@ async function startTeamRoom(io: Server, team: any, roomCode: string, stageConfi
   const opponentBotUserIds = opponentBots.map((b: any) => b.userId);
   (game as any).teamGroups = [teamMemberUserIds, opponentBotUserIds];
 
+  // Initialise TeamArenaCoordinator for this game — opponent bots will now use
+  // coordinated team AI logic. Solo tournament games are unaffected.
+  initTeamArenaGame(game.id);
+
   // Force maximum difficulty for enemy bots in team mode — they face 3 opponents so need to be harder.
   // This only affects this game; solo tournament difficulty is untouched.
   overrideGameDifficultyBoost(roomCode, 0.32);
@@ -256,6 +261,7 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       team.currentRoomCode = null;
       team.completedAt = new Date();
       await team.save();
+      cleanupTeamArenaGame(state.id);
       payload.tournamentOver = true;
       payload.won = false;
       payload.totalPointsEarned = team.totalPointsEarned;
@@ -306,6 +312,7 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       team.currentRoomCode = null;
       team.completedAt = new Date();
       await team.save();
+      cleanupTeamArenaGame(state.id);
       payload.tournamentOver = true;
       payload.won = true;
       payload.totalPointsEarned = team.totalPointsEarned;

@@ -83,6 +83,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           amount: entryFee,
           status: 'completed',
           description: `Entry fee — room ${code}`,
+          balanceBefore: creator.walletBalance + entryFee,
+          balanceAfter: creator.walletBalance,
           metadata: { roomCode: code },
         });
       }
@@ -210,6 +212,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
             amount: entryFee,
             status: 'completed',
             description: `Entry fee — room ${room.code}`,
+            balanceBefore: deducted.walletBalance + entryFee,
+            balanceAfter: deducted.walletBalance,
             metadata: { roomCode: room.code },
           });
         }
@@ -312,15 +316,29 @@ export async function refundAbandonedGame(room: IRoom) {
   if (entryFee <= 0 || !room.paidPlayerIds?.length) return;
 
   for (const pid of room.paidPlayerIds) {
-    await User.findByIdAndUpdate(pid, { $inc: { walletBalance: entryFee } });
+    const userBefore = await User.findById(pid).select("walletBalance").lean() as any;
+    const balanceBefore: number = userBefore?.walletBalance ?? 0;
+    const updated = await User.findByIdAndUpdate(pid, { $inc: { walletBalance: entryFee } }, { new: true });
+    if (!updated) {
+      console.error(`[Refund] User ${pid} not found — refund of ₹${entryFee} NOT credited. room=${room.code}`);
+      await Transaction.create({
+        userId: pid, type: 'refund', amount: entryFee, status: 'failed',
+        description: `FAILED: Refund ₹${entryFee} for abandoned room ${room.code} — user not found`,
+        balanceBefore: 0, balanceAfter: 0, metadata: { roomCode: room.code, failReason: 'user_not_found' },
+      }).catch(console.error);
+      continue;
+    }
     await Transaction.create({
       userId: pid,
       type: 'refund',
       amount: entryFee,
       status: 'completed',
       description: `Refund — game abandoned in room ${room.code}`,
+      balanceBefore,
+      balanceAfter: updated.walletBalance,
       metadata: { roomCode: room.code },
     });
+    console.log(`[Refund] ₹${entryFee} refunded to ${pid} for abandoned room ${room.code}. Balance: ₹${balanceBefore} → ₹${updated.walletBalance}`);
   }
   room.paidPlayerIds = [];
 }
@@ -333,16 +351,24 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
 
   // Refund this player if they leave before the game starts
   if (room.status === 'waiting' && entryFee > 0 && room.paidPlayerIds?.includes(userId)) {
-    await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } });
+    const userBefore = await User.findById(userId).select("walletBalance").lean() as any;
+    const balanceBefore: number = userBefore?.walletBalance ?? 0;
+    const refunded = await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } }, { new: true });
     room.paidPlayerIds = room.paidPlayerIds.filter(id => id !== userId);
-    await Transaction.create({
-      userId,
-      type: 'refund',
-      amount: entryFee,
-      status: 'completed',
-      description: `Refund for leaving room ${room.code}`,
-      metadata: { roomCode: room.code },
-    });
+    if (refunded) {
+      await Transaction.create({
+        userId,
+        type: 'refund',
+        amount: entryFee,
+        status: 'completed',
+        description: `Refund for leaving room ${room.code}`,
+        balanceBefore,
+        balanceAfter: refunded.walletBalance,
+        metadata: { roomCode: room.code },
+      });
+    } else {
+      console.error(`[Refund] User ${userId} not found — leave-refund of ₹${entryFee} failed. room=${room.code}`);
+    }
   }
 
   room.players = room.players.filter(p => p.userId !== userId);

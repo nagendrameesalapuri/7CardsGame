@@ -394,7 +394,7 @@ export function LobbyPage() {
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
-    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true } },
+    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '' },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
     walletConfig: { depositEnabled: true, withdrawEnabled: true, upiId: '', upiName: '', qrEnabled: true, qrCodeUrl: '' },
     survivalConfig: {

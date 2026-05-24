@@ -298,6 +298,73 @@ export const admin = {
   getAnalytics: () => adminApi.get<any>("/analytics"),
   resetAnalytics: () => adminApi.post("/analytics/reset"),
 
+  // ── Player Intelligence ──────────────────────────────────────────────────
+  playerIntelSearch: (q: string) =>
+    adminApi.get<{ users: any[] }>(`/player-intel/search?q=${encodeURIComponent(q)}`),
+
+  playerIntelProfile: (userId: string) =>
+    adminApi.get<{ user: any; progress: any; financial: any; activity: any; risk: any; noteCount: number }>(
+      `/player-intel/${userId}/profile`
+    ),
+
+  playerIntelTransactions: (userId: string, params: { page?: number; type?: string; from?: string; to?: string }) =>
+    adminApi.get<{ transactions: any[]; total: number; page: number; pages: number }>(
+      `/player-intel/${userId}/transactions`, { params }
+    ),
+
+  playerIntelGames: (userId: string, page = 1) =>
+    adminApi.get<{ games: any[]; total: number; page: number; pages: number }>(
+      `/player-intel/${userId}/games?page=${page}`
+    ),
+
+  playerIntelTournaments: (userId: string, page = 1) =>
+    adminApi.get<{ solo: any; team: any }>(`/player-intel/${userId}/tournaments?page=${page}`),
+
+  playerIntelRisk: (userId: string) =>
+    adminApi.get<{ computed: any; stored: any; recentNotes: any[] }>(`/player-intel/${userId}/risk`),
+
+  playerIntelNotes: (userId: string) =>
+    adminApi.get<{ notes: any[] }>(`/player-intel/${userId}/notes`),
+
+  playerIntelAddNote: (userId: string, content: string, type: string) =>
+    adminApi.post<{ note: any }>(`/player-intel/${userId}/notes`, { content, type }),
+
+  playerIntelDeleteNote: (userId: string, noteId: string) =>
+    adminApi.delete(`/player-intel/${userId}/notes/${noteId}`),
+
+  playerIntelAction: (userId: string, action: string, reason?: string, amount?: number) =>
+    adminApi.post<any>(`/player-intel/${userId}/action`, { action, reason, amount }),
+
+  playerIntelWalletRequests: (userId: string) =>
+    adminApi.get<{ deposits: any[]; withdrawals: any[] }>(`/player-intel/${userId}/wallet-requests`),
+
+  getGameReview: (roomId: string) =>
+    adminApi.get<{ game: any; transactions: any[] }>(`/game-review/${roomId}`),
+
+  getMissedPayouts: (page = 1) =>
+    adminApi.get<{
+      failed: any[];
+      orphaned: any[];
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/missed-payouts?page=${page}`),
+
+  repayMissedPayout: (data: { userId: string; amount: number; roomCode?: string; note?: string }) =>
+    adminApi.post<{ ok: boolean; balance: number; username: string }>("/missed-payouts/repay", data),
+
+  getTeamArenaAnalytics: () => adminApi.get<{
+    overview: {
+      totalRuns: number; completedRuns: number; abandonedRuns: number;
+      earlyAbandons: number; completionRate: number; abandonRate: number;
+      avgStageReached: number;
+    };
+    stageClearRates: Array<{ stage: number; cleared: number; clearRate: number }>;
+    stage5WinRate: number;
+    tierBreakdown: Array<{ tier: string; count: number; wins: number; winRate: number }>;
+    feeModeBreakdown: Array<{ mode: string; count: number }>;
+  }>("/team-arena/analytics"),
+
   getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
   createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>
     adminApi.post<{ announcement: any }>("/announcements", data),

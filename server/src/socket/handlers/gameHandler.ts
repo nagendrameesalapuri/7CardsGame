@@ -40,6 +40,7 @@ import {
 import { getBadge } from "../../utils/badgeCache";
 import { recordEvent } from "../../utils/gameAnalytics";
 import { notifyWinStreak } from "../../services/notificationTriggers";
+import { teamArenaAugment, isTeamArenaGame } from "../../engine/TeamArenaCoordinator";
 
 // In-memory game state store  (gameId → GameState)
 const activeGames = new Map<string, GameState>();
@@ -982,7 +983,19 @@ function startNextRound(io: Server, state: GameState) {
   scheduleBotTurnIfNeeded(io, freshState);
 }
 
+// Idempotency guard: prevents double prize payout when handleMatchEnd is
+// triggered concurrently by a direct action and the turn-timer fallback.
+const handledMatchEnds = new Set<string>();
+
 async function handleMatchEnd(io: Server, state: GameState) {
+  if (handledMatchEnds.has(state.id)) {
+    console.warn(`[Match] handleMatchEnd called twice for game ${state.id} — skipping duplicate`);
+    return;
+  }
+  handledMatchEnds.add(state.id);
+  // Keep the guard alive for 60 s to block any delayed re-entry, then clean up.
+  setTimeout(() => handledMatchEnds.delete(state.id), 60_000);
+
   const matchResult = ScoreEngine.checkMatchOver(state) ?? {
     winnerId: state.players[0].id,
     winnerUsername: state.players[0].username,
@@ -1156,7 +1169,13 @@ async function distributePrize(
     // Without this the pot is lost forever — nobody credited, nobody refunded.
     if (winnerPlayerIds.length === 0) {
       const humanPaid = state.players.filter((p) => !p.isBot && paidIds.includes(p.userId));
-      if (humanPaid.length === 0) return;
+      if (humanPaid.length === 0) {
+        console.error(
+          `[Prize] CRITICAL: no paid human players found. room=${state.roomId} paidIds=${JSON.stringify(paidIds)} ` +
+          `players=${JSON.stringify(state.players.map(p => ({ id: p.id, userId: p.userId, isBot: p.isBot })))}`
+        );
+        return;
+      }
       const scores: Array<{ playerId: string; totalScore: number }> =
         matchResult.finalScores ?? state.players.map((p: any) => ({ playerId: p.id, totalScore: p.totalScore }));
       const humanScored = humanPaid.map((p) => ({
@@ -1166,6 +1185,7 @@ async function distributePrize(
       const minScore = Math.min(...humanScored.map((h) => h.score));
       winnerPlayerIds = humanScored.filter((h) => h.score === minScore).map((h) => h.userId);
       if (winnerPlayerIds.length === 0) return;
+      console.warn(`[Prize] Bot won room ${state.roomId} — awarding pot ₹${pot} to best human(s): ${JSON.stringify(winnerPlayerIds)}`);
     }
 
     // Distribute evenly; give any remainder (from floor division) to the first winner
@@ -1175,23 +1195,57 @@ async function distributePrize(
     for (let i = 0; i < winnerPlayerIds.length; i++) {
       const uid = winnerPlayerIds[i];
       const payout = i === 0 ? share + remainder : share;
+
+      // Capture balance BEFORE update for audit trail
+      const userBefore = await User.findById(uid).select("walletBalance").lean() as any;
+      const balanceBefore: number = userBefore?.walletBalance ?? 0;
+
       const updated = await User.findByIdAndUpdate(
         uid,
         { $inc: { walletBalance: payout } },
         { new: true },
       );
+
+      // Guard: if user was not found the wallet was NOT updated — mark as failed
+      // and do NOT notify the client with a fake balance.
+      if (!updated) {
+        console.error(
+          `[Prize] CRITICAL: User ${uid} not found — ₹${payout} NOT credited. room=${state.roomId}. ` +
+          `Storing failed transaction for admin review.`
+        );
+        await Transaction.create({
+          userId: uid,
+          type: "winning",
+          amount: payout,
+          status: "failed",
+          description: `FAILED: Prize ₹${payout} for room ${state.roomId} — user not found`,
+          balanceBefore: 0,
+          balanceAfter: 0,
+          metadata: { roomCode: state.roomId, failReason: "user_not_found" },
+        }).catch(console.error);
+        continue;
+      }
+
       await Transaction.create({
         userId: uid,
         type: "winning",
         amount: payout,
         status: "completed",
         description: `Prize won — room ${state.roomId}${winnerPlayerIds.length > 1 ? " (split)" : ""}`,
+        balanceBefore,
+        balanceAfter: updated.walletBalance,
         metadata: { roomCode: state.roomId },
       });
+
+      console.log(
+        `[Prize] ₹${payout} awarded to ${uid} for room ${state.roomId}. ` +
+        `Balance: ₹${balanceBefore} → ₹${updated.walletBalance}`
+      );
+
       // Notify winner via their personal socket room (joined on auth)
       io.to(`user:${uid}`).emit("wallet:prize_won", {
         amount: payout,
-        balance: updated?.walletBalance ?? 0,
+        balance: updated.walletBalance,
       });
     }
   } catch (err) {
@@ -1317,7 +1371,18 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
   const personality = getBotPersonality(state, botPlayerId);
   const boost = gameDifficultyBoost.get(state.id) ?? 0;
   const opponents = buildOpponentProfiles(state);
-  const decision = BotPlayer.decide(state, botPlayerId, personality, boost, opponents);
+
+  // ── Team Arena coordination layer — only activates when state.teamGroups present ──
+  // Solo AI Tournament is 100% unaffected: teamArenaAugment() returns null when
+  // isTeamArenaGame() is false, preserving all existing Solo behavior exactly.
+  const botUsername = state.players.find(p => p.id === botPlayerId)?.username;
+  const teamAug = teamArenaAugment(state, botPlayerId, personality, boost, opponents, botUsername);
+  const effPersonality = teamAug?.effectivePersonality ?? personality;
+  const effBoost       = teamAug?.effectiveBoost       ?? boost;
+  const effOpponents   = teamAug?.augmentedOpponents   ?? opponents;
+
+  const decision = teamAug?.forceDecision
+    ?? BotPlayer.decide(state, botPlayerId, effPersonality, effBoost, effOpponents);
   let result: ReturnType<typeof GameEngine.processDrawCard> | null = null;
 
   switch (decision.action) {
@@ -1343,7 +1408,7 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
         // Not a valid cut — draw first, then discard
         const drawResult = GameEngine.processDrawCard(
           state, botPlayerId,
-          BotPlayer.decideDrawSource(state, botPlayerId, boost, opponents),
+          BotPlayer.decideDrawSource(state, botPlayerId, effBoost, effOpponents),
         );
         if (drawResult.success) {
           activeGames.set(drawResult.state.id, drawResult.state);
@@ -1354,7 +1419,7 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
             const s2 = activeGames.get(state.id);
             if (!s2) return;
             const discardIds = BotPlayer.decideDiscard(
-              s2, botPlayerId, personality, boost, buildOpponentProfiles(s2),
+              s2, botPlayerId, effPersonality, effBoost, buildOpponentProfiles(s2),
             );
             const discardResult = GameEngine.processDiscard(s2, botPlayerId, discardIds);
             if (discardResult.success) applyBotResult(io, discardResult);
@@ -1368,7 +1433,7 @@ function executeBotTurn(io: Server, state: GameState, botPlayerId: string) {
       } else {
         const discardIds =
           decision.cardIds ??
-          BotPlayer.decideDiscard(state, botPlayerId, personality, boost, opponents);
+          BotPlayer.decideDiscard(state, botPlayerId, effPersonality, effBoost, effOpponents);
         result = GameEngine.processDiscard(state, botPlayerId, discardIds);
       }
       break;
