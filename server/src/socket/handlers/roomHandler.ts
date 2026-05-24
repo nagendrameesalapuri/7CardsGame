@@ -364,7 +364,13 @@ export function trackHoldReleased(userId: string): { flagged: boolean; cooldownU
 
   // Prune old releases outside window
   tracker.releases = tracker.releases.filter(t => now - t < HOLD_RELEASE_WINDOW_MS);
-  tracker.releases.push(now);
+  // Debounce: ignore duplicate release events within short interval (2s)
+  const last = tracker.releases[tracker.releases.length - 1];
+  if (!last || (now - last) > 2000) {
+    tracker.releases.push(now);
+  } else {
+    console.debug(`[AntiExploit] Ignored duplicate hold release for ${userId} (debounced)`);
+  }
 
   let flagged = false;
   if (tracker.releases.length >= MAX_RELEASES_IN_WINDOW) {
@@ -389,6 +395,11 @@ export function getHoldExploitStats(userId: string) {
   const now = Date.now();
   const recent = tracker.releases.filter(t => now - t < HOLD_RELEASE_WINDOW_MS).length;
   return { releases: recent, cooldownUntil: tracker.cooldownUntil ?? null };
+}
+
+// Test-only helper to reset tracker state (used by unit tests)
+export function _resetHoldExploitTracker() {
+  holdExploitTracker.clear();
 }
 
 // ── Core hold helpers ─────────────────────────────────────────────────────────
