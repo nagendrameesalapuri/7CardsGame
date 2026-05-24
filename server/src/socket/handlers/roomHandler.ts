@@ -49,44 +49,54 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     botPersonality?: string;
     invitedUserIds?: string[];
   }) => {
+    const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
+    let code = '';
+    let holdPlaced = false;
+    let walletBefore = 0;
+    let holdBefore = 0;
     try {
-      const entryFee = Math.max(0, Math.min(data.entryFee ?? 0, 10000));
-
-      // Cash game: creator must have enough balance to pay their own entry fee
-      let creator = null;
       if (entryFee > 0) {
         const guestCheck = await User.findById(userId).select('isGuest');
         if (!guestCheck) return socket.emit('room:error', 'User not found');
         if (guestCheck.isGuest) return socket.emit('room:error', 'Guests cannot create cash game rooms');
+        if (isHoldCooldownActive(userId)) return socket.emit('room:error', 'Too many hold releases detected. Please wait before joining another cash game.');
       }
 
-      let code: string;
       let attempts = 0;
       do {
         code = generateRoomCode();
         attempts++;
       } while (await Room.exists({ code }) && attempts < 10);
 
-      // Deduct entry fee now that we have the room code (atomic to prevent negative balance)
+      // ── ENTRY HOLD (new system): reserve funds without deducting ──────────
       if (entryFee > 0) {
-        creator = await User.findOneAndUpdate(
-          { _id: userId, walletBalance: { $gte: entryFee } },
-          { $inc: { walletBalance: -entryFee } },
-          { new: true },
+        // Ensure available balance = walletBalance - heldBalance >= entryFee
+        const creator = await User.findOneAndUpdate(
+          {
+            _id: userId,
+            $expr: { $gte: [{ $subtract: ['$walletBalance', { $ifNull: ['$heldBalance', 0] }] }, entryFee] },
+          },
+          { $inc: { heldBalance: entryFee } },
+          { new: false },
         );
         if (!creator) {
-          return socket.emit('room:error', `Insufficient balance. You need ₹${entryFee} to create this room.`);
+          return socket.emit('room:error', `Insufficient available balance. You need ₹${entryFee} to create this room.`);
         }
+        walletBefore = creator.walletBalance;
+        holdBefore = creator.heldBalance ?? 0;
         await Transaction.create({
           userId,
-          type: 'entry_fee',
+          type: 'entry_hold',
           amount: entryFee,
           status: 'completed',
-          description: `Entry fee — room ${code}`,
-          balanceBefore: creator.walletBalance + entryFee,
-          balanceAfter: creator.walletBalance,
-          metadata: { roomCode: code },
+          description: `Entry hold — room ${code}`,
+          balanceBefore: walletBefore,
+          balanceAfter: walletBefore,
+          heldBefore: holdBefore,
+          heldAfter: holdBefore + entryFee,
+          metadata: { roomCode: code, matchState: 'forming' },
         });
+        holdPlaced = true;
       }
 
       const roomName = String(data.name || `${username}'s Room`).trim();
@@ -106,7 +116,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           socketId: socket.id,
         }],
         config: {
-          // Double deck: 113 usable cards, 7 per player → max 10 players total
           maxPlayers: Math.min(data.maxPlayers ?? 4, 10),
           roundCount: data.roundCount ?? 5,
           isPrivate: data.isPrivate ?? false,
@@ -116,8 +125,11 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           entryFee,
           botPersonality: data.botPersonality ?? 'smart',
         },
-        paidPlayerIds: entryFee > 0 ? [userId] : [],
+        paidPlayerIds:  [],
+        heldPlayerIds:  entryFee > 0 ? [userId] : [],
+        matchState: 'forming',
       });
+      holdPlaced = false; // room persisted — hold is now committed
 
       await socket.join(room.code);
       socket.data.roomCode = room.code;
@@ -126,16 +138,13 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       console.log(`[Room] ${username} created room ${room.code}`);
       socket.emit('room:joined', dto);
       io.to(room.code).emit('room:updated', dto);
-      // Notify all clients in lobby so they can refresh the public room list
       if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
 
-      // Send invitations to selected users
       const invitedIds = Array.isArray(data.invitedUserIds)
         ? data.invitedUserIds.filter(id => id && id !== userId).slice(0, 20)
         : [];
       if (invitedIds.length > 0) {
         const modeLabel = room.config.entryFee > 0 ? `Wager ₹${room.config.entryFee}` : 'Free Play';
-        console.log(`[Room] Sending invites for room ${room.code} to ${invitedIds.length} user(s):`, invitedIds);
         sendBulkNotification(invitedIds, {
           title: `🎮 ${username} invited you to play!`,
           message: `Join "${room.name}" · ${modeLabel} · Code: ${room.code}`,
@@ -143,84 +152,99 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           type: 'info',
           actionUrl: `/lobby?join=${room.code}`,
           skipThrottle: true,
-        }).then(() => {
-          console.log(`[Room] Invites sent for room ${room.code}`);
-        }).catch((err) => {
-          console.error(`[Room] Invite notification error for room ${room.code}:`, err);
-        });
+        }).catch((err) => console.error(`[Room] Invite notification error:`, err));
       }
     } catch (err) {
       console.error('[Room] Create error:', err);
+      if (holdPlaced) {
+        await User.findByIdAndUpdate(userId, { $inc: { heldBalance: -entryFee } }).catch(console.error);
+        await Transaction.create({
+          userId, type: 'entry_released', amount: entryFee, status: 'completed',
+          description: `Entry hold released — room creation failed (room ${code})`,
+          balanceBefore: walletBefore, balanceAfter: walletBefore,
+          heldBefore: holdBefore + entryFee, heldAfter: holdBefore,
+          metadata: { roomCode: code, releaseReason: 'room_create_failed' },
+        }).catch(console.error);
+      }
       socket.emit('room:error', 'Failed to create room');
     }
   });
 
   // ── Join Room ──────────────────────────────────────────────────────────────
   socket.on('room:join', async (code: string) => {
-    // Per-user lock: ignore rapid duplicate taps that would cause double-charge
     if (joiningUsers.has(userId)) return;
     joiningUsers.add(userId);
+    // Hoisted so catch can release a hold placed before an error
+    let joinEntryFee = 0;
+    let joinRoomCode = '';
+    let joinHoldPlaced = false;
     try {
-      console.log(`[Room] ${username} attempting to join room: ${code}`);
       const room = await Room.findOne({ code: code.toUpperCase() });
 
-      if (!room) { console.log('[Room] Not found:', code); return socket.emit('room:error', 'Room not found'); }
-      if (room.status !== 'waiting') { console.log('[Room] Not waiting:', room.status); return socket.emit('room:error', 'Game already in progress'); }
+      if (!room) return socket.emit('room:error', 'Room not found');
+      if (room.status !== 'waiting') return socket.emit('room:error', 'Game already in progress');
 
-      // Cancel any pending grace-period delete so the room stays alive
       cancelPendingWaitingDelete(room.code);
+      joinRoomCode = room.code;
 
       const alreadyIn = room.players.some(p => p.userId === userId);
 
-      // Purge stale players whose sockets are no longer connected
       if (!alreadyIn) {
         const connectedSockets = await io.fetchSockets();
         const connectedIds = new Set(connectedSockets.map(s => s.id));
         const activePlayers = room.players.filter(p => p.socketId && connectedIds.has(p.socketId));
         if (activePlayers.length !== room.players.length) {
-          console.log(`[Room] Purging ${room.players.length - activePlayers.length} stale players`);
           room.players = activePlayers;
         }
       }
 
       if (!alreadyIn && room.players.length >= room.config.maxPlayers) {
-        console.log('[Room] Full:', room.players.length, '/', room.config.maxPlayers);
         return socket.emit('room:error', 'Room is full');
       }
 
-      // Cash room: deduct entry fee if player hasn't paid yet
-      const entryFee = (room.config as any).entryFee ?? 0;
-      if (!alreadyIn && entryFee > 0) {
+      // ── ENTRY HOLD (new system) ────────────────────────────────────────────
+      joinEntryFee = (room.config as any).entryFee ?? 0;
+      if (!alreadyIn && joinEntryFee > 0) {
         const userCheck = await User.findById(userId).select('isGuest');
         if (!userCheck) return socket.emit('room:error', 'User not found');
         if (userCheck.isGuest) return socket.emit('room:error', 'Guests cannot join cash games');
-        if (!room.paidPlayerIds) room.paidPlayerIds = [];
-        if (!room.paidPlayerIds.includes(userId)) {
-          // Atomic conditional deduction — prevents double-deduction on concurrent joins
-          const deducted = await User.findOneAndUpdate(
-            { _id: userId, walletBalance: { $gte: entryFee } },
-            { $inc: { walletBalance: -entryFee } },
-            { new: true },
+        if (isHoldCooldownActive(userId)) return socket.emit('room:error', 'Too many hold releases detected. Please wait before joining another cash game.');
+
+        if (!room.heldPlayerIds) room.heldPlayerIds = [];
+        if (!room.heldPlayerIds.includes(userId)) {
+          const held = await User.findOneAndUpdate(
+            {
+              _id: userId,
+              $expr: { $gte: [{ $subtract: ['$walletBalance', { $ifNull: ['$heldBalance', 0] }] }, joinEntryFee] },
+            },
+            { $inc: { heldBalance: joinEntryFee } },
+            { new: false },
           );
-          if (!deducted) {
-            return socket.emit('room:error', `Insufficient balance. Entry fee: ₹${entryFee}`);
+          if (!held) {
+            return socket.emit('room:error', `Insufficient available balance. Entry fee: ₹${joinEntryFee}`);
           }
-          room.paidPlayerIds.push(userId);
+          room.heldPlayerIds.push(userId);
+          joinHoldPlaced = true;
+
+          // Record anti-exploit signal
+          trackHoldPlaced(userId);
+
           await Transaction.create({
             userId,
-            type: 'entry_fee',
-            amount: entryFee,
+            type: 'entry_hold',
+            amount: joinEntryFee,
             status: 'completed',
-            description: `Entry fee — room ${room.code}`,
-            balanceBefore: deducted.walletBalance + entryFee,
-            balanceAfter: deducted.walletBalance,
-            metadata: { roomCode: room.code },
+            description: `Entry hold — room ${room.code}`,
+            balanceBefore: held.walletBalance,
+            balanceAfter: held.walletBalance,
+            heldBefore: held.heldBalance ?? 0,
+            heldAfter: (held.heldBalance ?? 0) + joinEntryFee,
+            metadata: { roomCode: room.code, matchState: 'forming' },
           });
         }
       }
 
       if (!alreadyIn) {
-        // Restore host status if this player is the original host (coming back after disconnect)
         const isHost = room.hostId === userId;
         room.players.push({ userId, username, avatar, isReady: false, isHost, isBot: false, socketId: socket.id });
         if (isHost) room.players.forEach((p, i) => { if (p.userId !== userId) room.players[i].isHost = false; });
@@ -229,17 +253,27 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         if (idx >= 0) room.players[idx].socketId = socket.id;
       }
       await room.save();
+      joinHoldPlaced = false; // room saved — hold is committed
 
       await socket.join(room.code);
       socket.data.roomCode = room.code;
 
       const dto = roomToDTO(room);
-      console.log(`[Room] ${username} joined ${room.code} (${room.players.length}/${room.config.maxPlayers})`);
       socket.emit('room:joined', dto);
       io.to(room.code).emit('room:updated', dto);
       if (!dto.config.isPrivate) io.emit('lobby:rooms_updated');
     } catch (err) {
       console.error('[Room] Join error:', err);
+      if (joinHoldPlaced) {
+        await User.findByIdAndUpdate(userId, { $inc: { heldBalance: -joinEntryFee } }).catch(console.error);
+        await Transaction.create({
+          userId, type: 'entry_released', amount: joinEntryFee, status: 'completed',
+          description: `Entry hold released — join failed (room ${joinRoomCode})`,
+          balanceBefore: 0, balanceAfter: 0,
+          heldBefore: joinEntryFee, heldAfter: 0,
+          metadata: { roomCode: joinRoomCode, releaseReason: 'join_failed' },
+        }).catch(console.error);
+      }
       socket.emit('room:error', 'Failed to join room');
     } finally {
       joiningUsers.delete(userId);
@@ -289,8 +323,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
   });
 }
 
-// Grace-period timers: roomCode → timer handle.
-// Started when all humans disconnect mid-game; cancelled on any reconnect.
+// ── Grace-period timers ────────────────────────────────────────────────────────
+
 const pendingAbandon = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function cancelPendingAbandon(roomCode: string): void {
@@ -298,8 +332,6 @@ export function cancelPendingAbandon(roomCode: string): void {
   if (t) { clearTimeout(t); pendingAbandon.delete(roomCode); }
 }
 
-// Grace-period timers for empty WAITING rooms (host switched apps, etc.)
-// Room is kept alive for 30 s so the host can come back.
 const pendingWaitingDelete = new Map<string, ReturnType<typeof setTimeout>>();
 
 function cancelPendingWaitingDelete(roomCode: string): void {
@@ -307,40 +339,248 @@ function cancelPendingWaitingDelete(roomCode: string): void {
   if (t) { clearTimeout(t); pendingWaitingDelete.delete(roomCode); }
 }
 
-// Per-user join lock: prevents concurrent double-join on rapid taps.
+// Per-user join lock
 const joiningUsers = new Set<string>();
 
-/** Refund the entry fee to every player who paid in a cash game room. */
+// ── Anti-exploit: hold-release frequency tracking ─────────────────────────────
+
+interface HoldTracker {
+  releases: number[];   // timestamps of recent releases
+  cooldownUntil?: number;
+}
+
+const holdExploitTracker = new Map<string, HoldTracker>();
+const HOLD_RELEASE_WINDOW_MS = 30 * 60 * 1000;   // 30 minutes
+const MAX_RELEASES_IN_WINDOW = 3;
+const COOLDOWN_MS = 15 * 60 * 1000;              // 15 min cooldown
+
+export function trackHoldPlaced(_userId: string) {
+  // placeholder — holds placed are not flagged, only releases
+}
+
+export function trackHoldReleased(userId: string): { flagged: boolean; cooldownUntil?: number } {
+  const now = Date.now();
+  const tracker = holdExploitTracker.get(userId) ?? { releases: [] };
+
+  // Prune old releases outside window
+  tracker.releases = tracker.releases.filter(t => now - t < HOLD_RELEASE_WINDOW_MS);
+  tracker.releases.push(now);
+
+  let flagged = false;
+  if (tracker.releases.length >= MAX_RELEASES_IN_WINDOW) {
+    tracker.cooldownUntil = now + COOLDOWN_MS;
+    flagged = true;
+    console.warn(`[AntiExploit] User ${userId} has ${tracker.releases.length} hold releases in 30 min — cooldown applied`);
+  }
+
+  holdExploitTracker.set(userId, tracker);
+  return { flagged, cooldownUntil: tracker.cooldownUntil };
+}
+
+export function isHoldCooldownActive(userId: string): boolean {
+  const tracker = holdExploitTracker.get(userId);
+  if (!tracker?.cooldownUntil) return false;
+  return Date.now() < tracker.cooldownUntil;
+}
+
+export function getHoldExploitStats(userId: string) {
+  const tracker = holdExploitTracker.get(userId);
+  if (!tracker) return { releases: 0, cooldownUntil: null };
+  const now = Date.now();
+  const recent = tracker.releases.filter(t => now - t < HOLD_RELEASE_WINDOW_MS).length;
+  return { releases: recent, cooldownUntil: tracker.cooldownUntil ?? null };
+}
+
+// ── Core hold helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Release a player's entry hold (before game went LIVE).
+ * Does NOT create a wallet deduction/credit — hold is simply lifted.
+ * Creates an entry_released transaction for audit trail.
+ */
+export async function releaseEntryHold(
+  userId: string,
+  entryFee: number,
+  roomCode: string,
+  reason: string,
+) {
+  if (entryFee <= 0) return;
+
+  const userBefore = await User.findById(userId).select('walletBalance heldBalance').lean() as any;
+  if (!userBefore) {
+    console.error(`[Hold] releaseEntryHold: user ${userId} not found`);
+    return;
+  }
+
+  const heldBefore: number = userBefore.heldBalance ?? 0;
+  const safeRelease = Math.min(entryFee, heldBefore);
+
+  if (safeRelease <= 0) {
+    console.warn(`[Hold] releaseEntryHold: no held balance for user ${userId} in room ${roomCode}`);
+    return;
+  }
+
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    { $inc: { heldBalance: -safeRelease } },
+    { new: true },
+  );
+  if (!updated) {
+    console.error(`[Hold] releaseEntryHold: update failed for user ${userId}`);
+    return;
+  }
+
+  // Anti-exploit tracking
+  const { flagged } = trackHoldReleased(userId);
+
+  await Transaction.create({
+    userId,
+    type: 'entry_released',
+    amount: safeRelease,
+    status: 'completed',
+    description: `Entry released — ${reason} (room ${roomCode})`,
+    balanceBefore: userBefore.walletBalance,
+    balanceAfter: userBefore.walletBalance,
+    heldBefore,
+    heldAfter: updated.heldBalance,
+    metadata: { roomCode, releaseReason: reason, exploitFlag: flagged },
+  });
+
+  console.log(`[Hold] Entry hold ₹${entryFee} released for ${userId} — room ${roomCode} (${reason})`);
+}
+
+/**
+ * Lock a player's entry hold when match goes LIVE.
+ * Converts held funds to a real wallet deduction.
+ * Moves player from heldPlayerIds → paidPlayerIds.
+ */
+export async function lockEntryHold(
+  userId: string,
+  entryFee: number,
+  roomCode: string,
+): Promise<boolean> {
+  if (entryFee <= 0) return true;
+
+  const userBefore = await User.findById(userId).select('walletBalance heldBalance').lean() as any;
+  if (!userBefore) {
+    console.error(`[Hold] lockEntryHold: user ${userId} not found`);
+    return false;
+  }
+
+  const heldBefore: number = userBefore.heldBalance ?? 0;
+  const walletBefore: number = userBefore.walletBalance;
+
+  // Atomically deduct both walletBalance and heldBalance
+  const updated = await User.findOneAndUpdate(
+    {
+      _id: userId,
+      walletBalance: { $gte: entryFee },
+      heldBalance: { $gte: entryFee },
+    },
+    { $inc: { walletBalance: -entryFee, heldBalance: -entryFee } },
+    { new: true },
+  );
+
+  if (!updated) {
+    // Fallback: wallet was sufficient but held didn't match — still deduct wallet
+    const fallback = await User.findOneAndUpdate(
+      { _id: userId, walletBalance: { $gte: entryFee } },
+      { $inc: { walletBalance: -entryFee, heldBalance: -Math.min(entryFee, heldBefore) } },
+      { new: true },
+    );
+    if (!fallback) {
+      console.error(`[Hold] lockEntryHold: insufficient balance for ${userId} room ${roomCode}`);
+      return false;
+    }
+    await Transaction.create({
+      userId,
+      type: 'entry_locked',
+      amount: entryFee,
+      status: 'completed',
+      description: `Entry locked (hold gap corrected) — room ${roomCode}`,
+      balanceBefore: walletBefore,
+      balanceAfter: fallback.walletBalance,
+      heldBefore,
+      heldAfter: fallback.heldBalance,
+      metadata: { roomCode, matchState: 'live' },
+    });
+    console.log(`[Hold] Entry ₹${entryFee} locked (fallback) for ${userId} — room ${roomCode}`);
+    return true;
+  }
+
+  await Transaction.create({
+    userId,
+    type: 'entry_locked',
+    amount: entryFee,
+    status: 'completed',
+    description: `Entry locked — room ${roomCode}`,
+    balanceBefore: walletBefore,
+    balanceAfter: updated.walletBalance,
+    heldBefore,
+    heldAfter: updated.heldBalance,
+    metadata: { roomCode, matchState: 'live' },
+  });
+
+  console.log(`[Hold] Entry ₹${entryFee} locked for ${userId} — room ${roomCode}. Balance: ₹${walletBefore} → ₹${updated.walletBalance}`);
+  return true;
+}
+
+/**
+ * Release all active holds for a room (pre-LIVE cancel/abandon).
+ * Used when the room is destroyed before a game starts.
+ */
+export async function releaseAllHolds(room: IRoom, reason: string) {
+  const entryFee = (room.config as any).entryFee ?? 0;
+  if (entryFee <= 0 || !room.heldPlayerIds?.length) return;
+
+  for (const pid of room.heldPlayerIds) {
+    await releaseEntryHold(pid, entryFee, room.code, reason);
+  }
+  room.heldPlayerIds = [];
+  room.matchState = 'cancelled';
+}
+
+/**
+ * Abandon a LIVE game and release locked entries back to players.
+ * Used when all players disconnect mid-game.
+ */
 export async function refundAbandonedGame(room: IRoom) {
   const entryFee = (room.config as any).entryFee ?? 0;
   if (entryFee <= 0 || !room.paidPlayerIds?.length) return;
 
   for (const pid of room.paidPlayerIds) {
-    const userBefore = await User.findById(pid).select("walletBalance").lean() as any;
-    const balanceBefore: number = userBefore?.walletBalance ?? 0;
+    const userBefore = await User.findById(pid).select('walletBalance heldBalance').lean() as any;
+    const walletBefore: number = userBefore?.walletBalance ?? 0;
+    const heldBefore: number = userBefore?.heldBalance ?? 0;
+
     const updated = await User.findByIdAndUpdate(pid, { $inc: { walletBalance: entryFee } }, { new: true });
     if (!updated) {
-      console.error(`[Refund] User ${pid} not found — refund of ₹${entryFee} NOT credited. room=${room.code}`);
+      console.error(`[Refund] User ${pid} not found — abandoned resolution of ₹${entryFee} NOT credited. room=${room.code}`);
       await Transaction.create({
-        userId: pid, type: 'refund', amount: entryFee, status: 'failed',
-        description: `FAILED: Refund ₹${entryFee} for abandoned room ${room.code} — user not found`,
-        balanceBefore: 0, balanceAfter: 0, metadata: { roomCode: room.code, failReason: 'user_not_found' },
+        userId: pid, type: 'abandoned_resolution', amount: entryFee, status: 'failed',
+        description: `FAILED: Abandoned resolution ₹${entryFee} for room ${room.code} — user not found`,
+        balanceBefore: 0, balanceAfter: 0, heldBefore: 0, heldAfter: 0,
+        metadata: { roomCode: room.code, failReason: 'user_not_found' },
       }).catch(console.error);
       continue;
     }
+
     await Transaction.create({
       userId: pid,
-      type: 'refund',
+      type: 'abandoned_resolution',
       amount: entryFee,
       status: 'completed',
-      description: `Refund — game abandoned in room ${room.code}`,
-      balanceBefore,
+      description: `Match abandoned — entry fee returned (room ${room.code})`,
+      balanceBefore: walletBefore,
       balanceAfter: updated.walletBalance,
-      metadata: { roomCode: room.code },
+      heldBefore,
+      heldAfter: heldBefore,
+      metadata: { roomCode: room.code, matchState: 'abandoned' },
     });
-    console.log(`[Refund] ₹${entryFee} refunded to ${pid} for abandoned room ${room.code}. Balance: ₹${balanceBefore} → ₹${updated.walletBalance}`);
+    console.log(`[Refund] ₹${entryFee} returned (abandoned) to ${pid} for room ${room.code}. Balance: ₹${walletBefore} → ₹${updated.walletBalance}`);
   }
   room.paidPlayerIds = [];
+  room.matchState = 'abandoned';
 }
 
 export async function handleLeave(io: Server, socket: Socket, userId: string) {
@@ -349,75 +589,54 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
 
   const entryFee = (room.config as any).entryFee ?? 0;
 
-  // Refund this player if they leave before the game starts
-  if (room.status === 'waiting' && entryFee > 0 && room.paidPlayerIds?.includes(userId)) {
-    const userBefore = await User.findById(userId).select("walletBalance").lean() as any;
-    const balanceBefore: number = userBefore?.walletBalance ?? 0;
-    const refunded = await User.findByIdAndUpdate(userId, { $inc: { walletBalance: entryFee } }, { new: true });
-    room.paidPlayerIds = room.paidPlayerIds.filter(id => id !== userId);
-    if (refunded) {
-      await Transaction.create({
-        userId,
-        type: 'refund',
-        amount: entryFee,
-        status: 'completed',
-        description: `Refund for leaving room ${room.code}`,
-        balanceBefore,
-        balanceAfter: refunded.walletBalance,
-        metadata: { roomCode: room.code },
-      });
-    } else {
-      console.error(`[Refund] User ${userId} not found — leave-refund of ₹${entryFee} failed. room=${room.code}`);
-    }
+  // ── Release hold if player leaves before game goes LIVE ─────────────────────
+  if (room.status === 'waiting' && entryFee > 0 && room.heldPlayerIds?.includes(userId)) {
+    await releaseEntryHold(userId, entryFee, room.code, 'Left room before match started');
+    room.heldPlayerIds = room.heldPlayerIds.filter(id => id !== userId);
   }
 
   room.players = room.players.filter(p => p.userId !== userId);
   await socket.leave(room.code);
 
-  // If game was in progress and no human players remain, give a 60s grace window
-  // before abandoning. Players closing/reopening the app reconnect via game:reconnect
-  // without needing room:join — if they return within 60s the timer is cancelled.
-  // This prevents the "refund on temporary disconnect" bug where all players briefly
-  // disconnect (app backgrounded) and the room is deleted before they can resume.
+  // ── 90-second reconnect protection for LIVE games ───────────────────────────
   const humanPlayersLeft = room.players.filter(p => !p.isBot).length;
   if (
     room.status === 'playing' &&
     humanPlayersLeft === 0 &&
     (room.paidPlayerIds?.length ?? 0) > 0 &&
-    !pendingAbandon.has(room.code)   // only start one timer per room
+    !pendingAbandon.has(room.code)
   ) {
     const roomCode = room.code;
     io.to(roomCode).emit('game:reconnect_warning', {
-      message: 'All players disconnected. Game will be abandoned in 60 seconds if nobody reconnects.',
-      seconds: 60,
+      message: 'All players disconnected. Match will be abandoned in 90 seconds if nobody reconnects.',
+      seconds: 90,
     });
     const timer = setTimeout(async () => {
       pendingAbandon.delete(roomCode);
       try {
         const liveRoom = await Room.findOne({ code: roomCode });
         if (!liveRoom) return;
-        if (liveRoom.status !== 'playing') return; // finished normally
-        if ((liveRoom.paidPlayerIds?.length ?? 0) === 0) return; // prize already paid
+        if (liveRoom.status !== 'playing') return;
+        if ((liveRoom.paidPlayerIds?.length ?? 0) === 0) return;
         const stillNoHumans = liveRoom.players.filter((p: any) => !p.isBot).length === 0;
         if (stillNoHumans) {
           await refundAbandonedGame(liveRoom);
           await liveRoom.save();
           await Room.deleteOne({ _id: liveRoom._id });
           io.to(roomCode).emit('game:abandoned', {
-            message: 'All players left — entry fees have been refunded.',
+            message: 'All players disconnected — entry fees have been returned.',
           });
         }
       } catch (e) {
         console.error('[Room] Delayed abandon error:', e);
       }
-    }, 60_000);
+    }, 90_000);
     pendingAbandon.set(roomCode, timer);
-    // Fall through — save the room below so it persists during the grace window
   }
 
   if (room.players.length === 0) {
     if (room.status === 'waiting' && !pendingWaitingDelete.has(room.code)) {
-      // Host/last player switched apps — give 30 s to come back before deleting
+      // Give 30 s for host to return before releasing holds and deleting
       const roomCode = room.code;
       const isPrivate = room.config.isPrivate;
       await room.save();
@@ -426,13 +645,20 @@ export async function handleLeave(io: Server, socket: Socket, userId: string) {
         try {
           const liveRoom = await Room.findOne({ code: roomCode });
           if (!liveRoom || liveRoom.players.length > 0) return;
-          await refundAbandonedGame(liveRoom);
+          await releaseAllHolds(liveRoom, 'Room expired — no players returned');
           await Room.deleteOne({ _id: liveRoom._id });
           if (!isPrivate) io.emit('lobby:rooms_updated');
         } catch (e) { console.error('[Room] Waiting delete error:', e); }
       }, 30_000);
       pendingWaitingDelete.set(roomCode, timer);
       if (!isPrivate) io.emit('lobby:rooms_updated');
+      return;
+    }
+    if (pendingAbandon.has(room.code)) {
+      // 90-second refund timer is already running — must keep the room in DB
+      // so the timer callback can find it and call refundAbandonedGame.
+      // Deleting here would make Room.findOne return null inside the timer → no refund.
+      await room.save();
       return;
     }
     await Room.deleteOne({ _id: room._id });

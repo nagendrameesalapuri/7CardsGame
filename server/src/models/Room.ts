@@ -1,6 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { RoomConfig } from '../../../shared/src/types';
 
+export type MatchState =
+  | 'forming'    // Room created, waiting for players — holds active
+  | 'ready'      // All players joined, countdown — still refundable
+  | 'live'       // Game officially started — entries locked, no quit refunds
+  | 'completed'  // Match settled, winnings distributed
+  | 'abandoned'  // All players disconnected, holds released
+  | 'cancelled'; // Host cancelled / startup failed — holds released
+
 export interface IRoomPlayer {
   userId: string;
   username: string;
@@ -18,8 +26,10 @@ export interface IRoom extends Document {
   players: IRoomPlayer[];
   config: RoomConfig;
   status: 'waiting' | 'playing' | 'finished';
+  matchState: MatchState;
   gameId: string | null;
-  paidPlayerIds: string[];
+  paidPlayerIds: string[];   // Players with locked entries (game is LIVE)
+  heldPlayerIds: string[];   // Players with active holds (pre-LIVE)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,8 +65,10 @@ const RoomSchema = new Schema<IRoom>(
     players: [RoomPlayerSchema],
     config: { type: RoomConfigSchema, default: () => ({}) },
     status:         { type: String, enum: ['waiting', 'playing', 'finished'], default: 'waiting' },
+    matchState:     { type: String, enum: ['forming', 'ready', 'live', 'completed', 'abandoned', 'cancelled'], default: 'forming' },
     gameId:         { type: String, default: null },
     paidPlayerIds:  [{ type: String }],
+    heldPlayerIds:  [{ type: String }],
   },
   { timestamps: true }
 );

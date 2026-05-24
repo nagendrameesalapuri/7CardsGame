@@ -14,7 +14,7 @@ import {
   kickPlayerFromGame,
   getActiveGame,
 } from "../socket/handlers/gameHandler";
-import { refundAbandonedGame } from "../socket/handlers/roomHandler";
+import { refundAbandonedGame, getHoldExploitStats } from "../socket/handlers/roomHandler";
 import { getSpectatorCounts } from "../socket/handlers/spectatorHandler";
 import { getOnlineUserIds } from "../socket/index";
 import { WithdrawalRequest } from "../models/WithdrawalRequest";
@@ -1522,6 +1522,73 @@ export default function createAdminRouter(io: Server) {
     } catch (err) {
       console.error('[Admin] Team arena analytics error:', err);
       res.status(500).json({ error: 'Failed to load team arena analytics' });
+    }
+  });
+
+  // ── Hold System: Active Holds Overview ─────────────────────────────────────
+  router.get("/hold-system/overview", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      // Rooms with active holds (pre-LIVE)
+      const roomsWithHolds = await Room.find(
+        { heldPlayerIds: { $exists: true, $not: { $size: 0 } }, status: 'waiting' },
+      ).select('code name heldPlayerIds config matchState createdAt').lean();
+
+      // Players with non-zero heldBalance
+      const playersWithHolds = await User.find({ heldBalance: { $gt: 0 } })
+        .select('username walletBalance heldBalance lastSeenAt').lean();
+
+      // Recent entry_hold, entry_released, abandoned_resolution in last 24h
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [holdCount, releaseCount, abandonCount] = await Promise.all([
+        Transaction.countDocuments({ type: 'entry_hold', createdAt: { $gte: since } }),
+        Transaction.countDocuments({ type: 'entry_released', createdAt: { $gte: since } }),
+        Transaction.countDocuments({ type: 'abandoned_resolution', createdAt: { $gte: since } }),
+      ]);
+
+      // Exploit flagged releases in last 24h
+      const exploitFlagged = await Transaction.find({
+        type: 'entry_released',
+        'metadata.exploitFlag': true,
+        createdAt: { $gte: since },
+      }).select('userId amount description metadata createdAt').sort({ createdAt: -1 }).limit(50).lean();
+
+      res.json({
+        roomsWithHolds: roomsWithHolds.map(r => ({
+          code: r.code,
+          name: r.name,
+          heldCount: (r as any).heldPlayerIds?.length ?? 0,
+          entryFee: (r.config as any).entryFee ?? 0,
+          matchState: (r as any).matchState,
+          createdAt: r.createdAt,
+        })),
+        playersWithHolds: playersWithHolds.map((p: any) => ({
+          userId: String(p._id),
+          username: p.username,
+          walletBalance: p.walletBalance,
+          heldBalance: p.heldBalance,
+          availableBalance: Math.max(0, p.walletBalance - p.heldBalance),
+          lastSeenAt: p.lastSeenAt,
+        })),
+        stats24h: { holdCount, releaseCount, abandonCount },
+        exploitFlagged,
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load hold overview' });
+    }
+  });
+
+  // ── Hold System: Per-user exploit stats ─────────────────────────────────────
+  router.get("/hold-system/exploit/:userId", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const stats = getHoldExploitStats(userId);
+      const recentReleases = await Transaction.find({
+        userId,
+        type: { $in: ['entry_released', 'abandoned_resolution'] },
+      }).sort({ createdAt: -1 }).limit(20).lean();
+      res.json({ userId, ...stats, recentReleases });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load exploit stats' });
     }
   });
 
