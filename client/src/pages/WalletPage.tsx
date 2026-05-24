@@ -21,58 +21,31 @@ const BRANDS = [
 const TX_PAGE_SIZE = 10;
 
 const TX_ICONS: Record<string, string> = {
-  deposit:              "⬇️",
-  withdrawal:           "⬆️",
-  winning:              "🏆",
-  entry_fee:            "⚔️",
-  refund:               "↩️",
-  bonus:                "🎁",
-  // Hold system
-  entry_hold:           "🔒",
-  entry_released:       "🔓",
-  entry_locked:         "⚔️",
-  match_settlement:     "🏆",
-  abandoned_resolution: "🔵",
-  system_rollback:      "🔄",
+  deposit:    "⬇️",
+  withdrawal: "⬆️",
+  winning:    "🏆",
+  entry_fee:  "⚔️",
+  refund:     "↩️",
+  bonus:      "🎁",
 };
 
 const TX_LABELS: Record<string, string> = {
-  deposit:              "Balance Credited",
-  withdrawal:           "Reward Redemption",
-  winning:              "Tournament Prize",
-  entry_fee:            "Match Entry",
-  refund:               "Entry Returned",
-  bonus:                "Bonus Reward",
-  // Hold system
-  entry_hold:           "Match Protection",
-  entry_released:       "Entry Released",
-  entry_locked:         "Match Entry Locked",
-  match_settlement:     "Match Settlement",
-  abandoned_resolution: "Match Abandoned",
-  system_rollback:      "System Recovery",
+  deposit:    "Challenge Entry Credit",
+  withdrawal: "Reward Redemption",
+  winning:    "Tournament Prize",
+  entry_fee:  "Challenge Entry",
+  refund:     "Refund",
+  bonus:      "Bonus Reward",
 };
 
 const TX_COLORS: Record<string, string> = {
-  deposit:              "text-green-400",
-  winning:              "text-yellow-400",
-  refund:               "text-blue-400",
-  withdrawal:           "text-red-400",
-  entry_fee:            "text-red-400",
-  bonus:                "text-purple-400",
-  entry_hold:           "text-yellow-300",
-  entry_released:       "text-cyan-400",
-  entry_locked:         "text-orange-400",
-  match_settlement:     "text-yellow-400",
-  abandoned_resolution: "text-sky-400",
-  system_rollback:      "text-gray-400",
+  deposit:    "text-green-400",
+  winning:    "text-yellow-400",
+  refund:     "text-blue-400",
+  withdrawal: "text-red-400",
+  entry_fee:  "text-red-400",
+  bonus:      "text-purple-400",
 };
-
-// Which types are balance-neutral (hold placed/released, no actual wallet change)
-const TX_NEUTRAL = new Set(["entry_hold", "entry_released"]);
-// Which types reduce wallet balance
-const TX_DEBIT = new Set(["withdrawal", "entry_fee", "entry_locked"]);
-// Which types increase wallet balance
-const TX_CREDIT = new Set(["deposit", "winning", "refund", "bonus", "match_settlement", "abandoned_resolution"]);
 
 function PageBar({ page, total, size, onChange }: {
   page: number; total: number; size: number; onChange: (p: number) => void;
@@ -861,8 +834,6 @@ export function WalletPage() {
   const navigate = useNavigate();
 
   const [balance, setBalance] = useState(0);
-  const [heldBalance, setHeldBalance] = useState(0);
-  const [availableBalance, setAvailableBalance] = useState(0);
   const [lockedRewards, setLockedRewards] = useState(0);
   const [isGuest, setIsGuest] = useState(false);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -881,8 +852,6 @@ export function WalletPage() {
     try {
       const { data } = await walletApi.get();
       setBalance(data.balance);
-      setHeldBalance(data.heldBalance ?? 0);
-      setAvailableBalance(data.availableBalance ?? data.balance);
       setLockedRewards(data.lockedRewards ?? 0);
       setIsGuest(data.isGuest);
       setTransactions(data.transactions ?? []);
@@ -960,56 +929,25 @@ export function WalletPage() {
                 </div>
               </div>
 
-              <p className="text-xs text-dark-muted uppercase tracking-wider mb-1">Tournament Wallet</p>
-
-              {/* Primary: Available Balance */}
-              <p className="text-5xl font-black leading-none mb-0.5" style={{
+              <p className="text-xs text-dark-muted uppercase tracking-wider mb-1">Reward Balance</p>
+              <p className="text-5xl font-black leading-none mb-1" style={{
                 background: "linear-gradient(135deg,#ffffff,#c7d2fe,#a78bfa)",
                 WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
               }}>
-                ₹{availableBalance.toLocaleString("en-IN")}
+                ₹{balance.toLocaleString("en-IN")}
               </p>
-              <p className="text-xs text-dark-muted mb-3">Available Balance</p>
 
-              {/* Balance breakdown pills */}
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div className="rounded-xl px-2 py-2 text-center"
-                  style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
-                  <p className="text-[9px] text-indigo-300 uppercase tracking-wider font-semibold mb-0.5">Total</p>
-                  <p className="text-sm font-black text-white">₹{balance.toLocaleString("en-IN")}</p>
-                </div>
-                <div className="rounded-xl px-2 py-2 text-center"
-                  style={{ background: heldBalance > 0 ? "rgba(234,179,8,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${heldBalance > 0 ? "rgba(234,179,8,0.3)" : "rgba(255,255,255,0.06)"}` }}>
-                  <p className="text-[9px] uppercase tracking-wider font-semibold mb-0.5" style={{ color: heldBalance > 0 ? "#fde047" : "#6b7280" }}>Held</p>
-                  <p className={`text-sm font-black ${heldBalance > 0 ? "text-yellow-300" : "text-dark-muted"}`}>
-                    ₹{heldBalance.toLocaleString("en-IN")}
-                  </p>
-                </div>
-                <div className="rounded-xl px-2 py-2 text-center"
-                  style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.18)" }}>
-                  <p className="text-[9px] text-green-400 uppercase tracking-wider font-semibold mb-0.5">Free</p>
-                  <p className="text-sm font-black text-green-400">₹{availableBalance.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-3 mt-3 flex-wrap">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
                   style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)" }}>
                   <span className="text-xs">⚡</span>
                   <span className="text-xs font-bold text-indigo-300">{credits.toLocaleString("en-IN")} Credits</span>
                 </div>
-                {heldBalance > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                    style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.2)" }}>
-                    <span className="text-xs">🔒</span>
-                    <span className="text-xs font-bold text-yellow-300">₹{heldBalance} In Match</span>
-                  </div>
-                )}
                 {lockedRewards > 0 && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
                     style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
-                    <span className="text-xs">⏳</span>
-                    <span className="text-xs font-bold text-yellow-400">₹{lockedRewards} Pending</span>
+                    <span className="text-xs">🔒</span>
+                    <span className="text-xs font-bold text-yellow-400">₹{lockedRewards} Locked</span>
                   </div>
                 )}
               </div>
@@ -1083,96 +1021,32 @@ export function WalletPage() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    {transactions.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map((tx: any) => {
-                      const isDebit   = TX_DEBIT.has(tx.type);
-                      const isCredit  = TX_CREDIT.has(tx.type);
-                      const isNeutral = TX_NEUTRAL.has(tx.type);
-                      const isSettlement = tx.type === "match_settlement" || tx.type === "winning";
-                      const isAbandoned  = tx.type === "abandoned_resolution";
-                      const isHold       = tx.type === "entry_hold";
-                      const isReleased   = tx.type === "entry_released";
-                      const isLocked     = tx.type === "entry_locked";
-
-                      // Status badge
-                      const badge = isSettlement ? { label: "Match Settled", color: "#facc15", bg: "rgba(234,179,8,0.12)", border: "rgba(234,179,8,0.3)" }
-                        : isAbandoned ? { label: "Match Abandoned", color: "#38bdf8", bg: "rgba(56,189,248,0.08)", border: "rgba(56,189,248,0.25)" }
-                        : isHold      ? { label: "Entry Held", color: "#fde047", bg: "rgba(234,179,8,0.08)", border: "rgba(234,179,8,0.2)" }
-                        : isReleased  ? { label: "Entry Released", color: "#67e8f9", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" }
-                        : isLocked    ? { label: "Entry Locked", color: "#fb923c", bg: "rgba(251,146,60,0.08)", border: "rgba(251,146,60,0.2)" }
-                        : isDebit     ? { label: "Deducted", color: "#f87171", bg: "rgba(248,113,113,0.06)", border: "rgba(248,113,113,0.15)" }
-                        : isCredit    ? { label: "Credited", color: "#4ade80", bg: "rgba(74,222,128,0.06)", border: "rgba(74,222,128,0.15)" }
-                        : null;
-
-                      // Card tint
-                      const cardBg = isSettlement ? "rgba(251,191,36,0.04)" : isAbandoned ? "rgba(56,189,248,0.04)"
-                        : isHold ? "rgba(234,179,8,0.04)" : isReleased ? "rgba(6,182,212,0.04)"
-                        : isLocked ? "rgba(251,146,60,0.04)" : isDebit ? "rgba(248,113,113,0.03)" : "rgba(74,222,128,0.03)";
-                      const cardBorder = isSettlement ? "rgba(251,191,36,0.15)" : isAbandoned ? "rgba(56,189,248,0.15)"
-                        : isHold ? "rgba(234,179,8,0.15)" : isReleased ? "rgba(6,182,212,0.15)"
-                        : isLocked ? "rgba(251,146,60,0.15)" : isDebit ? "rgba(248,113,113,0.1)" : "rgba(74,222,128,0.1)";
-
-                      // Amount display
-                      const amountStr = isNeutral ? `₹${tx.amount} held`
-                        : isDebit ? `-₹${tx.amount}` : `+₹${tx.amount}`;
-                      const amountColor = isNeutral ? "#fde047" : isDebit ? "#f87171" : "#4ade80";
-
-                      // Balance trail (if available)
-                      const showTrail = !isNeutral && tx.balanceBefore !== undefined && tx.balanceAfter !== undefined && (tx.balanceBefore !== 0 || tx.balanceAfter !== 0);
-
+                    {transactions.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map((tx) => {
+                      const isDebit = tx.type === "withdrawal" || tx.type === "entry_fee";
                       return (
-                        <div key={tx._id} className="rounded-xl overflow-hidden"
-                          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}>
-                          <div className="flex items-start gap-3 px-4 py-3">
-                            <div className="text-xl flex-shrink-0 mt-0.5">{TX_ICONS[tx.type] ?? "💳"}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={clsx("text-sm font-semibold", TX_COLORS[tx.type] ?? "text-dark-text")}>
-                                  {TX_LABELS[tx.type] ?? tx.type}
-                                </p>
-                                {badge && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider"
-                                    style={{ color: badge.color, background: badge.bg, border: `1px solid ${badge.border}` }}>
-                                    {badge.label}
-                                  </span>
-                                )}
-                              </div>
-                              {tx.description && (
-                                <p className="text-[11px] text-dark-muted mt-0.5 leading-relaxed">{tx.description}</p>
-                              )}
-                              <p className="text-[10px] text-dark-muted opacity-60 mt-1">
-                                {new Date(tx.createdAt).toLocaleString("en-IN", {
-                                  day: "2-digit", month: "short", year: "numeric",
-                                  hour: "2-digit", minute: "2-digit",
-                                })}
-                              </p>
-                              {showTrail && (
-                                <p className="text-[10px] text-dark-muted mt-0.5 font-mono">
-                                  ₹{tx.balanceBefore} → ₹{tx.balanceAfter}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className="text-sm font-black" style={{ color: amountColor }}>{amountStr}</p>
-                              {tx.status === "failed" && (
-                                <span className="text-[9px] text-red-400 font-bold block mt-0.5">FAILED</span>
-                              )}
-                            </div>
+                        <div key={tx._id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                          style={{
+                            background: isDebit ? "rgba(255,60,60,0.04)" : tx.type === "winning" ? "rgba(255,215,0,0.04)" : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${isDebit ? "rgba(255,60,60,0.1)" : tx.type === "winning" ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.05)"}`,
+                          }}>
+                          <span className="text-xl flex-shrink-0">{TX_ICONS[tx.type] ?? "💳"}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className={clsx("text-sm font-semibold", TX_COLORS[tx.type] ?? "text-dark-text")}>
+                              {TX_LABELS[tx.type] ?? tx.type}
+                            </p>
+                            <p className="text-xs text-dark-muted truncate">{tx.description}</p>
+                            <p className="text-[10px] text-dark-muted opacity-70">
+                              {new Date(tx.createdAt).toLocaleString("en-IN", {
+                                day: "2-digit", month: "short", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </p>
                           </div>
-                          {/* Hold detail row */}
-                          {isHold && (
-                            <div className="px-4 pb-2.5 flex items-center gap-2">
-                              <div className="h-px flex-1" style={{ background: "rgba(234,179,8,0.15)" }} />
-                              <p className="text-[10px] text-yellow-300/60 font-semibold">Reserved · Not Deducted</p>
-                              <div className="h-px flex-1" style={{ background: "rgba(234,179,8,0.15)" }} />
-                            </div>
-                          )}
-                          {isReleased && (
-                            <div className="px-4 pb-2.5 flex items-center gap-2">
-                              <div className="h-px flex-1" style={{ background: "rgba(6,182,212,0.15)" }} />
-                              <p className="text-[10px] text-cyan-400/60 font-semibold">Hold Cancelled · No Deduction</p>
-                              <div className="h-px flex-1" style={{ background: "rgba(6,182,212,0.15)" }} />
-                            </div>
-                          )}
+                          <div className="text-right flex-shrink-0">
+                            <p className={clsx("text-sm font-bold", TX_COLORS[tx.type] ?? "text-dark-text")}>
+                              {isDebit ? "-" : "+"}₹{tx.amount}
+                            </p>
+                          </div>
                         </div>
                       );
                     })}

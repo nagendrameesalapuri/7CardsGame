@@ -141,8 +141,6 @@ export const walletApi = {
   get: () =>
     api.get<{
       balance: number;
-      heldBalance: number;
-      availableBalance: number;
       isGuest: boolean;
       lockedRewards: number;
       transactions: any[];
@@ -366,15 +364,6 @@ export const admin = {
     tierBreakdown: Array<{ tier: string; count: number; wins: number; winRate: number }>;
     feeModeBreakdown: Array<{ mode: string; count: number }>;
   }>("/team-arena/analytics"),
-
-  getHoldSystemOverview: () => adminApi.get<{
-    roomsWithHolds: any[];
-    playersWithHolds: any[];
-    stats24h: { holdCount: number; releaseCount: number; abandonCount: number };
-    exploitFlagged: any[];
-  }>("/hold-system/overview"),
-
-  getHoldExploitStats: (userId: string) => adminApi.get<any>(`/hold-system/exploit/${userId}`),
 
   getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
   createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>

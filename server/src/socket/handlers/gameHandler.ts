@@ -7,7 +7,7 @@
 
 import { Server, Socket } from "socket.io";
 import { Room } from "../../models/Room";
-import { cancelPendingAbandon, lockEntryHold } from "./roomHandler";
+import { cancelPendingAbandon } from "./roomHandler";
 import { Game } from "../../models/Game";
 import { User } from "../../models/User";
 import { PlayerProgress } from "../../models/PlayerProgress";
@@ -384,20 +384,7 @@ export async function startRoomGame(
     setBotPersonality(gameState.id, personality);
   }
 
-  // ── ENTRY LOCK for tournament-launched rooms ────────────────────────────
-  const roomEntryFee = (room.config as any).entryFee ?? 0;
-  if (roomEntryFee > 0 && room.heldPlayerIds?.length) {
-    const lockedIds: string[] = [];
-    for (const pid of room.heldPlayerIds) {
-      const ok = await lockEntryHold(pid, roomEntryFee, room.code);
-      if (ok) lockedIds.push(pid);
-    }
-    room.paidPlayerIds = lockedIds;
-    room.heldPlayerIds = [];
-  }
-
   room.status = "playing";
-  room.matchState = "live";
   room.gameId = gameState.id;
   await room.save();
 
@@ -411,7 +398,7 @@ export async function startRoomGame(
       isBot: p.isBot,
     })),
     roundCount: config.roundCount,
-    entryFee: roomEntryFee,
+    entryFee: (room.config as any).entryFee ?? 0,
     status: "playing",
   });
 
@@ -529,21 +516,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
         setBotPersonality(gameState.id, roomPersonality);
       }
 
-      // ── ENTRY LOCK: convert holds → locked entries when match goes LIVE ────
-      const entryFeeAtStart = (room.config as any).entryFee ?? 0;
-      if (entryFeeAtStart > 0 && room.heldPlayerIds?.length) {
-        const lockedIds: string[] = [];
-        for (const pid of room.heldPlayerIds) {
-          const ok = await lockEntryHold(pid, entryFeeAtStart, room.code);
-          if (ok) lockedIds.push(pid);
-        }
-        room.paidPlayerIds = lockedIds;
-        room.heldPlayerIds = [];
-        console.log(`[Hold] Locked entries for ${lockedIds.length} players in room ${room.code}`);
-      }
-
       room.status = "playing";
-      room.matchState = "live";
       room.gameId = gameState.id;
       await room.save();
 
@@ -558,7 +531,7 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           isBot: p.isBot,
         })),
         roundCount: config.roundCount,
-        entryFee: entryFeeAtStart,
+        entryFee: (room.config as any).entryFee ?? 0,
         status: "playing",
       });
 
@@ -1103,10 +1076,9 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   // Await the status update FIRST so any concurrent handleLeave sees 'finished'
   // and does NOT trigger the abandon-refund path (race-condition fix).
-  await Room.findOneAndUpdate(
-    { code: state.roomId },
-    { status: "finished", matchState: "completed" },
-  ).catch(console.error);
+  await Room.findOneAndUpdate({ code: state.roomId }, { status: "finished" }).catch(
+    console.error,
+  );
 
   // Cash game prize distribution — await so prize is settled before cleanup runs
   await distributePrize(io, state, matchResult, entryFeeForResult, capturedPaidIds).catch(
@@ -1243,14 +1215,12 @@ async function distributePrize(
         );
         await Transaction.create({
           userId: uid,
-          type: "match_settlement",
+          type: "winning",
           amount: payout,
           status: "failed",
-          description: `FAILED: Match settlement ₹${payout} for room ${state.roomId} — user not found`,
+          description: `FAILED: Prize ₹${payout} for room ${state.roomId} — user not found`,
           balanceBefore: 0,
           balanceAfter: 0,
-          heldBefore: 0,
-          heldAfter: 0,
           metadata: { roomCode: state.roomId, failReason: "user_not_found" },
         }).catch(console.error);
         continue;
@@ -1258,15 +1228,13 @@ async function distributePrize(
 
       await Transaction.create({
         userId: uid,
-        type: "match_settlement",
+        type: "winning",
         amount: payout,
         status: "completed",
-        description: `Match settlement — room ${state.roomId}${winnerPlayerIds.length > 1 ? " (split)" : ""}`,
+        description: `Prize won — room ${state.roomId}${winnerPlayerIds.length > 1 ? " (split)" : ""}`,
         balanceBefore,
         balanceAfter: updated.walletBalance,
-        heldBefore: 0,
-        heldAfter: 0,
-        metadata: { roomCode: state.roomId, matchState: 'completed' },
+        metadata: { roomCode: state.roomId },
       });
 
       console.log(

@@ -47,8 +47,7 @@ type Section =
   | "aiguide"
   | "playerintel"
   | "missedpayouts"
-  | "gamereview"
-  | "holdsystem";
+  | "gamereview";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -4973,148 +4972,6 @@ function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => voi
   );
 }
 
-// ── Hold System Monitor ────────────────────────────────────────────────────────
-
-function HoldSystemSection() {
-  const [data, setData] = React.useState<any>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const { data: d } = await admin.getHoldSystemOverview();
-      setData(d);
-    } catch {
-      setError("Failed to load hold system data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => { load(); }, []);
-
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-2 border-yellow-500/40 border-t-yellow-500 animate-spin" /></div>;
-  if (error) return <div className="text-red-400 text-sm p-4">{error}</div>;
-  if (!data) return null;
-
-  const { roomsWithHolds, playersWithHolds, stats24h, exploitFlagged } = data;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black text-white">Hold System Monitor</h2>
-          <p className="text-xs text-dark-muted mt-0.5">Active entry holds, locked entries, and exploit detection</p>
-        </div>
-        <button onClick={load} className="px-4 py-2 rounded-xl text-xs font-bold text-yellow-300 hover:text-white transition-colors"
-          style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.25)" }}>
-          Refresh
-        </button>
-      </div>
-
-      {/* 24h stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Holds Placed", value: stats24h.holdCount, color: "#fde047", icon: "🔒" },
-          { label: "Released", value: stats24h.releaseCount, color: "#67e8f9", icon: "🔓" },
-          { label: "Abandoned", value: stats24h.abandonCount, color: "#f87171", icon: "💔" },
-        ].map(s => (
-          <div key={s.label} className="rounded-2xl p-4 text-center"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-2xl mb-1">{s.icon}</p>
-            <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
-            <p className="text-[10px] text-dark-muted uppercase tracking-wider mt-0.5">{s.label}</p>
-            <p className="text-[9px] text-dark-muted mt-0.5">Last 24h</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Rooms with active holds */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(234,179,8,0.15)" }}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <span className="text-yellow-300">🔒</span>
-          <h3 className="text-sm font-black text-white">Rooms With Active Holds ({roomsWithHolds.length})</h3>
-        </div>
-        {roomsWithHolds.length === 0 ? (
-          <p className="text-dark-muted text-xs px-4 py-4">No rooms with active holds</p>
-        ) : (
-          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-            {roomsWithHolds.map((r: any) => (
-              <div key={r.code} className="px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-white">{r.code} · {r.name}</p>
-                  <p className="text-xs text-dark-muted">{r.heldCount} player{r.heldCount !== 1 ? "s" : ""} · ₹{r.entryFee} each · Total held: ₹{r.entryFee * r.heldCount}</p>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold text-yellow-300" style={{ background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.25)" }}>
-                  {r.matchState ?? "forming"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Players with held balance */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(99,102,241,0.15)" }}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <span>👤</span>
-          <h3 className="text-sm font-black text-white">Players With Non-Zero Held Balance ({playersWithHolds.length})</h3>
-        </div>
-        {playersWithHolds.length === 0 ? (
-          <p className="text-dark-muted text-xs px-4 py-4">No players with held balance</p>
-        ) : (
-          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-            {playersWithHolds.map((p: any) => (
-              <div key={p.userId} className="px-4 py-3 grid grid-cols-4 gap-2 text-xs">
-                <div>
-                  <p className="font-bold text-white">{p.username}</p>
-                  <p className="text-dark-muted">Player</p>
-                </div>
-                <div className="text-center">
-                  <p className="font-bold text-white">₹{p.walletBalance}</p>
-                  <p className="text-dark-muted">Total</p>
-                </div>
-                <div className="text-center">
-                  <p className="font-bold text-yellow-300">₹{p.heldBalance}</p>
-                  <p className="text-dark-muted">Held</p>
-                </div>
-                <div className="text-center">
-                  <p className="font-bold text-green-400">₹{p.availableBalance}</p>
-                  <p className="text-dark-muted">Available</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Exploit flagged releases */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(248,113,113,0.2)" }}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <span>🚨</span>
-          <h3 className="text-sm font-black text-white">Exploit-Flagged Releases (24h) — {exploitFlagged.length}</h3>
-        </div>
-        {exploitFlagged.length === 0 ? (
-          <p className="text-dark-muted text-xs px-4 py-4">No suspicious patterns detected</p>
-        ) : (
-          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-            {exploitFlagged.map((tx: any) => (
-              <div key={tx._id} className="px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-red-300">{tx.description}</p>
-                  <p className="text-[10px] text-dark-muted">{new Date(tx.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                </div>
-                <p className="text-[10px] text-dark-muted mt-0.5">User: {tx.userId} · ₹{tx.amount} · Room: {tx.metadata?.roomCode ?? "—"}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -5162,7 +5019,6 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
       { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
-      { key: "holdsystem",    icon: "🔒", label: "Hold Monitor" },
       { key: "walletconfig",  icon: "⚙️", label: "Reward Config" },
     ],
   },
@@ -5389,7 +5245,6 @@ export function AdminPage() {
                 <MissedPayoutsSection onReview={(roomId) => { setSection("gamereview"); setTimeout(() => { (window as any).__gameReviewCode = roomId; window.dispatchEvent(new CustomEvent("admin:reviewRoom", { detail: roomId })); }, 50); }} />
               )}
               {section === "gamereview" && <GameReviewPage />}
-              {section === "holdsystem" && <HoldSystemSection />}
             </motion.div>
           </AnimatePresence>
         </div>
