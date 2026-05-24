@@ -195,12 +195,21 @@ async function startTeamRoom(io: Server, team: any, roomCode: string, stageConfi
   }
 }
 
+const handledTeamMatchEnds = new Set<string>();
+
 // Called from survivalHandler.handleSurvivalMatchEnd for team rooms
 export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, team: any) {
+  if (handledTeamMatchEnds.has(state.id)) {
+    console.warn(`[TeamSurvival] Match ${state.id} already processed — skipping duplicate`);
+    return;
+  }
+  handledTeamMatchEnds.add(state.id);
+  setTimeout(() => handledTeamMatchEnds.delete(state.id), 60_000);
   try {
     const tierCfg = await getEffectiveTierConfig(team.tier);
     const stageIdx = team.currentStage - 1;
-    const stageReward = tierCfg.stageRewards[stageIdx] ?? 0;
+    // T5: use rewards locked at tournament start; fall back to live config for old records
+    const stageReward = (team.stageRewards?.[stageIdx] as number | undefined) ?? tierCfg.stageRewards[stageIdx] ?? 0;
     const stageConfig = TEAM_SURVIVAL_STAGES.find(s => s.stage === team.currentStage)!;
 
     const getScore = (playerId: string): number => {
@@ -216,11 +225,61 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
     const teamPlayers   = state.players.filter(p => teamMemberIds.has(p.userId));
     const opponentBots  = state.players.filter(p => !teamMemberIds.has(p.userId));
 
-    const teamScore    = teamPlayers.reduce((sum, p) => sum + getScore(p.id), 0);
-    const botScores    = opponentBots.map(b => getScore(b.id));
+    const teamScore     = teamPlayers.reduce((sum, p) => sum + getScore(p.id), 0);
+    const botScores     = opponentBots.map(b => getScore(b.id));
     const botTotalScore = botScores.reduce((s, v) => s + v, 0);
+    const teamWon       = teamScore < botTotalScore;
+    const isDraw        = teamScore === botTotalScore;
 
-    const teamWon = teamScore < botTotalScore;
+    // T4: track rounds played across all stages
+    team.roundsPlayed = (team.roundsPlayed ?? 0) + state.roundNumber;
+
+    const teamRoom = `team:${team.teamCode}`;
+
+    // ── T6: TIEBREAKER — first draw → give team one bonus round ───────────────
+    if (isDraw && !team.tiebreakerPending) {
+      let tieCode = '';
+      let tieAtt = 0;
+      do {
+        tieCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        tieAtt++;
+      } while (await Room.exists({ code: tieCode }) && tieAtt < 10);
+
+      const humanMembersTie = (team.members as any[]).filter(m => !m.isBot);
+      const allyBotMembersTie = (team.members as any[]).filter(m => m.isBot);
+      const { players: tiePlayers } = buildTeamRoomPlayers(humanMembersTie, allyBotMembersTie, stageConfig, team.hostId, tieCode);
+      await Room.create({
+        code: tieCode,
+        name: `Team Tiebreak S${team.currentStage}`.slice(0, 30),
+        hostId: team.hostId,
+        players: tiePlayers,
+        config: { maxPlayers: tiePlayers.length, roundCount: 1, isPrivate: true, turnTimeLimit: 30, allowBots: true, botCount: 0, entryFee: 0 },
+        paidPlayerIds: [],
+        status: 'waiting',
+      });
+
+      // Bug 1: clean up ended match before starting tiebreaker — prevents orphaned TeamArena state
+      cleanupTeamArenaGame(state.id);
+
+      team.tiebreakerPending = true;
+      team.currentRoomCode = tieCode;
+      await team.save();
+
+      io.to(teamRoom).emit('survival:team_tiebreaker', {
+        stage: team.currentStage,
+        stageName: stageConfig.name,
+        stageDesc: stageConfig.description,
+        botNames: stageConfig.botNames,
+        teamScore,
+        botTotalScore,
+        roomCode: tieCode,
+      });
+      return;
+    }
+
+    // Tiebreaker also drew → loss (no infinite rounds); clear pending flag
+    const resolvedTeamWon = isDraw ? false : teamWon;
+    if (team.tiebreakerPending) team.tiebreakerPending = false;
 
     const scoreboard = [
       { name: 'Your Team', score: teamScore, isTeam: true, isHuman: true },
@@ -233,11 +292,9 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       botTotalScore,
       botScores,
       botNames: stageConfig.botNames,
-      teamWon,
-      pointsEarned: teamWon ? stageReward : 0,
+      teamWon: resolvedTeamWon,
+      pointsEarned: resolvedTeamWon ? stageReward : 0,
     });
-
-    const teamRoom = `team:${team.teamCode}`;
 
     const payload: Record<string, any> = {
       stage:         team.currentStage,
@@ -249,14 +306,15 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       botScores,
       botTotalScore,
       scoreboard,
-      teamWon,
-      pointsEarned:  teamWon ? stageReward : 0,
+      teamWon:       resolvedTeamWon,
+      isDraw:        isDraw && !resolvedTeamWon,
+      pointsEarned:  resolvedTeamWon ? stageReward : 0,
       stageResults:  team.stageResults,
       isTeamMode:    true,
       entryFeeMode:  team.entryFeeMode,
     };
 
-    if (!teamWon) {
+    if (!resolvedTeamWon) {
       team.status = 'completed';
       team.currentRoomCode = null;
       team.completedAt = new Date();
@@ -264,6 +322,7 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       cleanupTeamArenaGame(state.id);
       payload.tournamentOver = true;
       payload.won = false;
+      if (isDraw) payload.eliminatedByDraw = true;
       payload.totalPointsEarned = team.totalPointsEarned;
       io.to(teamRoom).emit('survival:team_stage_result', payload);
       return;
@@ -277,13 +336,21 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
       const perMember = humanTeamMembers.length > 0 ? Math.floor(stageReward / humanTeamMembers.length) : 0;
       const rupees = pointsToRupees(perMember);
       for (const member of humanTeamMembers) {
-        await User.findByIdAndUpdate(member.userId, { $inc: { walletBalance: rupees } });
+        const snapBefore = await User.findOneAndUpdate(
+          { _id: member.userId },
+          { $inc: { walletBalance: rupees } },
+          { new: false },
+        ).lean() as any;
         await Transaction.create({
           userId: member.userId,
           type: 'winning',
           amount: rupees,
           status: 'completed',
           description: `Team Survival Stage ${team.currentStage} (${stageConfig.name}) — ${perMember} pts (split)`,
+          balanceBefore: snapBefore?.walletBalance ?? 0,
+          balanceAfter: (snapBefore?.walletBalance ?? 0) + rupees,
+          heldBefore: snapBefore?.heldBalance ?? 0,
+          heldAfter: snapBefore?.heldBalance ?? 0,
           metadata: { teamId: String(team._id), stage: team.currentStage },
         });
       }
@@ -293,13 +360,21 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
     } else {
       // host_pays → full prize to host only
       const rupees = pointsToRupees(stageReward);
-      await User.findByIdAndUpdate(team.hostId, { $inc: { walletBalance: rupees } });
+      const snapBefore = await User.findOneAndUpdate(
+        { _id: team.hostId },
+        { $inc: { walletBalance: rupees } },
+        { new: false },
+      ).lean() as any;
       await Transaction.create({
         userId: team.hostId,
         type: 'winning',
         amount: rupees,
         status: 'completed',
         description: `Team Survival Stage ${team.currentStage} (${stageConfig.name}) — ${stageReward} pts (host)`,
+        balanceBefore: snapBefore?.walletBalance ?? 0,
+        balanceAfter: (snapBefore?.walletBalance ?? 0) + rupees,
+        heldBefore: snapBefore?.heldBalance ?? 0,
+        heldAfter: snapBefore?.heldBalance ?? 0,
         metadata: { teamId: String(team._id), stage: team.currentStage },
       });
       team.totalPointsEarned += stageReward;
@@ -349,6 +424,9 @@ export async function handleTeamSurvivalMatchEnd(io: Server, state: GameState, t
         status: 'waiting',
       });
 
+      // T3: clean up previous stage's TeamArena game state before advancing
+      cleanupTeamArenaGame(state.id);
+
       team.currentStage = nextStage;
       team.currentRoomCode = nextCode;
       await team.save();
@@ -397,7 +475,18 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
       });
 
       if (existing?.status === 'playing') {
-        return socket.emit('survival:team_error', 'You have an ongoing team tournament. Finish it first.');
+        const roomExists = existing.currentRoomCode ? await Room.exists({ code: existing.currentRoomCode }) : false;
+        const gameActive = existing.currentRoomCode ? !!getActiveGame(existing.currentRoomCode) : false;
+        if (!roomExists && !gameActive) {
+          // Stale playing team (room/game lost) — auto-abandon so user is not permanently blocked
+          existing.status = 'abandoned';
+          (existing as any).completedAt = new Date();
+          await existing.save();
+          io.to(`team:${existing.teamCode}`).emit('survival:team_disbanded', { reason: 'Tournament expired.' });
+          socket.leave(`team:${existing.teamCode}`);
+        } else {
+          return socket.emit('survival:team_error', 'You have an ongoing team tournament. Finish it first.');
+        }
       }
       if (existing?.status === 'forming') {
         // Auto-abandon stale forming team so user can create a fresh one
@@ -466,7 +555,24 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         'members.userId': userId,
         status: { $in: ['forming', 'playing'] },
       });
-      if (existing) return socket.emit('survival:team_error', 'You are already in another active team.');
+      if (existing) {
+        if (existing.status === 'playing') {
+          const roomExists = existing.currentRoomCode ? await Room.exists({ code: existing.currentRoomCode }) : false;
+          const gameActive = existing.currentRoomCode ? !!getActiveGame(existing.currentRoomCode) : false;
+          if (!roomExists && !gameActive) {
+            // Stale playing team — auto-abandon so this member is not permanently blocked
+            existing.status = 'abandoned';
+            (existing as any).completedAt = new Date();
+            await existing.save();
+            io.to(`team:${existing.teamCode}`).emit('survival:team_disbanded', { reason: 'Tournament expired.' });
+            socket.leave(`team:${existing.teamCode}`);
+          } else {
+            return socket.emit('survival:team_error', 'You are already in another active team.');
+          }
+        } else {
+          return socket.emit('survival:team_error', 'You are already in another active team.');
+        }
+      }
 
       (team.members as any).push({ userId, username, avatar, walletDeducted: false, isBot: false });
       await team.save();
@@ -536,10 +642,16 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
 
   // ── Start tournament (host only) ───────────────────────────────────────────
   socket.on('survival:team_start', async () => {
+    // Hoisted so the catch block can release any holds already placed on failure
+    let team: any;
+    let tierCfg: Awaited<ReturnType<typeof getEffectiveTierConfig>> | undefined;
+    const held: { userId: string; amount: number; userSnap: any }[] = [];
+    const successfulLocks: { userId: string; amount: number }[] = [];
+    const lockedOrReleasedIds = new Set<string>();
     try {
       if (isGuest) return socket.emit('survival:team_error', 'Guests cannot start team tournaments.');
 
-      const team = await SurvivalTeam.findOne({ hostId: userId, status: 'forming' });
+      team = await SurvivalTeam.findOne({ hostId: userId, status: 'forming' });
       if (!team) return socket.emit('survival:team_error', 'No team found. Create a team first.');
       if (team.members.length < 2) return socket.emit('survival:team_error', 'Need at least 2 members (humans or bots) to start.');
 
@@ -548,11 +660,10 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         team.entryFeeMode = 'host_pays';
       }
 
-      const tierCfg = await getEffectiveTierConfig(team.tier);
+      tierCfg = await getEffectiveTierConfig(team.tier);
       const humanMembers = (team.members as any[]).filter(m => !m.isBot);
 
-      // Deduct entry fees (humans only)
-      const deducted: { userId: string; amount: number }[] = [];
+      // ── ENTRY HOLD: reserve funds for all human members ─────────────────────
       for (const member of humanMembers) {
         let costRupees = 0;
         if (team.entryFeeMode === 'split') {
@@ -562,29 +673,49 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         }
 
         if (costRupees > 0) {
-          const ok = await User.findOneAndUpdate(
-            { _id: member.userId, walletBalance: { $gte: costRupees } },
-            { $inc: { walletBalance: -costRupees } },
-            { new: true },
+          const userSnap = await User.findOneAndUpdate(
+            {
+              _id: member.userId,
+              $expr: { $gte: [{ $subtract: ['$walletBalance', { $ifNull: ['$heldBalance', 0] }] }, costRupees] },
+            },
+            { $inc: { heldBalance: costRupees } },
+            { new: false },
           );
-          if (!ok) {
-            for (const d of deducted) {
-              await User.findByIdAndUpdate(d.userId, { $inc: { walletBalance: d.amount } });
+          if (!userSnap) {
+            // Release all holds already placed and record each release so the audit trail is complete
+            for (const h of held) {
+              await User.findByIdAndUpdate(h.userId, { $inc: { heldBalance: -h.amount } }).catch(console.error);
+              await Transaction.create({
+                userId: h.userId,
+                type: 'entry_released',
+                amount: h.amount,
+                status: 'completed',
+                description: `Team Survival hold released — member insufficient balance (${tierCfg!.label})`,
+                balanceBefore: h.userSnap.walletBalance,
+                balanceAfter: h.userSnap.walletBalance,
+                heldBefore: (h.userSnap.heldBalance ?? 0) + h.amount,
+                heldAfter: h.userSnap.heldBalance ?? 0,
+                metadata: { teamId: String(team._id), releaseReason: 'member_insufficient_balance' },
+              }).catch(console.error);
             }
             const user = await User.findById(member.userId).select('username').lean();
             return socket.emit('survival:team_error',
               `${(user as any)?.username ?? 'A member'} has insufficient balance. Tournament not started.`);
           }
           member.walletDeducted = true;
-          deducted.push({ userId: member.userId, amount: costRupees });
+          held.push({ userId: member.userId, amount: costRupees, userSnap });
 
           await Transaction.create({
             userId: member.userId,
-            type: 'entry_fee',
+            type: 'entry_hold',
             amount: costRupees,
             status: 'completed',
-            description: `Team Survival entry (${tierCfg.label})`,
-            metadata: { teamId: String(team._id) },
+            description: `Team Survival hold (${tierCfg.label})`,
+            balanceBefore: userSnap.walletBalance,
+            balanceAfter: userSnap.walletBalance,
+            heldBefore: userSnap.heldBalance ?? 0,
+            heldAfter: (userSnap.heldBalance ?? 0) + costRupees,
+            metadata: { teamId: String(team._id), matchState: 'forming' },
           });
         }
       }
@@ -619,7 +750,73 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
 
       team.status = 'playing';
       team.currentRoomCode = code;
+      // T5: snapshot stage rewards at creation so mid-tournament admin changes don't affect payouts
+      team.stageRewards = tierCfg.stageRewards;
       await team.save();
+
+      // ── T1: ENTRY LOCK — verify wallets BEFORE starting game ───────────────
+      let lockFailed = false;
+      for (const h of held) {
+        const locked = await User.findOneAndUpdate(
+          { _id: h.userId, walletBalance: { $gte: h.amount } },
+          { $inc: { walletBalance: -h.amount, heldBalance: -Math.min(h.amount, (h.userSnap.heldBalance ?? 0) + h.amount) } },
+          { new: true },
+        );
+        if (locked) {
+          successfulLocks.push({ userId: h.userId, amount: h.amount });
+          lockedOrReleasedIds.add(h.userId);
+          await Transaction.create({
+            userId: h.userId,
+            type: 'entry_locked',
+            amount: h.amount,
+            status: 'completed',
+            description: `Team Survival locked (${tierCfg.label})`,
+            balanceBefore: locked.walletBalance + h.amount,
+            balanceAfter: locked.walletBalance,
+            heldBefore: (h.userSnap.heldBalance ?? 0) + h.amount,
+            heldAfter: locked.heldBalance,
+            metadata: { teamId: String(team._id), matchState: 'live' },
+          });
+        } else {
+          lockFailed = true;
+          console.error(`[TeamSurvival] Lock failed for user ${h.userId} — releasing stuck hold`);
+          await User.findByIdAndUpdate(h.userId, { $inc: { heldBalance: -h.amount } }).catch(console.error);
+          lockedOrReleasedIds.add(h.userId);
+          await Transaction.create({
+            userId: h.userId,
+            type: 'entry_released',
+            amount: h.amount,
+            status: 'completed',
+            description: `Team Survival hold released — lock failed (${tierCfg.label})`,
+            balanceBefore: h.userSnap.walletBalance,
+            balanceAfter: h.userSnap.walletBalance,
+            heldBefore: (h.userSnap.heldBalance ?? 0) + h.amount,
+            heldAfter: h.userSnap.heldBalance ?? 0,
+            metadata: { teamId: String(team._id), releaseReason: 'lock_failed' },
+          }).catch(console.error);
+        }
+      }
+
+      if (lockFailed) {
+        // Reverse all successful locks so no one is charged for a cancelled tournament
+        for (const l of successfulLocks) {
+          await User.findByIdAndUpdate(l.userId, { $inc: { walletBalance: l.amount } }).catch(console.error);
+          await Transaction.create({
+            userId: l.userId,
+            type: 'system_rollback',
+            amount: l.amount,
+            status: 'completed',
+            description: `Team Survival lock reversed — tournament aborted due to partial lock failure (${tierCfg.label})`,
+            metadata: { teamId: String(team._id), releaseReason: 'partial_lock_abort' },
+          }).catch(console.error);
+        }
+        await Room.deleteOne({ code }).catch(() => {});
+        team.status = 'abandoned';
+        team.currentRoomCode = null;
+        await team.save().catch(() => {});
+        socket.emit('survival:team_error', 'A team member had insufficient balance. Tournament cancelled and all charges reversed.');
+        return;
+      }
 
       await startTeamRoom(io, team, code, stageConfig);
 
@@ -635,6 +832,36 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
       });
     } catch (err) {
       console.error('[TeamSurvival] Start error:', err);
+      // Reverse any locks already committed before the exception
+      for (const l of successfulLocks) {
+        await User.findByIdAndUpdate(l.userId, { $inc: { walletBalance: l.amount } }).catch(console.error);
+        await Transaction.create({
+          userId: l.userId,
+          type: 'system_rollback',
+          amount: l.amount,
+          status: 'completed',
+          description: `Team Survival lock reversed — startup exception (${tierCfg?.label ?? team?.tier ?? 'unknown'})`,
+          metadata: { teamId: String(team?._id), releaseReason: 'startup_failed' },
+        }).catch(console.error);
+      }
+      // Release holds for members not yet processed by the lock loop
+      for (const h of held) {
+        if (!lockedOrReleasedIds.has(h.userId)) {
+          await User.findByIdAndUpdate(h.userId, { $inc: { heldBalance: -h.amount } }).catch(console.error);
+          await Transaction.create({
+            userId: h.userId,
+            type: 'entry_released',
+            amount: h.amount,
+            status: 'completed',
+            description: `Team Survival hold released — startup failed (${tierCfg?.label ?? team?.tier ?? 'unknown'})`,
+            balanceBefore: h.userSnap.walletBalance,
+            balanceAfter: h.userSnap.walletBalance,
+            heldBefore: (h.userSnap.heldBalance ?? 0) + h.amount,
+            heldAfter: h.userSnap.heldBalance ?? 0,
+            metadata: { teamId: String(team?._id), releaseReason: 'startup_failed' },
+          }).catch(console.error);
+        }
+      }
       socket.emit('survival:team_error', 'Failed to start tournament. Please try again.');
     }
   });
@@ -647,6 +874,15 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
 
       const stageConfig = TEAM_SURVIVAL_STAGES.find(s => s.stage === team.currentStage);
       if (!stageConfig) return;
+
+      // T2: guard against double-start if host fires continue twice
+      if (getActiveGame(team.currentRoomCode)) {
+        io.to(`team:${team.teamCode}`).emit('survival:team_stage_started', {
+          stage: team.currentStage, stageName: stageConfig.name, stageDesc: stageConfig.description,
+          roomCode: team.currentRoomCode, botNames: stageConfig.botNames,
+        });
+        return;
+      }
 
       await startTeamRoom(io, team, team.currentRoomCode, stageConfig);
 
@@ -669,8 +905,13 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
       const team = await SurvivalTeam.findOne({ hostId: userId, status: 'playing' });
       if (!team) return socket.emit('survival:team_error', 'No active team tournament found.');
 
-      const canRefund = (team.stageResults ?? []).length === 0;
+      // T4: refund only if zero rounds have been played across all stages (including active game)
+      const activeGame = team.currentRoomCode ? getActiveGame(team.currentRoomCode) : null;
+      const totalRoundsPlayed = (team.roundsPlayed ?? 0) + (activeGame ? activeGame.roundNumber - 1 : 0);
+      const canRefund = (team.stageResults ?? []).length === 0 && totalRoundsPlayed === 0;
       const tierCfg = await getEffectiveTierConfig(team.tier);
+      // Use the entry points stored at tournament creation, not the current admin config
+      const originalEntryPoints: number = (team as any).entryPoints ?? tierCfg.entryPoints;
       const humanMembers = (team.members as any[]).filter(m => !m.isBot && m.walletDeducted);
 
       let refundPoints = 0;
@@ -678,26 +919,35 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         for (const member of humanMembers) {
           let refundRupees = 0;
           if (team.entryFeeMode === 'split') {
-            refundRupees = pointsToRupees(Math.ceil(tierCfg.entryPoints / humanMembers.length));
+            refundRupees = pointsToRupees(Math.ceil(originalEntryPoints / humanMembers.length));
           } else if (member.userId === team.hostId) {
-            refundRupees = pointsToRupees(tierCfg.entryPoints);
+            refundRupees = pointsToRupees(originalEntryPoints);
           }
           if (refundRupees > 0) {
-            await User.findByIdAndUpdate(member.userId, { $inc: { walletBalance: refundRupees } });
+            const snapBefore = await User.findByIdAndUpdate(
+              member.userId,
+              { $inc: { walletBalance: refundRupees } },
+              { new: false },
+            ).lean() as any;
             refundPoints += refundRupees * POINTS_PER_RUPEE;
             await Transaction.create({
               userId: member.userId,
-              type: 'refund',
+              type: 'abandoned_resolution',
               amount: refundRupees,
               status: 'completed',
-              description: `Team Survival quit refund (${tierCfg.label})`,
-              metadata: { teamId: String(team._id) },
+              description: `Team Survival entry returned — quit before playing (${tierCfg.label})`,
+              balanceBefore: snapBefore?.walletBalance ?? 0,
+              balanceAfter: (snapBefore?.walletBalance ?? 0) + refundRupees,
+              heldBefore: snapBefore?.heldBalance ?? 0,
+              heldAfter: snapBefore?.heldBalance ?? 0,
+              metadata: { teamId: String(team._id), matchState: 'cancelled' },
             });
           }
         }
       }
 
       team.status = 'abandoned';
+      team.currentRoomCode = null;
       team.completedAt = new Date();
       await team.save();
 
