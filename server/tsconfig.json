@@ -10,11 +10,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "types": ["node"],
+    "types": ["node", "jest"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
   },
   "include": ["src/**/*", "../shared/src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/__tests__/**/*", "src/**/*.test.ts", "src/__tests__/**/*"]
+  "exclude": ["node_modules", "dist"]
 }
