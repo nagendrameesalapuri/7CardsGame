@@ -117,6 +117,7 @@ function emitGameState(socket: Socket, roomCode: string, userId: string) {
 }
 
 const handledMatchEnds = new Set<string>();
+const survivalStartInProgress = new Set<string>(); // prevents double-start race condition
 
 // Called from gameHandler after every match ends
 export async function handleSurvivalMatchEnd(io: Server, state: GameState, matchResult: any) {
@@ -159,9 +160,20 @@ export async function handleSurvivalMatchEnd(io: Server, state: GameState, match
   const botScores  = botPlayers.map(b => getScore(b.id));
   const minBotScore = botScores.length > 0 ? Math.min(...botScores) : 999;
 
+  // Guard: if no round completed and all scores are 0, the game ended before any play
+  // (e.g. immediate disconnect). Don't trigger a false tiebreaker — mark as abandoned.
+  const roundCompleted = !!state.roundResult;
+  if (!roundCompleted && humanScore === 0 && botScores.every(s => s === 0)) {
+    console.warn(`[Survival] Match ${state.id} ended with no completed round — skipping tiebreaker`);
+    return;
+  }
+
   // Human wins only if their score is strictly lower than EVERY bot (lower = better in 7-card)
   const playerWon = humanScore < minBotScore;
-  const isDraw    = humanScore === minBotScore && botScores.every(s => s >= humanScore);
+  const isDraw    = roundCompleted && humanScore === minBotScore && botScores.every(s => s >= humanScore);
+
+  // Mark old survival room as completed so it clears from admin live rooms view
+  await Room.findOneAndUpdate({ code: state.roomId }, { status: 'completed' }).catch(() => {});
 
   // Persist rounds played
   survival.roundsPlayed = (survival.roundsPlayed ?? 0) + state.roundNumber;
@@ -400,6 +412,8 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
 
   // Start or resume survival tournament
   socket.on('survival:start', async (data: { tier: SurvivalTier }) => {
+    if (survivalStartInProgress.has(userId)) return; // debounce double-tap
+    survivalStartInProgress.add(userId);
     // S2: hoist so outer catch can release hold on Transaction.create failure
     let tierCfg: Awaited<ReturnType<typeof getEffectiveTierConfig>> | undefined;
     let entryRupees = 0;
@@ -608,6 +622,8 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
       }
       console.error('[Survival] Start error:', err);
       socket.emit('survival:error', 'Failed to start tournament. Please try again.');
+    } finally {
+      survivalStartInProgress.delete(userId);
     }
   });
 

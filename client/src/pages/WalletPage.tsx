@@ -1073,8 +1073,10 @@ export function WalletPage() {
             </div>
 
             {/* ── Activity Tab ── */}
-            {historyTab === "activity" && (
-              transactions.length === 0 ? (
+            {historyTab === "activity" && (() => {
+              // Hide internal hold-accounting entries — they don't represent real money movement
+              const visibleTx = transactions.filter(tx => tx.type !== 'entry_hold' && tx.type !== 'entry_released');
+              return visibleTx.length === 0 ? (
                 <div className="text-center py-12 text-dark-muted">
                   <p className="text-4xl mb-3">📊</p>
                   <p className="text-sm">No activity yet</p>
@@ -1083,7 +1085,7 @@ export function WalletPage() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    {transactions.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map((tx: any) => {
+                    {visibleTx.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE).map((tx: any) => {
                       const isDebit   = TX_DEBIT.has(tx.type);
                       const isCredit  = TX_CREDIT.has(tx.type);
                       const isNeutral = TX_NEUTRAL.has(tx.type);
@@ -1177,10 +1179,10 @@ export function WalletPage() {
                       );
                     })}
                   </div>
-                  <PageBar page={txPage} total={transactions.length} size={TX_PAGE_SIZE} onChange={setTxPage} />
+                  <PageBar page={txPage} total={visibleTx.length} size={TX_PAGE_SIZE} onChange={setTxPage} />
                 </>
-              )
-            )}
+              );
+            })()}
 
             {/* ── Vouchers Tab (deposits) ── */}
             {historyTab === "vouchers" && (

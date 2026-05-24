@@ -438,8 +438,8 @@ interface HoldTracker {
 
 const holdExploitTracker = new Map<string, HoldTracker>();
 const HOLD_RELEASE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_RELEASES_IN_WINDOW = 3;
-const COOLDOWN_MS = 15 * 60 * 1000; // 15 min cooldown
+const MAX_RELEASES_IN_WINDOW = 8; // raised from 3 — active players legitimately join many games
+const COOLDOWN_MS = 10 * 60 * 1000; // 10 min cooldown (was 15)
 
 export function trackHoldPlaced(_userId: string) {
   // placeholder — holds placed are not flagged, only releases

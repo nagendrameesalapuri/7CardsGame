@@ -146,7 +146,13 @@ export type TransactionType =
   | "winning"
   | "entry_fee"
   | "refund"
-  | "bonus";
+  | "bonus"
+  | "entry_hold"
+  | "entry_released"
+  | "entry_locked"
+  | "match_settlement"
+  | "abandoned_resolution"
+  | "system_rollback";
 
 export interface WalletTransaction {
   _id: string;

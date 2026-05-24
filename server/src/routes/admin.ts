@@ -274,6 +274,8 @@ export default function createAdminRouter(io: Server) {
       const dbRooms = await Room.find({
         status: { $in: ["waiting", "playing"] },
         code: { $nin: [...inMemoryCodes] },
+        // Exclude private survival/tiebreaker rooms stuck in waiting — they're managed internally
+        $nor: [{ 'config.isPrivate': true, status: 'waiting', name: /^(Survival|Tiebreak)/ }],
       }).lean();
 
       const rooms = [
