@@ -10,6 +10,7 @@ export interface IUser extends Document {
   isBanned: boolean;
   guestToken?: string;
   walletBalance: number;
+  heldBalance: number;
   stats: {
     gamesPlayed: number;
     gamesWon: number;
@@ -36,6 +37,7 @@ const UserSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     guestToken:    { type: String, sparse: true, unique: true },
     walletBalance: { type: Number, default: 0, min: 0 },
+    heldBalance:   { type: Number, default: 0, min: 0 },
     stats: {
       gamesPlayed: { type: Number, default: 0 },
       gamesWon: { type: Number, default: 0 },
@@ -50,6 +52,10 @@ const UserSchema = new Schema<IUser>(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+UserSchema.virtual('availableBalance').get(function () {
+  return Math.max(0, this.walletBalance - this.heldBalance);
+});
 
 UserSchema.virtual('stats.winRate').get(function () {
   return this.stats.gamesPlayed > 0

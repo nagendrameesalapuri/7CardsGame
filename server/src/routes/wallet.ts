@@ -37,7 +37,7 @@ router.post('/dev/add', async (req: Request, res: Response) => {
 // ── GET /api/wallet ───────────────────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user!.id).select('walletBalance isGuest');
+    const user = await User.findById(req.user!.id).select('walletBalance heldBalance isGuest');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const [transactions, withdrawalRequests, depositRequests] = await Promise.all([
@@ -63,8 +63,13 @@ router.get('/', async (req: Request, res: Response) => {
       return doc;
     });
 
+    const heldBalance = Math.round((user.heldBalance ?? 0) * 100) / 100;
+    const totalBalance = Math.round(user.walletBalance * 100) / 100;
+    const availableBalance = Math.max(0, totalBalance - heldBalance);
     res.json({
-      balance: Math.round(user.walletBalance * 100) / 100,
+      balance: totalBalance,
+      heldBalance,
+      availableBalance,
       isGuest: user.isGuest,
       lockedRewards,
       transactions,
