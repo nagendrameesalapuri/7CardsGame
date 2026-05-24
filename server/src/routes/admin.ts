@@ -130,6 +130,12 @@ export default function createAdminRouter(io: Server) {
           if (typeof st.boss_arena === "boolean")
             cfg.featureFlags.survivalTiers.boss_arena = st.boss_arena;
         }
+        if (typeof featureFlags.teamArenaEnabled === "boolean") {
+          (cfg.featureFlags as any).teamArenaEnabled = featureFlags.teamArenaEnabled;
+        }
+        if (typeof featureFlags.teamArenaDisabledReason === "string") {
+          (cfg.featureFlags as any).teamArenaDisabledReason = featureFlags.teamArenaDisabledReason.trim().slice(0, 100);
+        }
       }
 
       if (gameConfig) {

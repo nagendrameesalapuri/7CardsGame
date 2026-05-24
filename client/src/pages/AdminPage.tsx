@@ -1001,6 +1001,8 @@ function LeaderboardSection() {
   );
 }
 
+const TEAM_ARENA_REASONS = ['Maintenance', 'Upgrading', 'Fixing Bugs', 'Temporarily Closed'];
+
 function FeaturesSection({
   config,
   onSave,
@@ -1010,6 +1012,7 @@ function FeaturesSection({
 }) {
   const [flags, setFlags] = useState({ ...config.featureFlags });
   const [saving, setSaving] = useState(false);
+  const [customReason, setCustomReason] = useState('');
 
   useEffect(() => {
     setFlags({ ...config.featureFlags });
@@ -1079,6 +1082,59 @@ function FeaturesSection({
               }
             />
           ))}
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">Team Arena</p>
+        <div className="space-y-3 rounded-xl p-4" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.18)' }}>
+          <Toggle
+            label="Team Arena"
+            desc="Enable the 2v2 team survival tournament mode"
+            value={flags.teamArenaEnabled ?? true}
+            onChange={(v) => setFlags((f: any) => ({ ...f, teamArenaEnabled: v }))}
+          />
+          {!(flags.teamArenaEnabled ?? true) && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-dark-muted">Reason shown to players:</p>
+              <div className="flex flex-wrap gap-2">
+                {TEAM_ARENA_REASONS.map(reason => (
+                  <button
+                    key={reason}
+                    onClick={() => {
+                      setCustomReason('');
+                      setFlags((f: any) => ({ ...f, teamArenaDisabledReason: reason }));
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: flags.teamArenaDisabledReason === reason ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${flags.teamArenaDisabledReason === reason ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                      color: flags.teamArenaDisabledReason === reason ? '#c084fc' : '#9ca3af',
+                    }}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Or type a custom reason…"
+                value={customReason}
+                onChange={(e) => {
+                  setCustomReason(e.target.value);
+                  if (e.target.value) setFlags((f: any) => ({ ...f, teamArenaDisabledReason: e.target.value }));
+                }}
+                maxLength={100}
+                className="w-full px-3 py-2 rounded-lg text-xs text-white placeholder-dark-muted focus:outline-none"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+              />
+              {flags.teamArenaDisabledReason && (
+                <p className="text-[11px]" style={{ color: '#a855f7' }}>
+                  Banner will show: "<span className="font-semibold">{flags.teamArenaDisabledReason}</span>"
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

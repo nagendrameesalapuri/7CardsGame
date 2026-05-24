@@ -374,6 +374,12 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
   }) => {
     try {
       if (isGuest) return socket.emit('survival:team_error', 'Guests cannot join team tournaments. Please sign in.');
+      const adminCfg = await getAdminConfig();
+      const teamEnabled = (adminCfg.featureFlags as any).teamArenaEnabled !== false;
+      if (!teamEnabled) {
+        const reason = (adminCfg.featureFlags as any).teamArenaDisabledReason || 'Maintenance';
+        return socket.emit('survival:team_error', `Team Arena is currently unavailable: ${reason}`);
+      }
       const { tier, entryFeeMode } = data;
       const maxSize = 2; // Team Arena is fixed at 2v2
       if (!TIER_CONFIG[tier]) return socket.emit('survival:team_error', 'Invalid tournament tier.');
@@ -430,6 +436,14 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
   socket.on('survival:team_join', async (data: { teamCode: string }) => {
     try {
       if (isGuest) return socket.emit('survival:team_error', 'Guests cannot join team tournaments. Please sign in.');
+
+      const adminCfg = await getAdminConfig();
+      const teamEnabled = (adminCfg.featureFlags as any).teamArenaEnabled !== false;
+      if (!teamEnabled) {
+        const reason = (adminCfg.featureFlags as any).teamArenaDisabledReason || 'Maintenance';
+        return socket.emit('survival:team_error', `Team Arena is currently unavailable: ${reason}`);
+      }
+
       const code = (data.teamCode ?? '').trim().toUpperCase();
       if (!code) return socket.emit('survival:team_error', 'Enter a team code.');
 

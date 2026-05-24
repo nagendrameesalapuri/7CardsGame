@@ -55,6 +55,8 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
         elite: { type: Boolean, default: true },
         boss_arena: { type: Boolean, default: true },
       },
+      teamArenaEnabled: { type: Boolean, default: true },
+      teamArenaDisabledReason: { type: String, default: 'Maintenance' },
     },
     gameConfig: {
       minPlayers: { type: Number, default: 2, min: 2, max: 10 },

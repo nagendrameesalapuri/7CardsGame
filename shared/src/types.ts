@@ -288,6 +288,8 @@ export interface AdminFeatureFlags {
     elite: boolean;
     boss_arena: boolean;
   };
+  teamArenaEnabled: boolean;
+  teamArenaDisabledReason: string; // shown to users when disabled, e.g. "Maintenance"
 }
 
 export interface AdminGameConfig {

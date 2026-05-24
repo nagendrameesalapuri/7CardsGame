@@ -1051,14 +1051,17 @@ function SurvivalHistoryTab() {
 
 // ── Mode Selection Modal ───────────────────────────────────────────────────────
 
-function ModeSelectModal({ tier, tierLabel, tierColor, onIndividual, onTeam, onClose }: {
+function ModeSelectModal({ tier, tierLabel, tierColor, onIndividual, onTeam, onClose, teamArenaEnabled, teamArenaDisabledReason }: {
   tier: string;
   tierLabel: string;
   tierColor: string;
   onIndividual: () => void;
   onTeam: () => void;
   onClose: () => void;
+  teamArenaEnabled?: boolean;
+  teamArenaDisabledReason?: string;
 }) {
+  const teamEnabled = teamArenaEnabled !== false;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -1088,13 +1091,23 @@ function ModeSelectModal({ tier, tierLabel, tierColor, onIndividual, onTeam, onC
             <span className="text-[10px] text-dark-muted text-center leading-tight">1 player vs AI · same as before</span>
           </motion.button>
 
-          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            onClick={onTeam}
-            className="flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all"
-            style={{ background: `${tierColor}12`, border: `1px solid ${tierColor}45` }}>
-            <span className="text-3xl">👥</span>
-            <span className="text-sm font-black" style={{ color: tierColor }}>Team</span>
-            <span className="text-[10px] text-dark-muted text-center leading-tight">2–4 players · combined score</span>
+          <motion.button
+            whileHover={teamEnabled ? { scale: 1.03 } : {}}
+            whileTap={teamEnabled ? { scale: 0.97 } : {}}
+            onClick={teamEnabled ? onTeam : undefined}
+            disabled={!teamEnabled}
+            className="flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all relative disabled:cursor-not-allowed"
+            style={{
+              background: teamEnabled ? `${tierColor}12` : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${teamEnabled ? `${tierColor}45` : 'rgba(255,255,255,0.08)'}`,
+              opacity: teamEnabled ? 1 : 0.65,
+            }}>
+            <span className="text-3xl">{teamEnabled ? '👥' : '🔒'}</span>
+            <span className="text-sm font-black" style={{ color: teamEnabled ? tierColor : '#6b7280' }}>Team</span>
+            {teamEnabled
+              ? <span className="text-[10px] text-dark-muted text-center leading-tight">2–4 players · combined score</span>
+              : <span className="text-[10px] text-center leading-tight" style={{ color: '#f59e0b' }}>{teamArenaDisabledReason || 'Maintenance'}</span>
+            }
           </motion.button>
         </div>
 
@@ -1748,6 +1761,8 @@ export function SurvivalTournamentPage() {
   const [statusChecked, setStatusChecked] = useState(false);
   const [enabledTiers, setEnabledTiers] = useState<Record<string, boolean>>({ beginner: true, pro: true, elite: true, boss_arena: true });
   const [survivalCfg, setSurvivalCfg] = useState<Record<string, { entryPoints: number; stageRewards: number[] }>>({});
+  const [teamArenaEnabled, setTeamArenaEnabled] = useState(true);
+  const [teamArenaDisabledReason, setTeamArenaDisabledReason] = useState('');
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [quitting, setQuitting] = useState(false);
   const [showTeamQuitConfirm, setShowTeamQuitConfirm] = useState(false);
@@ -1795,14 +1810,20 @@ export function SurvivalTournamentPage() {
     socketTeam.status(); // check for any active/forming team on mount
     refreshBalance();
     configApi.getPublic().then(r => {
-      const st = r.data.featureFlags?.survivalTiers;
+      const ff = r.data.featureFlags;
+      const st = ff?.survivalTiers;
       if (st) setEnabledTiers({ beginner: st.beginner ?? true, pro: st.pro ?? true, elite: st.elite ?? true, boss_arena: st.boss_arena ?? true });
       if (r.data.survivalConfig) setSurvivalCfg(r.data.survivalConfig);
+      setTeamArenaEnabled(ff?.teamArenaEnabled !== false);
+      setTeamArenaDisabledReason(ff?.teamArenaDisabledReason ?? '');
     }).catch(() => {});
     const unsub6 = on('admin:config_updated', (cfg: any) => {
-      const st = cfg.featureFlags?.survivalTiers;
+      const ff = cfg.featureFlags;
+      const st = ff?.survivalTiers;
       if (st) setEnabledTiers({ beginner: st.beginner ?? true, pro: st.pro ?? true, elite: st.elite ?? true, boss_arena: st.boss_arena ?? true });
       if ((cfg as any).survivalConfig) setSurvivalCfg((cfg as any).survivalConfig);
+      setTeamArenaEnabled(ff?.teamArenaEnabled !== false);
+      setTeamArenaDisabledReason(ff?.teamArenaDisabledReason ?? '');
     });
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents, refreshBalance]);
@@ -1916,6 +1937,8 @@ export function SurvivalTournamentPage() {
             onIndividual={handleSoloMode}
             onTeam={handleTeamMode}
             onClose={() => { setShowModeSelect(false); setPendingTier(null); }}
+            teamArenaEnabled={teamArenaEnabled}
+            teamArenaDisabledReason={teamArenaDisabledReason}
           />
         )}
       </AnimatePresence>
@@ -2232,20 +2255,38 @@ export function SurvivalTournamentPage() {
               {!user?.isGuest && !teamState && !activeStatus && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
                   className="rounded-2xl p-4 flex items-center gap-4"
-                  style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.28)' }}>
+                  style={{
+                    background: teamArenaEnabled ? 'rgba(168,85,247,0.07)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${teamArenaEnabled ? 'rgba(168,85,247,0.28)' : 'rgba(255,255,255,0.08)'}`,
+                    opacity: teamArenaEnabled ? 1 : 0.7,
+                  }}>
                   <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                    style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)' }}>
-                    🔗
+                    style={{
+                      background: teamArenaEnabled ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${teamArenaEnabled ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                    }}>
+                    {teamArenaEnabled ? '🔗' : '🔒'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black" style={{ color: '#a855f7' }}>Join a Friend's Team</p>
-                    <p className="text-[11px] text-dark-muted leading-tight">Got an invite code? Join directly — no tier selection needed</p>
+                    <p className="text-sm font-black" style={{ color: teamArenaEnabled ? '#a855f7' : '#9ca3af' }}>Join a Friend's Team</p>
+                    {teamArenaEnabled
+                      ? <p className="text-[11px] text-dark-muted leading-tight">Got an invite code? Join directly — no tier selection needed</p>
+                      : <p className="text-[11px] leading-tight" style={{ color: '#f59e0b' }}>
+                          Unavailable — {teamArenaDisabledReason || 'Maintenance'}
+                        </p>
+                    }
                   </div>
-                  <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                    onClick={() => setShowQuickJoinTeam(true)}
-                    className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black"
-                    style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' }}>
-                    Join Team
+                  <motion.button
+                    whileHover={teamArenaEnabled ? { scale: 1.04 } : {}}
+                    whileTap={teamArenaEnabled ? { scale: 0.96 } : {}}
+                    onClick={() => teamArenaEnabled && setShowQuickJoinTeam(true)}
+                    disabled={!teamArenaEnabled}
+                    className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black disabled:cursor-not-allowed"
+                    style={{
+                      background: teamArenaEnabled ? 'linear-gradient(135deg,#a855f7,#7c3aed)' : 'rgba(255,255,255,0.08)',
+                      color: teamArenaEnabled ? '#fff' : '#6b7280',
+                    }}>
+                    {teamArenaEnabled ? 'Join Team' : 'Disabled'}
                   </motion.button>
                 </motion.div>
               )}
