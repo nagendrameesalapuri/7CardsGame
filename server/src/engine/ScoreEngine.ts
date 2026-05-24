@@ -42,9 +42,8 @@ export class ScoreEngine {
     const showPlayerEntry = totals.find(t => t.player.id === showPlayerId)!;
     const showPlayerTotal = showPlayerEntry.handTotal;
 
-    // Show caller wins on tie — declared first gets the edge
-    const showPlayerWon = showPlayerTotal <= minTotal;
-
+    // showPlayerWon and winnerIds are computed differently for team vs individual mode.
+    let showPlayerWon: boolean;
     let winnerIds: string[];
 
     if (teamGroups && teamGroups.length >= 2) {
@@ -52,19 +51,22 @@ export class ScoreEngine {
       const showTeamUserIds = teamGroups.find(g => g.includes(showPlayer.userId)) ?? [showPlayer.userId];
       const enemyTeamUserIds = teamGroups.find(g => !g.includes(showPlayer.userId)) ?? [];
 
+      // Compare show caller ONLY against opposing team — ignore own teammates' scores.
+      // This prevents a low-scoring ally from making the show appear to "fail".
+      const enemyTotals = totals.filter(t => enemyTeamUserIds.includes(t.player.userId));
+      const minEnemyTotal = enemyTotals.length > 0 ? Math.min(...enemyTotals.map(t => t.handTotal)) : Infinity;
+
+      // Tie → caller wins (declared first gets the edge), same as individual mode.
+      showPlayerWon = showPlayerTotal <= minEnemyTotal;
+
       if (showPlayerWon) {
-        // Entire show caller's team wins (0 pts each)
-        winnerIds = state.players
-          .filter(p => showTeamUserIds.includes(p.userId))
-          .map(p => p.id);
+        winnerIds = state.players.filter(p => showTeamUserIds.includes(p.userId)).map(p => p.id);
       } else {
-        // Entire enemy team wins (0 pts each); show caller pays full penalty
-        winnerIds = state.players
-          .filter(p => enemyTeamUserIds.includes(p.userId))
-          .map(p => p.id);
+        winnerIds = state.players.filter(p => enemyTeamUserIds.includes(p.userId)).map(p => p.id);
       }
     } else {
-      // Individual mode (original logic)
+      // Individual mode — original logic unchanged.
+      showPlayerWon = showPlayerTotal <= minTotal;
       winnerIds = showPlayerWon
         ? [showPlayerId]
         : totals.filter(t => t.handTotal === minTotal).map(t => t.player.id);
