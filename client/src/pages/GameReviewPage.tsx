@@ -286,7 +286,12 @@ function GameView({ game, transactions }: { game: any; transactions: any[] }) {
   const pageRounds = rounds.slice(roundPage * ROUNDS_PER_PAGE, (roundPage + 1) * ROUNDS_PER_PAGE);
   const totalRoundPages = Math.ceil(rounds.length / ROUNDS_PER_PAGE);
 
-  const pot = game.entryFee * (game.players?.filter((p: any) => !p.isBot).length ?? 0);
+  // Compute net pot from actual transactions (entry_fee count − refund count) × fee
+  // This is accurate even when players joined+paid then left before game started.
+  const feeCount = transactions.filter((t: any) => t.type === "entry_fee").length;
+  const refundCount = transactions.filter((t: any) => t.type === "refund").length;
+  const netPaidCount = Math.max(0, feeCount - refundCount);
+  const pot = game.entryFee * netPaidCount;
   const winnerObj = game.players?.find((p: any) => p.userId === game.winnerId || p.username === game.winnerUsername);
   const durationStr = dur(game.startedAt, game.endedAt);
 
@@ -339,8 +344,16 @@ function GameView({ game, transactions }: { game: any; transactions: any[] }) {
 
       {/* ── Players Roster ── */}
       <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-        <div className="px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <p className="text-xs font-bold uppercase tracking-wider text-dark-muted">Players · {game.players?.length ?? 0}</p>
+        <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <p className="text-xs font-bold uppercase tracking-wider text-dark-muted">
+            Players · {game.players?.length ?? 0} played
+          </p>
+          {feeCount > netPaidCount && (
+            <p className="text-[11px]" style={{ color: "#6b7280" }}>
+              +{feeCount - netPaidCount} joined &amp; left before game started (refunded)
+            </p>
+          )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-px" style={{ background: "rgba(255,255,255,0.04)" }}>
           {(game.players ?? []).map((p: any, i: number) => {
@@ -371,34 +384,108 @@ function GameView({ game, transactions }: { game: any; transactions: any[] }) {
       {/* ── Financial Summary ── */}
       {transactions.length > 0 && (
         <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-          <div className="px-5 py-3 flex items-center justify-between"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <p className="text-xs font-bold uppercase tracking-wider text-dark-muted">Financials</p>
-            {pot > 0 && <span className="text-sm font-black" style={{ color: "#fbbf24" }}>Pot: ₹{pot}</span>}
+          {/* Header with pot summary */}
+          <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(251,191,36,0.04)" }}>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-dark-muted">Financials</p>
+              <div className="flex items-center gap-3 text-xs flex-wrap">
+                <span className="text-dark-muted">{feeCount} paid · {refundCount} refunded · {netPaidCount} net played</span>
+                {pot > 0 && (
+                  <span className="font-black px-3 py-1 rounded-lg"
+                    style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>
+                    Prize Pot: ₹{pot}
+                  </span>
+                )}
+              </div>
+            </div>
+            {refundCount > 0 && (
+              <p className="text-[11px] mt-2 flex items-center gap-1.5" style={{ color: "#6b7280" }}>
+                <span>ℹ️</span>
+                {refundCount} player{refundCount > 1 ? "s" : ""} joined and paid but left before the game started — their entry fee was automatically refunded. Only {netPaidCount} player{netPaidCount !== 1 ? "s" : ""} actually played.
+              </p>
+            )}
           </div>
+
           <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-            {transactions.map((t: any) => {
-              const col = TX_COLOR[t.status === "failed" ? "failed" : t.type] ?? "#9ca3af";
-              const icon = TX_ICON[t.status === "failed" ? "failed" : t.type] ?? "💳";
+            {transactions.map((t: any, idx: number) => {
+              const isFailed = t.status === "failed";
+              const txKey = t.type as string;
+              const col = TX_COLOR[isFailed ? "failed" : txKey] ?? "#9ca3af";
+              const icon = TX_ICON[isFailed ? "failed" : txKey] ?? "💳";
+              const isDebit = t.type === "entry_fee";
+              const sign = isDebit ? "−" : "+";
+
+              // Build a human-readable label
+              const typeLabel: Record<string, string> = {
+                entry_fee: "Entry Fee Paid",
+                winning: "Prize Awarded",
+                refund: "Entry Fee Refunded",
+                failed: "Payment Failed",
+              };
+              const label = isFailed ? "Payment Failed" : (typeLabel[txKey] ?? txKey);
+
+              // Refund context: explain why
+              const refundReason = t.type === "refund"
+                ? "Left room before game started"
+                : null;
+
               return (
-                <div key={t._id} className="flex items-center gap-3 px-5 py-3">
-                  <span className="text-base flex-shrink-0">{icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{t.description || t.type}</p>
-                    <p className="text-[11px] text-dark-muted">{fmt(t.createdAt)}</p>
-                    {t.balanceBefore != null && t.balanceAfter != null && t.balanceBefore !== 0 && (
-                      <p className="text-[10px] mt-0.5" style={{ color: "#4b5563" }}>
-                        ₹{t.balanceBefore} → ₹{t.balanceAfter}
+                <div key={t._id ?? idx} className="px-5 py-3.5"
+                  style={{ background: isFailed ? "rgba(255,59,92,0.03)" : "transparent" }}>
+                  <div className="flex items-start gap-3">
+                    {/* Icon */}
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-base"
+                      style={{ background: `${col}18`, border: `1px solid ${col}30` }}>
+                      {icon}
+                    </div>
+
+                    {/* Main content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Player name — prominent */}
+                        <span className="font-bold text-sm text-white">
+                          {t.playerUsername ?? "Unknown"}
+                        </span>
+                        {/* Transaction type badge */}
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: `${col}20`, color: col }}>
+                          {label}
+                        </span>
+                        {isFailed && (
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded"
+                            style={{ background: "rgba(255,59,92,0.2)", color: "#ff6b6b" }}>
+                            FAILED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Refund reason */}
+                      {refundReason && (
+                        <p className="text-[11px] mt-0.5" style={{ color: "#6b7280" }}>
+                          ↳ {refundReason}
+                        </p>
+                      )}
+
+                      {/* Timestamp */}
+                      <p className="text-[11px] text-dark-muted mt-0.5">{fmt(t.createdAt)}</p>
+
+                      {/* Balance trail */}
+                      {t.balanceBefore != null && t.balanceAfter != null && (t.balanceBefore !== 0 || t.balanceAfter !== 0) && (
+                        <p className="text-[10px] mt-0.5 font-mono" style={{ color: "#374151" }}>
+                          Wallet: ₹{t.balanceBefore} → ₹{t.balanceAfter}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Amount */}
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-black text-base" style={{ color: isFailed ? "#ff6b6b" : col }}>
+                        {sign}₹{t.amount}
                       </p>
-                    )}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-sm" style={{ color: col }}>
-                      {t.type === "entry_fee" ? "−" : "+"}₹{t.amount}
-                    </p>
-                    <p className="text-[10px] capitalize" style={{ color: t.status === "failed" ? "#ff6b6b" : "#4b5563" }}>
-                      {t.status}
-                    </p>
+                      <p className="text-[10px] capitalize" style={{ color: isFailed ? "#ff6b6b" : "#374151" }}>
+                        {t.status}
+                      </p>
+                    </div>
                   </div>
                 </div>
               );

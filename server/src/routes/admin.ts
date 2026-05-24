@@ -1293,11 +1293,34 @@ export default function createAdminRouter(io: Server) {
   router.get("/game-review/:roomId", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { roomId } = req.params;
-      const [game, transactions] = await Promise.all([
+      const [game, rawTransactions] = await Promise.all([
         Game.findOne({ roomId: roomId.toUpperCase() }).lean(),
         Transaction.find({ "metadata.roomCode": roomId.toUpperCase() }).sort({ createdAt: 1 }).lean(),
       ]);
       if (!game) return res.status(404).json({ error: "Game not found" });
+
+      // Build userId → username map from game players first
+      const usernameMap: Record<string, string> = {};
+      for (const p of (game as any).players ?? []) {
+        if (p.userId) usernameMap[String(p.userId)] = p.username;
+      }
+
+      // For any transaction userId not already in game.players (e.g. player who left before start)
+      const missingIds = [...new Set(rawTransactions.map((t: any) => String(t.userId)))]
+        .filter(id => !usernameMap[id]);
+      if (missingIds.length > 0) {
+        const extraUsers = await User.find({ _id: { $in: missingIds } }).select("username").lean();
+        for (const u of extraUsers as any[]) {
+          usernameMap[String(u._id)] = u.username;
+        }
+      }
+
+      // Enrich each transaction with the player's name
+      const transactions = rawTransactions.map((t: any) => ({
+        ...t,
+        playerUsername: usernameMap[String(t.userId)] ?? "Unknown",
+      }));
+
       res.json({ game, transactions });
     } catch (err) {
       console.error("[Admin] game-review error:", err);
@@ -1321,6 +1344,7 @@ export default function createAdminRouter(io: Server) {
         // (indicates distributePrize may have silently skipped)
         Game.aggregate([
           { $match: { status: "finished" } },
+          // Lookup prize transactions (winning type)
           {
             $lookup: {
               from: "transactions",
@@ -1331,6 +1355,7 @@ export default function createAdminRouter(io: Server) {
               as: "prizes",
             },
           },
+          // Lookup entry fee transactions
           {
             $lookup: {
               from: "transactions",
@@ -1341,15 +1366,43 @@ export default function createAdminRouter(io: Server) {
               as: "fees",
             },
           },
-          // Only rooms where someone paid but no prize was awarded
-          { $match: { $expr: { $and: [{ $gt: [{ $size: "$fees" }, 0] }, { $eq: [{ $size: "$prizes" }, 0] }] } } },
+          // Lookup refund transactions — players who joined+paid but left before game start
+          // are refunded, so they should NOT be counted as net paid players.
+          {
+            $lookup: {
+              from: "transactions",
+              let: { rid: "$roomId" },
+              pipeline: [
+                { $match: { $expr: { $and: [{ $eq: ["$type", "refund"] }, { $eq: [{ $toString: "$metadata.roomCode" }, { $toString: "$$rid" }] }] } } },
+              ],
+              as: "refunds",
+            },
+          },
+          // Add computed fields before filtering
+          {
+            $addFields: {
+              netPaidCount: { $subtract: [{ $size: "$fees" }, { $size: "$refunds" }] },
+              feeAmount: { $ifNull: [{ $arrayElemAt: ["$fees.amount", 0] }, 0] },
+            },
+          },
+          // Only rooms where at least 1 net-paid player exists and no prize was awarded
+          {
+            $match: {
+              $expr: { $and: [
+                { $gt: ["$netPaidCount", 0] },
+                { $eq: [{ $size: "$prizes" }, 0] },
+              ]},
+            },
+          },
           { $sort: { endedAt: -1 } },
           { $limit: 50 },
           {
             $project: {
               roomId: 1, endedAt: 1, winnerId: 1, winnerUsername: 1,
-              paidCount: { $size: "$fees" },
-              totalPot: { $multiply: [{ $ifNull: [{ $arrayElemAt: ["$fees.amount", 0] }, 0] }, { $size: "$fees" }] },
+              // paidCount = net paid players (entry fees minus refunds)
+              paidCount: "$netPaidCount",
+              // totalPot uses net paid count so it matches what the winner should receive
+              totalPot: { $multiply: ["$feeAmount", "$netPaidCount"] },
             },
           },
         ]),
