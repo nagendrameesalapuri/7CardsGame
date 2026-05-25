@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { admin } from "../services/api";
 import { on } from "../services/socket";
+import { useAuthStore } from "../store/authStore";
 import { Avatar } from "../components/ui/Avatar";
 import PlayerIntelligencePage from "./PlayerIntelligencePage";
 import GameReviewPage from "./GameReviewPage";
@@ -5247,6 +5248,7 @@ function findNavItem(key: Section) {
 
 export function AdminPage() {
   const navigate = useNavigate();
+  const { user, token } = useAuthStore();
   const [section, setSection] = useState<Section>("overview");
   const [config, setConfig] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -5261,6 +5263,10 @@ export function AdminPage() {
   };
 
   useEffect(() => {
+    // Auto-set adminToken from the user's regular token if they are an admin
+    if (user?.isAdmin && token && !localStorage.getItem("adminToken")) {
+      localStorage.setItem("adminToken", token);
+    }
     if (!localStorage.getItem("adminToken")) {
       navigate("/admin/login", { replace: true });
       return;
@@ -5272,7 +5278,7 @@ export function AdminPage() {
         localStorage.removeItem("adminToken");
         navigate("/admin/login", { replace: true });
       });
-  }, [navigate]);
+  }, [navigate, user, token]);
 
   // Live config updates from server
   useEffect(() => {

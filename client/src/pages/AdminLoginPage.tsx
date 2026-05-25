@@ -2,18 +2,26 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { admin } from "../services/api";
+import { useAuthStore } from "../store/authStore";
 
 export function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, token } = useAuthStore();
 
   useEffect(() => {
-    // Already logged in as admin
+    // Admin users bypass the password screen — their app token is already valid
+    if (user?.isAdmin && token) {
+      localStorage.setItem("adminToken", token);
+      navigate("/admin", { replace: true });
+      return;
+    }
+    // Already logged in via password
     if (localStorage.getItem("adminToken"))
       navigate("/admin", { replace: true });
-  }, [navigate]);
+  }, [navigate, user, token]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
