@@ -418,6 +418,7 @@ export default function createAdminRouter(io: Server) {
           avatar: u.avatar,
           isGuest: u.isGuest,
           isBanned: (u as any).isBanned ?? false,
+          isAdmin: (u as any).isAdmin ?? false,
           isOnline: onlineIds.has(u._id.toString()),
           stats: u.stats,
           createdAt: u.createdAt,
@@ -469,6 +470,22 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Failed to unban user" });
+    }
+  });
+
+  // ── Grant / revoke admin ────────────────────────────────────────────────────
+  router.post("/users/:id/set-admin", async (req: Request, res: Response) => {
+    try {
+      const { isAdmin } = req.body as { isAdmin: boolean };
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { isAdmin: !!isAdmin },
+        { new: true },
+      );
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json({ success: true, isAdmin: user.isAdmin });
+    } catch {
+      res.status(500).json({ error: "Failed to update admin status" });
     }
   });
 

@@ -200,6 +200,7 @@ export function Header() {
     { to: '/wallet',        label: 'Rewards', icon: '🎁' },
     { to: '/notifications', label: 'Alerts',  icon: '🔔' },
     { to: '/profile',       label: 'Profile', icon: '👤' },
+    ...(user?.isAdmin ? [{ to: '/admin-portal', label: 'Admin', icon: '🛡️' }] : []),
   ];
 
   return (
@@ -226,6 +227,9 @@ export function Header() {
             <Link to="/wallet"        className="hover:text-white transition-colors">Rewards</Link>
             <Link to="/notifications" className="hover:text-white transition-colors">Alerts</Link>
             <Link to="/profile"       className="hover:text-white transition-colors">Profile</Link>
+            {user?.isAdmin && (
+              <Link to="/admin-portal" className="hover:text-white transition-colors font-semibold" style={{ color: '#a855f7' }}>Admin</Link>
+            )}
           </nav>
 
           {/* Right: bell + theme + user */}

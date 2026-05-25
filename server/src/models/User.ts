@@ -8,6 +8,7 @@ export interface IUser extends Document {
   selectedBadgeId?: string;
   isGuest: boolean;
   isBanned: boolean;
+  isAdmin: boolean;
   guestToken?: string;
   walletBalance: number;
   heldBalance: number;
@@ -34,6 +35,7 @@ const UserSchema = new Schema<IUser>(
     selectedBadgeId: { type: String, default: null },
     isGuest: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
+    isAdmin: { type: Boolean, default: false },
     guestToken:    { type: String, sparse: true, unique: true },
     walletBalance: { type: Number, default: 0, min: 0 },
     heldBalance:   { type: Number, default: 0, min: 0 },

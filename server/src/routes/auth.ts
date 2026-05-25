@@ -6,10 +6,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-function generateToken(userId: string): string {
-  return jwt.sign({ userId }, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
-  } as jwt.SignOptions);
+function generateToken(userId: string, isAdmin = false): string {
+  return jwt.sign(
+    { userId, ...(isAdmin ? { role: 'admin' } : {}) },
+    process.env.JWT_SECRET!,
+    { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' } as jwt.SignOptions
+  );
 }
 
 // ── Google OAuth ───────────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ router.get(
   },
   (req: Request, res: Response) => {
     const user = req.user as any;
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, user.isAdmin);
     res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
   }
 );
@@ -90,7 +92,8 @@ router.get('/me', async (req: Request, res: Response) => {
     const user = await User.findById(decoded.userId).select('-guestToken');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ user: { id: user.id, ...user.toJSON() } });
+    const u = user.toJSON() as any;
+    res.json({ user: { id: user.id, ...u, isAdmin: user.isAdmin } });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
@@ -122,7 +125,7 @@ if (process.env.NODE_ENV === 'development') {
         });
       }
 
-      const token = generateToken(user.id);
+      const token = generateToken(user.id, user.isAdmin);
       res.json({
         token,
         user: {
@@ -131,6 +134,7 @@ if (process.env.NODE_ENV === 'development') {
           avatar:   user.avatar,
           email:    user.email,
           isGuest:  false,
+          isAdmin:  user.isAdmin,
         },
       });
     } catch (err) {

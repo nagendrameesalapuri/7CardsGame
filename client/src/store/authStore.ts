@@ -62,7 +62,13 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const res = await authApi.getMe();
-          set({ user: res.data.user, isAuthenticated: true, isLoading: false });
+          const me = res.data.user;
+          if (me.isAdmin) {
+            localStorage.setItem('adminToken', token);
+          } else {
+            localStorage.removeItem('adminToken');
+          }
+          set({ user: me, isAuthenticated: true, isLoading: false });
           connectSocket(token, get().guestToken ?? undefined);
         } catch {
           set({ user: null, isAuthenticated: false, isLoading: false, token: null });

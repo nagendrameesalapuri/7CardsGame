@@ -592,6 +592,12 @@ function UsersSection() {
                       Guest
                     </span>
                   )}
+                  {u.isAdmin && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)' }}>
+                      ADMIN
+                    </span>
+                  )}
                   {u.isBanned && (
                     <span className="text-[10px] text-neon-red font-bold">
                       BANNED
@@ -676,6 +682,26 @@ function UsersSection() {
                     Ban
                   </button>
                 )}
+                <button
+                  onClick={() => {
+                    const action = u.isAdmin ? 'Remove Admin' : 'Make Admin';
+                    if (confirm(`${action} for "${u.username}"?`))
+                      doAction(() => admin.setAdmin(u.id, !u.isAdmin));
+                  }}
+                  className="text-[11px] px-2 py-1 rounded-lg font-semibold"
+                  style={u.isAdmin ? {
+                    background: "rgba(168,85,247,0.2)",
+                    color: "#a855f7",
+                    border: "1px solid rgba(168,85,247,0.5)",
+                  } : {
+                    background: "rgba(168,85,247,0.08)",
+                    color: "rgba(168,85,247,0.7)",
+                    border: "1px solid rgba(168,85,247,0.2)",
+                  }}
+                  title={u.isAdmin ? "Remove admin rights" : "Grant admin rights"}
+                >
+                  {u.isAdmin ? "🛡 Admin" : "Make Admin"}
+                </button>
                 <button
                   onClick={() => doAction(() => admin.kickUser(u.id))}
                   className="text-[11px] px-2 py-1 rounded-lg font-semibold"

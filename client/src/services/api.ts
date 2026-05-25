@@ -248,6 +248,7 @@ export const admin = {
     ),
   banUser: (id: string) => adminApi.post(`/users/${id}/ban`),
   unbanUser: (id: string) => adminApi.post(`/users/${id}/unban`),
+  setAdmin: (id: string, isAdmin: boolean) => adminApi.post(`/users/${id}/set-admin`, { isAdmin }),
   kickUser: (id: string) => adminApi.post(`/users/${id}/kick`),
   resetUserStats: (id: string) => adminApi.post(`/users/${id}/reset-stats`),
   deleteUser: (id: string) => adminApi.delete(`/users/${id}`),
