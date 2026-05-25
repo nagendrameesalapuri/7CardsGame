@@ -4978,6 +4978,7 @@ function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => voi
 function HoldSystemSection() {
   const [data, setData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+  const [clearing, setClearing] = React.useState(false);
   const [error, setError] = React.useState("");
 
   const load = async () => {
@@ -4989,6 +4990,19 @@ function HoldSystemSection() {
       setError("Failed to load hold system data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const clearAll = async () => {
+    if (!confirm("Clear all exploit flags and reset the anti-exploit tracker? This removes all old flagged data.")) return;
+    setClearing(true);
+    try {
+      await admin.clearHoldExploitData();
+      await load();
+    } catch {
+      alert("Failed to clear data");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -5007,10 +5021,17 @@ function HoldSystemSection() {
           <h2 className="text-xl font-black text-white">Hold System Monitor</h2>
           <p className="text-xs text-dark-muted mt-0.5">Active entry holds, locked entries, and exploit detection</p>
         </div>
-        <button onClick={load} className="px-4 py-2 rounded-xl text-xs font-bold text-yellow-300 hover:text-white transition-colors"
-          style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.25)" }}>
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={clearAll} disabled={clearing}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-red-300 hover:text-white transition-colors disabled:opacity-50"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}>
+            {clearing ? "Clearing…" : "🗑 Clear Old Data"}
+          </button>
+          <button onClick={load} className="px-4 py-2 rounded-xl text-xs font-bold text-yellow-300 hover:text-white transition-colors"
+            style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.25)" }}>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* 24h stats */}

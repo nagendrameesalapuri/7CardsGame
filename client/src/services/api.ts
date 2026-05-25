@@ -375,6 +375,7 @@ export const admin = {
   }>("/hold-system/overview"),
 
   getHoldExploitStats: (userId: string) => adminApi.get<any>(`/hold-system/exploit/${userId}`),
+  clearHoldExploitData: () => adminApi.post<{ success: boolean; cleared: number }>("/hold-system/clear", {}),
 
   getAnnouncements: () => adminApi.get<{ announcements: any[] }>("/announcements"),
   createAnnouncement: (data: { message: string; type: string; expiresAt?: string }) =>

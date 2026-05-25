@@ -14,7 +14,7 @@ import {
   kickPlayerFromGame,
   getActiveGame,
 } from "../socket/handlers/gameHandler";
-import { refundAbandonedGame, getHoldExploitStats } from "../socket/handlers/roomHandler";
+import { refundAbandonedGame, getHoldExploitStats, _resetHoldExploitTracker } from "../socket/handlers/roomHandler";
 import { getSpectatorCounts } from "../socket/handlers/spectatorHandler";
 import { getOnlineUserIds } from "../socket/index";
 import { WithdrawalRequest } from "../models/WithdrawalRequest";
@@ -1591,6 +1591,22 @@ export default function createAdminRouter(io: Server) {
       res.json({ userId, ...stats, recentReleases });
     } catch (err) {
       res.status(500).json({ error: 'Failed to load exploit stats' });
+    }
+  });
+
+  // ── Hold System: Clear exploit flags + reset in-memory tracker ──────────────
+  router.post("/hold-system/clear", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      // Unset exploitFlag on all old flagged transactions
+      const result = await Transaction.updateMany(
+        { 'metadata.exploitFlag': true },
+        { $unset: { 'metadata.exploitFlag': '' } },
+      );
+      // Reset the in-memory anti-exploit tracker for all users
+      _resetHoldExploitTracker();
+      res.json({ success: true, cleared: result.modifiedCount });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to clear exploit flags' });
     }
   });
 
