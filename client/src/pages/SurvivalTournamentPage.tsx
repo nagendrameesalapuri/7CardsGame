@@ -2059,6 +2059,14 @@ export function SurvivalTournamentPage() {
       setPendingAction(() => () => navigate('/game'));
       setShowStageIntro(true);
     });
+    // Non-host members never received this event handler — they stayed on lobby screen for stages 2-5
+    const unsub10 = on('survival:team_stage_started', (data: any) => {
+      setShowTeamFlow(false);
+      setIntroIsTeamMode(true);
+      setIntroStageNum(data.stage ?? 2);
+      setPendingAction(() => () => navigate('/game'));
+      setShowStageIntro(true);
+    });
     const unsub7 = on('survival:abandoned', () => {
       setActiveStatus(null);
       setQuitting(false);
@@ -2086,7 +2094,7 @@ export function SurvivalTournamentPage() {
       setTeamArenaEnabled(ff?.teamArenaEnabled !== false);
       setTeamArenaDisabledReason(ff?.teamArenaDisabledReason ?? '');
     });
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsub10(); };
   }, [isAuthenticated, navigate, subscribe, subscribeToEvents, refreshBalance]);
 
   // Show stage intro then execute deferred action

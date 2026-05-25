@@ -1400,7 +1400,7 @@ export default function createAdminRouter(io: Server) {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const limit = 30;
-      const [failed, orphaned] = await Promise.all([
+      const [failed, orphaned, unrefundedTeamEntries] = await Promise.all([
         // Transactions explicitly marked failed
         Transaction.find({ type: "winning", status: "failed" })
           .sort({ createdAt: -1 })
@@ -1473,13 +1473,118 @@ export default function createAdminRouter(io: Server) {
             },
           },
         ]),
+        // Team Survival: entry_locked transactions with no subsequent refund/settlement for same userId+teamId
+        Transaction.aggregate([
+          // All team survival entry locks (has metadata.teamId)
+          { $match: { type: 'entry_locked', 'metadata.teamId': { $exists: true, $ne: '' } } },
+          // Lookup the SurvivalTeam — only include completed/abandoned (not still forming/playing)
+          {
+            $lookup: {
+              from: 'survivalteams',
+              let: { tid: '$metadata.teamId' },
+              pipeline: [
+                { $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$tid'] } } },
+                { $project: { teamCode: 1, status: 1, tier: 1 } },
+              ],
+              as: 'team',
+            },
+          },
+          { $unwind: { path: '$team', preserveNullAndEmptyArrays: false } },
+          // Skip tournaments still in progress
+          { $match: { 'team.status': { $in: ['completed', 'abandoned'] } } },
+          // Check if a refund/settlement exists for same userId + teamId
+          {
+            $lookup: {
+              from: 'transactions',
+              let: { uid: '$userId', tid: '$metadata.teamId' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$userId', '$$uid'] },
+                        { $eq: ['$metadata.teamId', '$$tid'] },
+                        { $in: ['$type', ['refund', 'match_settlement', 'winning']] },
+                      ],
+                    },
+                  },
+                },
+              ],
+              as: 'settlements',
+            },
+          },
+          // Only unsettled entries
+          { $match: { $expr: { $eq: [{ $size: '$settlements' }, 0] } } },
+          // Join user for display
+          {
+            $lookup: {
+              from: 'users',
+              let: { uid: '$userId' },
+              pipeline: [
+                { $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$uid'] } } },
+                { $project: { username: 1, avatar: 1 } },
+              ],
+              as: 'userDoc',
+            },
+          },
+          { $unwind: { path: '$userDoc', preserveNullAndEmptyArrays: true } },
+          { $sort: { createdAt: -1 } },
+          { $limit: 100 },
+          {
+            $project: {
+              _id: 1,
+              userId: 1,
+              amount: 1,
+              createdAt: 1,
+              teamId: '$metadata.teamId',
+              teamCode: '$team.teamCode',
+              teamStatus: '$team.status',
+              teamTier: '$team.tier',
+              username: '$userDoc.username',
+              avatar: '$userDoc.avatar',
+            },
+          },
+        ]),
       ]);
 
       const total = await Transaction.countDocuments({ type: "winning", status: "failed" });
-      res.json({ failed, orphaned, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+      res.json({ failed, orphaned, unrefundedTeamEntries, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
     } catch (err) {
       console.error("[Admin] missed-payouts error:", err);
       res.status(500).json({ error: "Failed to fetch missed payouts" });
+    }
+  });
+
+  // Refund a team survival entry lock (creates a proper refund transaction tagged with teamId)
+  router.post("/missed-payouts/refund-team-entry", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { userId, amount, teamId, teamCode, note } = req.body;
+      if (!userId || !amount || amount <= 0 || !teamId) {
+        return res.status(400).json({ error: "userId, amount, and teamId are required" });
+      }
+
+      const userBefore = await User.findById(userId).select("walletBalance username").lean() as any;
+      if (!userBefore) return res.status(404).json({ error: "User not found" });
+
+      const updated = await User.findByIdAndUpdate(userId, { $inc: { walletBalance: amount } }, { new: true });
+      if (!updated) return res.status(500).json({ error: "Failed to update wallet" });
+
+      await Transaction.create({
+        userId,
+        type: "refund",
+        amount,
+        status: "completed",
+        description: `Admin refund: Team Survival entry (${teamCode ?? teamId})${note ? ` — ${note}` : ""}`,
+        balanceBefore: userBefore.walletBalance,
+        balanceAfter: userBefore.walletBalance + amount,
+        metadata: { teamId, adminNote: note ?? "Admin refund via missed-payouts dashboard" },
+      });
+
+      console.log(`[Admin] Refunded team entry ₹${amount} to ${userBefore.username} (${userId}). team=${teamCode}`);
+      res.json({ ok: true, balance: updated.walletBalance, username: userBefore.username });
+    } catch (err) {
+      console.error("[Admin] refund-team-entry error:", err);
+      res.status(500).json({ error: "Refund failed" });
     }
   });
 
@@ -1688,17 +1793,7 @@ export default function createAdminRouter(io: Server) {
       const moneyLimit  = sc.moneySpinDailyLimit  ?? 3;
       const pointsLimit = sc.pointsSpinDailyLimit ?? 10;
 
-      // Primary: all users who have ever spun (from User fields — covers pre-SpinLog history)
-      const spinners = await User.find({
-        $or: [
-          { spinDailyCount: { $gt: 0 } },
-          { pointsSpinDailyCount: { $gt: 0 } },
-          { 'stats.totalPointsEarned': { $gt: 0 } },
-        ],
-        isGuest: false,
-      }).select('username avatar spinLastDate spinDailyCount pointsSpinLastDate pointsSpinDailyCount').lean() as any[];
-
-      // Enrich with SpinLog aggregate (all-time stats, only available for spins after SpinLog was added)
+      // SpinLog aggregate: all-time stats per user (all users who spun after SpinLog was added)
       const spinLogAgg = await SpinLog.aggregate([
         {
           $group: {
@@ -1706,11 +1801,24 @@ export default function createAdminRouter(io: Server) {
             allTimeMoneySpin:  { $sum: { $cond: [{ $eq: ['$spinType', 'money']  }, 1, 0] } },
             allTimePointsSpin: { $sum: { $cond: [{ $eq: ['$spinType', 'points'] }, 1, 0] } },
             totalMoneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$prizeType', 'cash'] }] }, '$prizeAmount', 0] } },
+            totalMoneySpent:   { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$isFree', false] }] }, '$costRupees', 0] } },
+            totalPointsSpent:  { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'points'] }, { $eq: ['$isFree', false] }] }, '$costPoints', 0] } },
             lastSpinAt:        { $max: '$createdAt' },
           },
         },
       ]);
       const slMap = Object.fromEntries(spinLogAgg.map(a => [String(a._id), a]));
+      const spinLogUserIds = spinLogAgg.map(a => a._id);
+
+      // Get all users: those in SpinLog OR those with active daily spin counts
+      const spinners = await User.find({
+        $or: [
+          { _id: { $in: spinLogUserIds } },
+          { spinDailyCount: { $gt: 0 } },
+          { pointsSpinDailyCount: { $gt: 0 } },
+        ],
+        isGuest: false,
+      }).select('username avatar spinLastDate spinDailyCount pointsSpinLastDate pointsSpinDailyCount').lean() as any[];
 
       const result = spinners.map((u: any) => {
         const uid = String(u._id);
@@ -1728,15 +1836,53 @@ export default function createAdminRouter(io: Server) {
           allTimeMoneySpin:  sl.allTimeMoneySpin  ?? (u.spinDailyCount  ?? 0),
           allTimePointsSpin: sl.allTimePointsSpin ?? (u.pointsSpinDailyCount ?? 0),
           totalMoneyWon:     Math.round((sl.totalMoneyWon ?? 0) * 100) / 100,
+          totalMoneySpent:   Math.round((sl.totalMoneySpent ?? 0) * 100) / 100,
+          totalPointsSpent:  sl.totalPointsSpent ?? 0,
           lastSpinAt: sl.lastSpinAt ?? (u.spinLastDate ? new Date(u.spinLastDate) : null),
         };
-      }).filter((u: any) => u.moneySpinsToday > 0 || u.pointsSpinsToday > 0 || u.allTimeMoneySpin > 0 || u.allTimePointsSpin > 0)
+      }).filter((u: any) => u.allTimeMoneySpin > 0 || u.allTimePointsSpin > 0 || u.moneySpinsToday > 0 || u.pointsSpinsToday > 0)
         .sort((a: any, b: any) => (b.moneySpinsToday + b.pointsSpinsToday) - (a.moneySpinsToday + a.pointsSpinsToday));
 
       res.json({ users: result, moneySpinLimit: moneyLimit, pointsSpinLimit: pointsLimit });
     } catch (err) {
       console.error('[Admin] spin-analytics error:', err);
       res.status(500).json({ error: 'Failed to load spin analytics' });
+    }
+  });
+
+  router.get('/spin-analytics/daily', requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const agg = await SpinLog.aggregate([
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            moneyCount:   { $sum: { $cond: [{ $eq: ['$spinType', 'money']  }, 1, 0] } },
+            pointsCount:  { $sum: { $cond: [{ $eq: ['$spinType', 'points'] }, 1, 0] } },
+            freeCount:    { $sum: { $cond: ['$isFree', 1, 0] } },
+            moneySpent:   { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$isFree', false] }] }, '$costRupees', 0] } },
+            pointsSpent:  { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'points'] }, { $eq: ['$isFree', false] }] }, '$costPoints', 0] } },
+            moneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$prizeType', 'cash'] }] }, '$prizeAmount', 0] } },
+            uniqueUsers:  { $addToSet: '$userId' },
+          },
+        },
+        { $sort: { _id: -1 } },
+      ]);
+
+      const rows = agg.map((r: any) => ({
+        date:        r._id,
+        moneyCount:  r.moneyCount,
+        pointsCount: r.pointsCount,
+        freeCount:   r.freeCount,
+        moneySpent:  Math.round(r.moneySpent * 100) / 100,
+        pointsSpent: r.pointsSpent,
+        moneyWon:    Math.round(r.moneyWon * 100) / 100,
+        uniqueUsers: r.uniqueUsers.length,
+      }));
+
+      res.json({ rows });
+    } catch (err) {
+      console.error('[Admin] spin-analytics/daily error:', err);
+      res.status(500).json({ error: 'Failed to load daily spin report' });
     }
   });
 
@@ -1755,6 +1901,198 @@ export default function createAdminRouter(io: Server) {
     } catch (err) {
       console.error('[Admin] reset spin error:', err);
       res.status(500).json({ error: 'Failed to reset spins' });
+    }
+  });
+
+  // ── Room History / Tracker ────────────────────────────────────────────────────
+  router.get('/rooms/history', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page   = Math.max(1, parseInt(req.query.page as string) || 1);
+      const PER    = 25;
+      const type   = (req.query.type   as string) || 'all';
+      const stFil  = (req.query.status as string) || 'all';
+      const days   = parseInt(req.query.days   as string) || 30;
+      const search = ((req.query.search as string) || '').trim();
+      const since  = days > 0 ? new Date(Date.now() - days * 86400 * 1000) : new Date(0);
+
+      const includeGames = ['all','multiplayer_free','multiplayer_wager','ai_game'].includes(type);
+      const includeSolo  = type === 'survival_solo';
+      const includeTeam  = type === 'survival_team';
+
+      // ── Helpers ──────────────────────────────────────────────────────────────
+      // entry_hold = no wallet deduction (just a hold record); only entry_locked / entry_fee actually debit the wallet
+      const txnSummary = (txns: any[]) => ({
+        totalFees:     txns.filter(t => ['entry_fee','entry_locked'].includes(t.type)).reduce((s,t)=>s+t.amount,0),
+        totalPaid:     txns.filter(t => ['winning','match_settlement'].includes(t.type)).reduce((s,t)=>s+t.amount,0),
+        totalRefunded: txns.filter(t => t.type==='refund').reduce((s,t)=>s+t.amount,0),
+        // per-player map so client can compute per-person refund amounts
+        perPlayerFees: txns
+          .filter(t => ['entry_fee','entry_locked'].includes(t.type))
+          .reduce<Record<string,number>>((m,t) => { m[t.userId] = (m[t.userId]??0) + t.amount; return m; }, {}),
+        list: txns.map(t=>({ id:String(t._id), type:t.type, amount:t.amount, status:t.status, userId:t.userId, description:t.description, createdAt:t.createdAt })),
+      });
+
+      // ── GAME records ─────────────────────────────────────────────────────────
+      let items: any[] = [];
+
+      if (includeGames) {
+        const gMatch: any = { startedAt: { $gte: since } };
+        if (type === 'multiplayer_free')  { gMatch.players = { $not:{$elemMatch:{isBot:true}} }; gMatch.entryFee = { $lte: 0 }; }
+        if (type === 'multiplayer_wager') { gMatch.players = { $not:{$elemMatch:{isBot:true}} }; gMatch.entryFee = { $gt: 0 }; }
+        if (type === 'ai_game')           { gMatch['players.isBot'] = true; }
+        if (stFil === 'finished')  gMatch.status = 'finished';
+        if (stFil === 'playing')   gMatch.status = 'playing';
+        if (stFil === 'abandoned') gMatch.$expr = { $eq: [false, true] }; // games don't have "abandoned" — return empty
+        if (search) gMatch.$or = [
+          { roomId:          { $regex: search, $options:'i' } },
+          { 'players.username': { $regex: search, $options:'i' } },
+          { winnerUsername:  { $regex: search, $options:'i' } },
+        ];
+
+        const games = await Game.find(gMatch).sort({ startedAt: -1 }).limit(400).lean() as any[];
+
+        const roomIds = games.map((g:any) => g.roomId);
+        const txns = roomIds.length
+          ? await Transaction.find({ 'metadata.roomCode': { $in: roomIds } }).lean() as any[]
+          : [];
+        const txnMap = new Map<string, any[]>();
+        for (const t of txns) {
+          const rc = String(t.metadata?.roomCode ?? '');
+          if (!txnMap.has(rc)) txnMap.set(rc, []);
+          txnMap.get(rc)!.push(t);
+        }
+
+        for (const g of games) {
+          const hasBots  = g.players.some((p:any) => p.isBot);
+          const gType    = hasBots ? 'ai_game' : (g.entryFee ?? 0) > 0 ? 'multiplayer_wager' : 'multiplayer_free';
+          const rt       = txnMap.get(g.roomId) ?? [];
+          const summ     = txnSummary(rt);
+          const humanPct = g.players.filter((p:any)=>!p.isBot).length;
+          items.push({
+            id: String(g._id), type: gType, roomCode: g.roomId,
+            status: g.status,
+            players: g.players.map((p:any)=>({ userId:p.userId, username:p.username, avatar:p.avatar??'avatar_1', isBot:p.isBot, isWinner:p.userId===g.winnerId, score:p.totalScore??0 })),
+            winner: g.winnerId ? { userId:g.winnerId, username:g.winnerUsername??'' } : null,
+            entryFee: g.entryFee??0, entryPoints:0,
+            pot: (g.entryFee??0) * humanPct,
+            ...summ,
+            hasRefundIssue: summ.totalFees > 0 && summ.totalPaid === 0 && g.status === 'finished',
+            roundCount: g.rounds?.length ?? 0,
+            rounds: (g.rounds??[]).map((r:any)=>{
+              // winnerId / showPlayerId are game-session player IDs (p.id), NOT userId.
+              // Look them up in playerResults which stores { playerId: p.id, username, isBot }.
+              const pr: any[] = r.playerResults ?? [];
+              const rWinnerPR  = pr.find((x:any) => x.playerId === r.winnerId);
+              const rShowPR    = pr.find((x:any) => x.playerId === r.showPlayerId);
+              // isBot: check game players by username as fallback
+              const isBotByName = (uname: string) => g.players.some((p:any) => p.isBot && p.username === uname);
+              return {
+                roundNumber:r.roundNumber, jokerRank:r.jokerRank,
+                showPlayerWon:r.showPlayerWon,
+                winnerUsername:  rWinnerPR?.username ?? null,
+                winnerIsBot:     rWinnerPR ? isBotByName(rWinnerPR.username) : false,
+                showCallerUsername: rShowPR?.username ?? null,
+                showCallerIsBot:    rShowPR ? isBotByName(rShowPR.username) : false,
+                playerCount: pr.length,
+              };
+            }),
+            startedAt: g.startedAt, endedAt: g.endedAt??null,
+          });
+        }
+      }
+
+      // ── SURVIVAL SOLO ─────────────────────────────────────────────────────────
+      if (includeSolo) {
+        const sMatch: any = { createdAt: { $gte: since } };
+        if (stFil==='finished')  sMatch.status = { $in:['won','lost'] };
+        if (stFil==='playing')   sMatch.status = 'active';
+        if (stFil==='abandoned') sMatch.status = 'abandoned';
+        if (search) sMatch.$or = [{ tier:{ $regex:search,$options:'i' } }];
+
+        const runs = await SurvivalTournament.find(sMatch).sort({ createdAt:-1 }).limit(400).lean() as any[];
+        const uids = [...new Set(runs.map(r=>r.userId))];
+        const users = uids.length ? await User.find({ _id:{$in:uids} }).select('username avatar').lean() as any[] : [];
+        const uMap = Object.fromEntries(users.map(u=>[String(u._id),u]));
+
+        const tIds = runs.map(r=>String(r._id));
+        const txns = tIds.length ? await Transaction.find({ 'metadata.survivalTournamentId':{ $in:tIds } }).lean() as any[] : [];
+        const txnMap = new Map<string,any[]>();
+        for (const t of txns) {
+          const k = String(t.metadata?.survivalTournamentId??'');
+          if (!txnMap.has(k)) txnMap.set(k,[]);
+          txnMap.get(k)!.push(t);
+        }
+
+        const stMap: Record<string,string> = { won:'finished', lost:'finished', abandoned:'abandoned', active:'playing' };
+        for (const r of runs) {
+          const u    = uMap[r.userId]??{};
+          const tid  = String(r._id);
+          const summ = txnSummary(txnMap.get(tid)??[]);
+          items.push({
+            id: tid, type:'survival_solo', roomCode:`ST-${r.tier?.slice(0,3).toUpperCase()}-${tid.slice(-5)}`,
+            status: stMap[r.status]??'finished', tournamentResult:r.status, tier:r.tier,
+            players:[{ userId:r.userId, username:u.username??'?', avatar:u.avatar??'avatar_1', isBot:false, isWinner:r.status==='won', score:r.totalPointsEarned??0 }],
+            winner: r.status==='won' ? { userId:r.userId, username:u.username??'?' } : null,
+            entryFee:0, entryPoints:r.entryPoints??0,
+            pot:r.totalPointsEarned??0, ...summ, hasRefundIssue:false,
+            roundCount:r.roundsPlayed??0, rounds:[],
+            stageResults: r.stageResults??[],
+            startedAt:r.createdAt, endedAt:r.completedAt??null,
+          });
+        }
+      }
+
+      // ── SURVIVAL TEAM ─────────────────────────────────────────────────────────
+      if (includeTeam) {
+        const tMatch: any = { createdAt: { $gte: since } };
+        if (stFil==='finished')  tMatch.status = 'completed';
+        if (stFil==='playing')   tMatch.status = { $in:['forming','playing'] };
+        if (stFil==='abandoned') tMatch.status = 'abandoned';
+        if (search) tMatch.$or = [
+          { teamCode:{ $regex:search,$options:'i' } },
+          { 'members.username':{ $regex:search,$options:'i' } },
+        ];
+
+        const teams = await SurvivalTeam.find(tMatch).sort({ createdAt:-1 }).limit(400).lean() as any[];
+        const teamIds = teams.map(t=>String(t._id));
+        const txns = teamIds.length ? await Transaction.find({ 'metadata.teamId':{ $in:teamIds } }).lean() as any[] : [];
+        const txnMap = new Map<string,any[]>();
+        for (const t of txns) {
+          const k = String(t.metadata?.teamId??'');
+          if (!txnMap.has(k)) txnMap.set(k,[]);
+          txnMap.get(k)!.push(t);
+        }
+
+        const stMap: Record<string,string> = { completed:'finished', abandoned:'abandoned', playing:'playing', forming:'playing' };
+        for (const t of teams) {
+          const tid  = String(t._id);
+          const members = t.members??[];
+          const summ = txnSummary(txnMap.get(tid)??[]);
+          items.push({
+            id: tid, type:'survival_team', roomCode:t.teamCode??tid.slice(-6),
+            status: stMap[t.status]??'playing', teamStatus:t.status, tier:t.tier,
+            players: members.filter((m:any)=>!m.isBot).map((m:any)=>({ userId:m.userId, username:m.username??'?', avatar:m.avatar??'avatar_1', isBot:false, isWinner:t.status==='completed', score:t.totalPointsEarned??0 })),
+            winner: t.status==='completed' ? { userId:t.hostId, username:members[0]?.username??'?' } : null,
+            entryFee:0, entryPoints:t.entryPoints??0,
+            pot:t.totalPointsEarned??0, ...summ,
+            hasRefundIssue: summ.totalFees>0 && summ.totalPaid===0 && !['playing','forming'].includes(t.status),
+            roundCount:t.roundsPlayed??0, rounds:[],
+            stageResults:t.stageResults??[],
+            startedAt:t.createdAt, endedAt:t.completedAt??null,
+          });
+        }
+      }
+
+      // sort merged list by most recent first, then paginate
+      items.sort((a,b)=> new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+      if (stFil === 'no_result') items = items.filter(i => i.hasRefundIssue);
+      const total = items.length;
+      const paged = items.slice((page-1)*PER, page*PER);
+
+      res.json({ items:paged, total, page, pages:Math.max(1, Math.ceil(total/PER)) });
+    } catch (err) {
+      console.error('[Admin] rooms/history error:', err);
+      res.status(500).json({ error: 'Failed to load room history' });
     }
   });
 

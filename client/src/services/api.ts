@@ -367,6 +367,7 @@ export const admin = {
     adminApi.get<{
       failed: any[];
       orphaned: any[];
+      unrefundedTeamEntries: any[];
       total: number;
       page: number;
       pages: number;
@@ -374,6 +375,9 @@ export const admin = {
 
   repayMissedPayout: (data: { userId: string; amount: number; roomCode?: string; note?: string }) =>
     adminApi.post<{ ok: boolean; balance: number; username: string }>("/missed-payouts/repay", data),
+
+  refundTeamEntry: (data: { userId: string; amount: number; teamId: string; teamCode?: string; note?: string }) =>
+    adminApi.post<{ ok: boolean; balance: number; username: string }>("/missed-payouts/refund-team-entry", data),
 
   getTeamArenaAnalytics: () => adminApi.get<{
     overview: {
@@ -406,6 +410,19 @@ export const admin = {
 
   getSpinAnalytics: () =>
     adminApi.get<{ users: any[]; moneySpinLimit: number; pointsSpinLimit: number }>("/spin-analytics"),
+
+  getSpinAnalyticsDaily: () =>
+    adminApi.get<{ rows: any[] }>("/spin-analytics/daily"),
+
+  getRoomHistory: (params: { page?: number; type?: string; status?: string; days?: number; search?: string }) => {
+    const q = new URLSearchParams();
+    if (params.page)   q.set("page",   String(params.page));
+    if (params.type)   q.set("type",   params.type);
+    if (params.status) q.set("status", params.status);
+    if (params.days !== undefined) q.set("days", String(params.days));
+    if (params.search) q.set("search", params.search);
+    return adminApi.get<{ items: any[]; total: number; page: number; pages: number }>(`/rooms/history?${q}`);
+  },
 
   resetUserSpins: (userId: string, type: "money" | "points") =>
     adminApi.post(`/spin-analytics/${userId}/reset`, { type }),

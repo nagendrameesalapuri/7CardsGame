@@ -436,9 +436,9 @@ export function ProfilePage() {
                         <StatCell label="Win Rate"     value={`${mpStats?.free.winRate ?? winRate}%`} color={(mpStats?.free.winRate ?? winRate) >= 60 ? '#fbbf24' : (mpStats?.free.winRate ?? winRate) >= 40 ? '#60a5fa' : '#9ca3af'} icon="📈" />
                       </div>
                       <div className="grid grid-cols-3 gap-2 mb-2">
-                        <StatCell label="Rounds"      value={roundsPlayed} color="#818cf8" icon="🎲" />
-                        <StatCell label="Rounds Won"  value={roundsWon}    color="#00ff88" icon="✅" />
-                        <StatCell label="Round Win %" value={`${roundWinRate}%`} color={roundWinRate >= 50 ? '#00ff88' : '#ff6b6b'} icon="📊" />
+                        <StatCell label="Rounds"      value={mpStats?.free.roundsPlayed ?? 0} color="#818cf8" icon="🎲" />
+                        <StatCell label="Rounds Won"  value={mpStats?.free.roundsWon ?? 0}    color="#00ff88" icon="✅" />
+                        <StatCell label="Round Win %" value={`${mpStats?.free.roundWinRate ?? 0}%`} color={(mpStats?.free.roundWinRate ?? 0) >= 50 ? '#00ff88' : '#ff6b6b'} icon="📊" />
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <StatCell label="Win Streak"  value={winStreak}    color="#fbbf24" icon="🔥" />
@@ -637,7 +637,15 @@ export function ProfilePage() {
                             {won ? '🏆' : lost ? '💀' : '🤝'}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-white">{won ? 'Victory' : lost ? 'Defeat' : 'Draw'}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-bold text-white">{won ? 'Victory' : lost ? 'Defeat' : 'Draw'}</p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={g.isAiGame
+                                  ? { background: 'rgba(168,85,247,0.15)', color: '#c084fc' }
+                                  : { background: 'rgba(96,165,250,0.12)', color: '#60a5fa' }}>
+                                {g.isAiGame ? '🤖 vs AI' : '👥 Multiplayer'}
+                              </span>
+                            </div>
                             <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
                               {g.players?.length ?? '?'} players · {g.roundsPlayed ?? g.rounds?.length ?? 0} rounds
                             </p>

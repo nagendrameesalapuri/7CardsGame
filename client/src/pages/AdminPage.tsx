@@ -50,7 +50,8 @@ type Section =
   | "missedpayouts"
   | "gamereview"
   | "holdsystem"
-  | "spinanalytics";
+  | "spinanalytics"
+  | "roomtracker";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -4932,6 +4933,24 @@ function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => voi
     } finally { setRepaying(null); }
   };
 
+  const refundTeamEntry = async (entry: any) => {
+    if (!confirm(`Refund ₹${entry.amount} to ${entry.username ?? entry.userId} for Team ${entry.teamCode}?`)) return;
+    setRepaying(`team-${entry._id}`);
+    try {
+      const r = await admin.refundTeamEntry({
+        userId: entry.userId,
+        amount: entry.amount,
+        teamId: entry.teamId,
+        teamCode: entry.teamCode,
+        note: "Admin refund via missed-payouts dashboard",
+      });
+      showToast(`₹${entry.amount} refunded to ${r.data.username}. New balance: ₹${r.data.balance}`, true);
+      load();
+    } catch (e: any) {
+      showToast(e?.response?.data?.error ?? "Refund failed", false);
+    } finally { setRepaying(null); }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -5026,6 +5045,66 @@ function MissedPayoutsSection({ onReview }: { onReview?: (roomId: string) => voi
                           {repaying ? "…" : "Repay Winner"}
                         </button>
                       )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Unrefunded Team Survival entry locks */}
+          <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+            <div className="px-4 py-3"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(168,85,247,0.06)" }}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white">Unrefunded Team Survival Entries</span>
+                {(data?.unrefundedTeamEntries ?? []).length > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{ background: "rgba(168,85,247,0.2)", color: "#c084fc" }}>
+                    {data.unrefundedTeamEntries.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-dark-muted mt-0.5">
+                Entry fees locked for completed/abandoned tournaments where no refund or prize was issued
+              </p>
+            </div>
+            {(data?.unrefundedTeamEntries ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-dark-muted">No unrefunded team entries</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {data.unrefundedTeamEntries.map((entry: any) => (
+                  <div key={entry._id} className="px-4 py-3 flex items-center gap-3">
+                    <Avatar avatar={entry.avatar ?? "avatar_1"} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-white">{entry.username ?? entry.userId}</p>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc" }}>
+                          Team {entry.teamCode}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize"
+                          style={{
+                            background: entry.teamStatus === "abandoned" ? "rgba(255,107,107,0.12)" : "rgba(99,102,241,0.12)",
+                            color: entry.teamStatus === "abandoned" ? "#ff6b6b" : "#818cf8",
+                          }}>
+                          {entry.teamStatus}
+                        </span>
+                        <span className="text-[10px] text-dark-muted capitalize">{entry.teamTier}</span>
+                      </div>
+                      <p className="text-[11px] text-dark-muted mt-0.5">
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold text-sm" style={{ color: "#c084fc" }}>₹{entry.amount}</span>
+                      <button
+                        onClick={() => refundTeamEntry(entry)}
+                        disabled={repaying === `team-${entry._id}`}
+                        className="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40"
+                        style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.35)" }}>
+                        {repaying === `team-${entry._id}` ? "…" : "Refund"}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -5237,15 +5316,31 @@ interface SpinUserStat {
   allTimeMoneySpin: number;
   allTimePointsSpin: number;
   totalMoneyWon: number;
+  totalMoneySpent: number;
+  totalPointsSpent: number;
   lastSpinAt?: string;
 }
 
+interface DailySpinRow {
+  date: string;
+  moneyCount: number;
+  pointsCount: number;
+  freeCount: number;
+  moneySpent: number;
+  pointsSpent: number;
+  moneyWon: number;
+  uniqueUsers: number;
+}
+
 function SpinAnalyticsSection() {
+  const [view, setView] = React.useState<"users" | "daily">("users");
   const [users, setUsers] = React.useState<SpinUserStat[]>([]);
+  const [dailyRows, setDailyRows] = React.useState<DailySpinRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [dailyLoading, setDailyLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [moneyLimit, setMoneyLimit] = React.useState(3);
-  const [pointsLimit, setPointsLimit] = React.useState(3);
+  const [pointsLimit, setPointsLimit] = React.useState(10);
   const [savingLimits, setSavingLimits] = React.useState(false);
   const [resettingId, setResettingId] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -5262,7 +5357,7 @@ function SpinAnalyticsSection() {
       const { data } = await admin.getSpinAnalytics();
       setUsers(data.users ?? []);
       setMoneyLimit(data.moneySpinLimit ?? 3);
-      setPointsLimit(data.pointsSpinLimit ?? 3);
+      setPointsLimit(data.pointsSpinLimit ?? 10);
     } catch {
       setError("Failed to load spin analytics");
     } finally {
@@ -5270,7 +5365,23 @@ function SpinAnalyticsSection() {
     }
   };
 
+  const loadDaily = async () => {
+    setDailyLoading(true);
+    try {
+      const { data } = await admin.getSpinAnalyticsDaily();
+      setDailyRows(data.rows ?? []);
+    } catch {
+      showToast("error", "Failed to load daily report");
+    } finally {
+      setDailyLoading(false);
+    }
+  };
+
   React.useEffect(() => { load(); }, []);
+
+  React.useEffect(() => {
+    if (view === "daily" && dailyRows.length === 0) loadDaily();
+  }, [view]);
 
   const handleSaveLimits = async () => {
     setSavingLimits(true);
@@ -5308,16 +5419,37 @@ function SpinAnalyticsSection() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl font-black text-white">Spin Analytics</h2>
-          <p className="text-xs text-dark-muted mt-0.5">Daily spin usage, all-time stats, and limit management</p>
+          <p className="text-xs text-dark-muted mt-0.5">Daily usage, all-time stats, and limit management</p>
         </div>
-        <button onClick={load}
-          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-colors"
-          style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
-          ↺ Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.25)" }}>
+            <button onClick={() => setView("users")}
+              className="px-3 py-1.5 text-xs font-bold transition-colors"
+              style={{
+                background: view === "users" ? "rgba(99,102,241,0.25)" : "transparent",
+                color: view === "users" ? "#a5b4fc" : "#6b7280",
+              }}>
+              Players
+            </button>
+            <button onClick={() => setView("daily")}
+              className="px-3 py-1.5 text-xs font-bold transition-colors"
+              style={{
+                background: view === "daily" ? "rgba(99,102,241,0.25)" : "transparent",
+                color: view === "daily" ? "#a5b4fc" : "#6b7280",
+              }}>
+              Daily Report
+            </button>
+          </div>
+          <button onClick={view === "users" ? load : loadDaily}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-colors"
+            style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
+            ↺
+          </button>
+        </div>
       </div>
 
       {/* Global Limits Card */}
@@ -5332,7 +5464,7 @@ function SpinAnalyticsSection() {
                 −
               </button>
               <span className="w-8 text-center font-bold text-sm" style={{ color: "#818cf8" }}>{moneyLimit}</span>
-              <button onClick={() => setMoneyLimit(v => Math.min(20, v + 1))}
+              <button onClick={() => setMoneyLimit(v => Math.min(50, v + 1))}
                 className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
                 +
               </button>
@@ -5346,7 +5478,7 @@ function SpinAnalyticsSection() {
                 −
               </button>
               <span className="w-8 text-center font-bold text-sm" style={{ color: "#34d399" }}>{pointsLimit}</span>
-              <button onClick={() => setPointsLimit(v => Math.min(20, v + 1))}
+              <button onClick={() => setPointsLimit(v => Math.min(100, v + 1))}
                 className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
                 +
               </button>
@@ -5360,103 +5492,217 @@ function SpinAnalyticsSection() {
         </button>
       </div>
 
-      {/* Users Table */}
-      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <span>🎰</span>
-          <h3 className="text-sm font-black text-white">Player Spin Stats</h3>
-          <span className="text-[10px] font-black px-2 py-0.5 rounded-full ml-1"
-            style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>
-            {users.length}
-          </span>
-        </div>
-
-        {users.length === 0 ? (
-          <p className="text-dark-muted text-xs px-4 py-6 text-center">No spin data yet</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
-                  <th className="text-left px-4 py-2 text-dark-muted font-semibold">Player</th>
-                  <th className="text-center px-3 py-2 font-semibold" style={{ color: "#818cf8" }}>Money Today</th>
-                  <th className="text-center px-3 py-2 font-semibold" style={{ color: "#34d399" }}>Points Today</th>
-                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Money</th>
-                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Points</th>
-                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Money Won</th>
-                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Last Spin</th>
-                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Reset</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
-                    className="hover:bg-white/[0.015] transition-colors">
-                    {/* Player */}
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar avatar={u.avatar} size="sm" />
-                        <span className="font-semibold text-white truncate max-w-[100px]">{u.username}</span>
-                      </div>
-                    </td>
-                    {/* Money Today */}
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="font-bold" style={{ color: u.moneySpinsToday >= u.moneySpinLimit ? "#f87171" : "#818cf8" }}>
-                        {u.moneySpinsToday}/{u.moneySpinLimit}
-                      </span>
-                      <span className="ml-1 text-dark-muted">
-                        ({Math.max(0, u.moneySpinLimit - u.moneySpinsToday)} left)
-                      </span>
-                    </td>
-                    {/* Points Today */}
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="font-bold" style={{ color: u.pointsSpinsToday >= u.pointsSpinLimit ? "#f87171" : "#34d399" }}>
-                        {u.pointsSpinsToday}/{u.pointsSpinLimit}
-                      </span>
-                      <span className="ml-1 text-dark-muted">
-                        ({Math.max(0, u.pointsSpinLimit - u.pointsSpinsToday)} left)
-                      </span>
-                    </td>
-                    {/* All-Time Money Spins */}
-                    <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimeMoneySpin}</td>
-                    {/* All-Time Points Spins */}
-                    <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimePointsSpin}</td>
-                    {/* Money Won */}
-                    <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fbbf24" }}>
-                      ₹{u.totalMoneyWon.toLocaleString("en-IN")}
-                    </td>
-                    {/* Last Spin */}
-                    <td className="px-3 py-2.5 text-center text-dark-muted">
-                      {u.lastSpinAt
-                        ? new Date(u.lastSpinAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
-                        : "—"}
-                    </td>
-                    {/* Reset Buttons */}
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1 justify-center">
-                        <button
-                          onClick={() => handleReset(u.id, "money")}
-                          disabled={resettingId === `${u.id}-money`}
-                          className="text-[11px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40"
-                          style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
-                          {resettingId === `${u.id}-money` ? "…" : "Reset Money"}
-                        </button>
-                        <button
-                          onClick={() => handleReset(u.id, "points")}
-                          disabled={resettingId === `${u.id}-points`}
-                          className="text-[11px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40"
-                          style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }}>
-                          {resettingId === `${u.id}-points` ? "…" : "Reset Points"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Players view */}
+      {view === "users" && (
+        <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+          <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <span>🎰</span>
+            <h3 className="text-sm font-black text-white">Player Spin Stats</h3>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full ml-1"
+              style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>
+              {users.length}
+            </span>
           </div>
-        )}
-      </div>
+
+          {users.length === 0 ? (
+            <p className="text-dark-muted text-xs px-4 py-6 text-center">No spin data yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+                    <th className="text-left px-4 py-2 text-dark-muted font-semibold">Player</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#818cf8" }}>Money Today</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#34d399" }}>Points Today</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time ₹</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Pts</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#f87171" }}>₹ Spent</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#fb923c" }}>Pts Spent</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">₹ Won</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">Last Spin</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">Reset</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                      className="hover:bg-white/[0.015] transition-colors">
+                      {/* Player */}
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar avatar={u.avatar} size="sm" />
+                          <span className="font-semibold text-white truncate max-w-[90px]">{u.username}</span>
+                        </div>
+                      </td>
+                      {/* Money Today */}
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                        <span className="font-bold" style={{ color: u.moneySpinsToday >= u.moneySpinLimit ? "#f87171" : "#818cf8" }}>
+                          {u.moneySpinsToday}/{u.moneySpinLimit}
+                        </span>
+                        <span className="ml-1 text-dark-muted">
+                          ({Math.max(0, u.moneySpinLimit - u.moneySpinsToday)} left)
+                        </span>
+                      </td>
+                      {/* Points Today */}
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                        <span className="font-bold" style={{ color: u.pointsSpinsToday >= u.pointsSpinLimit ? "#f87171" : "#34d399" }}>
+                          {u.pointsSpinsToday}/{u.pointsSpinLimit}
+                        </span>
+                        <span className="ml-1 text-dark-muted">
+                          ({Math.max(0, u.pointsSpinLimit - u.pointsSpinsToday)} left)
+                        </span>
+                      </td>
+                      {/* All-Time Money Spins */}
+                      <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimeMoneySpin}</td>
+                      {/* All-Time Points Spins */}
+                      <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimePointsSpin}</td>
+                      {/* ₹ Spent */}
+                      <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#f87171" }}>
+                        ₹{u.totalMoneySpent.toLocaleString("en-IN")}
+                      </td>
+                      {/* Pts Spent */}
+                      <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fb923c" }}>
+                        {u.totalPointsSpent.toLocaleString("en-IN")}
+                      </td>
+                      {/* ₹ Won */}
+                      <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fbbf24" }}>
+                        ₹{u.totalMoneyWon.toLocaleString("en-IN")}
+                      </td>
+                      {/* Last Spin */}
+                      <td className="px-3 py-2.5 text-center text-dark-muted whitespace-nowrap">
+                        {u.lastSpinAt
+                          ? new Date(u.lastSpinAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+                          : "—"}
+                      </td>
+                      {/* Reset Buttons */}
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1 justify-center">
+                          <button
+                            onClick={() => handleReset(u.id, "money")}
+                            disabled={resettingId === `${u.id}-money`}
+                            className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
+                            style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
+                            {resettingId === `${u.id}-money` ? "…" : "₹ Reset"}
+                          </button>
+                          <button
+                            onClick={() => handleReset(u.id, "points")}
+                            disabled={resettingId === `${u.id}-points`}
+                            className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
+                            style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }}>
+                            {resettingId === `${u.id}-points` ? "…" : "Pts Reset"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Daily Report view */}
+      {view === "daily" && (
+        <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+          <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <span>📅</span>
+            <h3 className="text-sm font-black text-white">Daily Spin Report</h3>
+            {dailyRows.length > 0 && (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full ml-1"
+                style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>
+                {dailyRows.length} days
+              </span>
+            )}
+          </div>
+
+          {dailyLoading ? (
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 rounded-full border-2 border-indigo-500/40 border-t-indigo-500 animate-spin" />
+            </div>
+          ) : dailyRows.length === 0 ? (
+            <p className="text-dark-muted text-xs px-4 py-6 text-center">No daily spin data yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+                    <th className="text-left px-4 py-2 text-dark-muted font-semibold">Date</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">Players</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#818cf8" }}>₹ Spins</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#34d399" }}>Pts Spins</th>
+                    <th className="text-center px-3 py-2 text-dark-muted font-semibold">Free</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#f87171" }}>₹ Spent</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#fb923c" }}>Pts Spent</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#fbbf24" }}>₹ Won</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#4ade80" }}>Net ₹</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyRows.map((r) => {
+                    const net = Math.round((r.moneySpent - r.moneyWon) * 100) / 100;
+                    return (
+                      <tr key={r.date} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                        className="hover:bg-white/[0.015] transition-colors">
+                        <td className="px-4 py-2.5 font-semibold text-white whitespace-nowrap">
+                          {new Date(r.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-dark-muted">{r.uniqueUsers}</td>
+                        <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#818cf8" }}>{r.moneyCount}</td>
+                        <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#34d399" }}>{r.pointsCount}</td>
+                        <td className="px-3 py-2.5 text-center text-dark-muted">{r.freeCount}</td>
+                        <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#f87171" }}>
+                          ₹{r.moneySpent.toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fb923c" }}>
+                          {r.pointsSpent.toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fbbf24" }}>
+                          ₹{r.moneyWon.toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold"
+                          style={{ color: net >= 0 ? "#4ade80" : "#f87171" }}>
+                          {net >= 0 ? "+" : ""}₹{net.toLocaleString("en-IN")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {/* Totals row */}
+                {dailyRows.length > 1 && (() => {
+                  const totals = dailyRows.reduce((acc, r) => ({
+                    moneyCount:  acc.moneyCount  + r.moneyCount,
+                    pointsCount: acc.pointsCount + r.pointsCount,
+                    freeCount:   acc.freeCount   + r.freeCount,
+                    moneySpent:  acc.moneySpent  + r.moneySpent,
+                    pointsSpent: acc.pointsSpent + r.pointsSpent,
+                    moneyWon:    acc.moneyWon    + r.moneyWon,
+                  }), { moneyCount: 0, pointsCount: 0, freeCount: 0, moneySpent: 0, pointsSpent: 0, moneyWon: 0 });
+                  const totalNet = Math.round((totals.moneySpent - totals.moneyWon) * 100) / 100;
+                  return (
+                    <tfoot>
+                      <tr style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(99,102,241,0.04)" }}>
+                        <td className="px-4 py-2.5 font-black text-white text-[11px]">All Time</td>
+                        <td className="px-3 py-2.5 text-center text-dark-muted font-bold">—</td>
+                        <td className="px-3 py-2.5 text-center font-black" style={{ color: "#818cf8" }}>{totals.moneyCount}</td>
+                        <td className="px-3 py-2.5 text-center font-black" style={{ color: "#34d399" }}>{totals.pointsCount}</td>
+                        <td className="px-3 py-2.5 text-center text-dark-muted font-bold">{totals.freeCount}</td>
+                        <td className="px-3 py-2.5 text-center font-black" style={{ color: "#f87171" }}>₹{Math.round(totals.moneySpent * 100) / 100}</td>
+                        <td className="px-3 py-2.5 text-center font-black" style={{ color: "#fb923c" }}>{totals.pointsSpent}</td>
+                        <td className="px-3 py-2.5 text-center font-black" style={{ color: "#fbbf24" }}>₹{Math.round(totals.moneyWon * 100) / 100}</td>
+                        <td className="px-3 py-2.5 text-center font-black"
+                          style={{ color: totalNet >= 0 ? "#4ade80" : "#f87171" }}>
+                          {totalNet >= 0 ? "+" : ""}₹{totalNet}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Inline toast */}
       {toast && (
@@ -5473,6 +5719,513 @@ function SpinAnalyticsSection() {
           }}>
           <span>{toast.type === "success" ? "✅" : "❌"}</span>
           <span>{toast.msg}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Room Tracker Section ───────────────────────────────────────────────────────
+
+const ROOM_TYPE_TABS = [
+  { key: "all",               label: "All",          color: "#9ca3af" },
+  { key: "multiplayer_wager", label: "💰 Wager MP",  color: "#fbbf24" },
+  { key: "multiplayer_free",  label: "🆓 Free MP",   color: "#60a5fa" },
+  { key: "ai_game",           label: "🤖 vs AI",     color: "#a78bfa" },
+  { key: "survival_solo",     label: "⚔️ Solo Surv", color: "#f97316" },
+  { key: "survival_team",     label: "👥 Team Arena",color: "#ec4899" },
+] as const;
+
+const ROOM_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  finished:  { bg: "rgba(0,255,136,0.12)",  color: "#00ff88" },
+  playing:   { bg: "rgba(96,165,250,0.15)", color: "#60a5fa" },
+  abandoned: { bg: "rgba(255,107,107,0.12)",color: "#ff6b6b" },
+  no_result: { bg: "rgba(251,191,36,0.15)", color: "#fbbf24" },
+};
+const ROOM_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
+  multiplayer_wager: { bg: "rgba(251,191,36,0.12)",  color: "#fbbf24" },
+  multiplayer_free:  { bg: "rgba(96,165,250,0.12)",  color: "#60a5fa" },
+  ai_game:           { bg: "rgba(167,139,250,0.12)", color: "#a78bfa" },
+  survival_solo:     { bg: "rgba(249,115,22,0.12)",  color: "#f97316" },
+  survival_team:     { bg: "rgba(236,72,153,0.12)",  color: "#ec4899" },
+};
+const ROOM_TYPE_LABELS: Record<string, string> = {
+  multiplayer_wager: "💰 Wager",
+  multiplayer_free:  "🆓 Free MP",
+  ai_game:           "🤖 vs AI",
+  survival_solo:     "⚔️ Solo Surv",
+  survival_team:     "👥 Team Arena",
+};
+
+function RoomTrackerSection() {
+  const [items,    setItems]    = React.useState<any[]>([]);
+  const [total,    setTotal]    = React.useState(0);
+  const [page,     setPage]     = React.useState(1);
+  const [pages,    setPages]    = React.useState(1);
+  const [loading,  setLoading]  = React.useState(true);
+  const [type,     setType]     = React.useState("all");
+  const [status,   setStatus]   = React.useState("all");
+  const [days,     setDays]     = React.useState(30);
+  const [search,   setSearch]   = React.useState("");
+  const [draftSearch, setDraftSearch] = React.useState("");
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [refunding,    setRefunding]    = React.useState<string | null>(null);
+  const [refundingAll, setRefundingAll] = React.useState<string | null>(null);
+  const [toast,    setToast]    = React.useState<{ ok: boolean; msg: string } | null>(null);
+
+  const showToast = (ok: boolean, msg: string) => { setToast({ ok, msg }); setTimeout(() => setToast(null), 3500); };
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await admin.getRoomHistory({ page, type, status, days, search });
+      setItems(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPages(data.pages ?? 1);
+    } catch { showToast(false, "Failed to load room history"); }
+    finally { setLoading(false); }
+  }, [page, type, status, days, search]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const handleTypeChange = (t: string) => { setType(t); setPage(1); setExpanded(null); };
+  const handleStatusChange = (s: string) => { setStatus(s); setPage(1); };
+  const handleDaysChange = (d: number) => { setDays(d); setPage(1); };
+  const handleSearch = () => { setSearch(draftSearch); setPage(1); };
+
+  const doRefund = async (userId: string, amount: number, roomCode: string, username: string, itemId: string) => {
+    if (!confirm(`Refund ₹${amount} to ${username} for room ${roomCode}?`)) return;
+    setRefunding(`${itemId}-${userId}`);
+    try {
+      const r = await admin.repayMissedPayout({ userId, amount, roomCode, note: "Admin refund via Room Tracker" });
+      showToast(true, `₹${amount} refunded to ${r.data.username}`);
+      load();
+    } catch (e: any) {
+      showToast(false, e?.response?.data?.error ?? "Refund failed");
+    } finally { setRefunding(null); }
+  };
+
+  const doRefundAll = async (item: any) => {
+    const humanPlayers = (item.players ?? []).filter((p: any) => !p.isBot);
+    const perPlayerFees: Record<string, number> = item.perPlayerFees ?? {};
+    const alreadyRefundedIds = new Set(
+      (item.list ?? []).filter((t: any) => t.type === "refund").map((t: any) => t.userId)
+    );
+    const toRefund = humanPlayers
+      .map((p: any) => ({ userId: p.userId, username: p.username, amount: perPlayerFees[p.userId] ?? 0 }))
+      .filter((r: { userId: string; username: string; amount: number }) => r.amount > 0 && !alreadyRefundedIds.has(r.userId));
+
+    if (toRefund.length === 0) { showToast(false, "No refundable amounts found"); return; }
+
+    const total = toRefund.reduce((s: number, r: { amount: number }) => s + r.amount, 0);
+    const names = toRefund.map((r: { username: string; amount: number }) => `${r.username} ₹${r.amount}`).join(", ");
+    if (!confirm(`Refund ALL players for room ${item.roomCode}?\n\n${names}\n\nTotal: ₹${total}`)) return;
+
+    setRefundingAll(item.id);
+    let ok = 0, fail = 0;
+    for (const { userId, username, amount } of toRefund) {
+      try {
+        await admin.repayMissedPayout({ userId, amount, roomCode: item.roomCode, note: "Admin bulk refund via Room Tracker" });
+        ok++;
+      } catch { fail++; }
+    }
+    setRefundingAll(null);
+    showToast(fail === 0, fail === 0 ? `₹${total} refunded to ${ok} player${ok > 1 ? "s" : ""}` : `${ok} refunded, ${fail} failed`);
+    load();
+  };
+
+  const toggleExpand = (id: string) => setExpanded(prev => prev === id ? null : id);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-xl font-black text-white">Room Tracker</h2>
+          <p className="text-xs text-dark-muted mt-0.5">All game sessions — players, rounds, amounts, refunds</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-dark-muted">{total} rooms</span>
+          <button onClick={load} className="px-3 py-1.5 rounded-xl text-xs font-bold"
+            style={{ background:"rgba(99,102,241,0.12)", color:"#818cf8", border:"1px solid rgba(99,102,241,0.25)" }}>
+            ↺ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Type tabs */}
+      <div className="flex flex-wrap gap-1.5">
+        {ROOM_TYPE_TABS.map(tab => (
+          <button key={tab.key} onClick={() => handleTypeChange(tab.key)}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+            style={{
+              background: type === tab.key ? `${tab.color}22` : "rgba(255,255,255,0.04)",
+              color: type === tab.key ? tab.color : "#6b7280",
+              border: `1px solid ${type === tab.key ? `${tab.color}55` : "rgba(255,255,255,0.08)"}`,
+            }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Status */}
+        {(["all","finished","playing","abandoned","no_result"] as const).map(s => (
+          <button key={s} onClick={() => handleStatusChange(s)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors capitalize"
+            style={{
+              background: status === s ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+              color: status === s ? "#a5b4fc" : "#6b7280",
+              border: `1px solid ${status === s ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.06)"}`,
+            }}>
+            {s === "no_result" ? "⚠ No Result" : s === "all" ? "All Status" : s}
+          </button>
+        ))}
+        <div className="w-px h-4 bg-white/10 mx-1" />
+        {/* Days */}
+        {([7, 30, 0] as const).map(d => (
+          <button key={d} onClick={() => handleDaysChange(d)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors"
+            style={{
+              background: days === d ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+              color: days === d ? "#a5b4fc" : "#6b7280",
+              border: `1px solid ${days === d ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.06)"}`,
+            }}>
+            {d === 0 ? "All Time" : `${d}d`}
+          </button>
+        ))}
+        <div className="w-px h-4 bg-white/10 mx-1" />
+        {/* Search */}
+        <div className="flex items-center gap-1">
+          <input
+            value={draftSearch}
+            onChange={e => setDraftSearch(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSearch()}
+            placeholder="Room code / player…"
+            className="text-[11px] px-2.5 py-1 rounded-lg outline-none w-40"
+            style={{ background:"rgba(255,255,255,0.06)", color:"#e5e7eb", border:"1px solid rgba(255,255,255,0.1)" }}
+          />
+          <button onClick={handleSearch}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold"
+            style={{ background:"rgba(99,102,241,0.15)", color:"#818cf8", border:"1px solid rgba(99,102,241,0.25)" }}>
+            Go
+          </button>
+          {search && (
+            <button onClick={() => { setSearch(""); setDraftSearch(""); }}
+              className="text-[10px] text-dark-muted hover:text-white px-1">✕</button>
+          )}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-8 h-8 rounded-full border-2 border-indigo-500/40 border-t-indigo-500 animate-spin" />
+          </div>
+        ) : items.length === 0 ? (
+          <p className="text-dark-muted text-sm px-4 py-10 text-center">No rooms found for these filters</p>
+        ) : (
+          <div className="divide-y" style={{ borderColor:"rgba(255,255,255,0.04)" }}>
+            {items.map(item => {
+              const isOpen = expanded === item.id;
+              const tc = ROOM_TYPE_COLORS[item.type] ?? { bg:"rgba(255,255,255,0.06)", color:"#9ca3af" };
+              const sc = ROOM_STATUS_COLORS[item.status] ?? { bg:"rgba(255,255,255,0.04)", color:"#9ca3af" };
+              const humanPlayers = (item.players ?? []).filter((p: any) => !p.isBot);
+              const botPlayers   = (item.players ?? []).filter((p: any) => p.isBot);
+              const winner = item.winner;
+              const hasIssue = item.hasRefundIssue;
+
+              return (
+                <React.Fragment key={item.id}>
+                  {/* Row */}
+                  <div
+                    className="px-4 py-3 cursor-pointer hover:bg-white/[0.015] transition-colors"
+                    onClick={() => toggleExpand(item.id)}>
+                    <div className="flex items-start gap-3 flex-wrap">
+                      {/* Left info */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-bold text-sm text-white tracking-wide">{item.roomCode}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background:tc.bg, color:tc.color }}>
+                            {ROOM_TYPE_LABELS[item.type] ?? item.type}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize" style={{ background:sc.bg, color:sc.color }}>
+                            {item.status}
+                          </span>
+                          {hasIssue && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background:"rgba(251,191,36,0.15)", color:"#fbbf24" }}>
+                              ⚠ No Payout
+                            </span>
+                          )}
+                          {item.tier && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize"
+                              style={{ background:"rgba(255,255,255,0.06)", color:"#9ca3af" }}>
+                              {item.tier}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Players */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {humanPlayers.slice(0, 6).map((p: any) => (
+                            <div key={p.userId} className="flex items-center gap-1">
+                              <Avatar avatar={p.avatar} size="xs" />
+                              <span className="text-[11px]" style={{ color: p.isWinner ? "#fbbf24" : "#d1d5db" }}>
+                                {p.username}{p.isWinner ? " 👑" : ""}
+                              </span>
+                            </div>
+                          ))}
+                          {botPlayers.length > 0 && (
+                            <span className="text-[10px] text-dark-muted">+{botPlayers.length} bot{botPlayers.length>1?"s":""}</span>
+                          )}
+                          {humanPlayers.length > 6 && <span className="text-[10px] text-dark-muted">+{humanPlayers.length-6} more</span>}
+                        </div>
+                      </div>
+
+                      {/* Right stats */}
+                      <div className="flex items-center gap-4 text-right flex-shrink-0 flex-wrap">
+                        {(item.entryFee > 0 || item.totalFees > 0) && (
+                          <div>
+                            <p className="text-xs font-bold" style={{ color:"#fbbf24" }}>₹{item.pot || item.entryFee}</p>
+                            <p className="text-[9px] text-dark-muted">pot</p>
+                          </div>
+                        )}
+                        {item.entryPoints > 0 && (
+                          <div>
+                            <p className="text-xs font-bold" style={{ color:"#c084fc" }}>{item.entryPoints} pts</p>
+                            <p className="text-[9px] text-dark-muted">entry</p>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-bold text-dark-muted">{item.roundCount}</p>
+                          <p className="text-[9px] text-dark-muted">rounds</p>
+                        </div>
+                        <div className="text-[10px] text-dark-muted">
+                          {item.startedAt ? new Date(item.startedAt).toLocaleDateString("en-IN", { day:"2-digit", month:"short" }) + " " + new Date(item.startedAt).toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" }) : "—"}
+                        </div>
+                        {(item.totalFees - item.totalPaid - item.totalRefunded) > 0 && (
+                          <button
+                            onClick={e => { e.stopPropagation(); doRefundAll(item); }}
+                            disabled={!!refundingAll}
+                            className="text-[11px] px-3 py-1.5 rounded-lg font-bold disabled:opacity-40 whitespace-nowrap"
+                            style={{ background:"rgba(0,255,136,0.15)", color:"#00ff88", border:"1px solid rgba(0,255,136,0.3)" }}>
+                            {refundingAll === item.id ? "Refunding…" : `Refund All ₹${item.totalFees - item.totalPaid - item.totalRefunded}`}
+                          </button>
+                        )}
+                        <span className="text-dark-muted text-xs">{isOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded detail */}
+                  {isOpen && (
+                    <div className="px-4 pb-5 space-y-4" style={{ background:"rgba(255,255,255,0.015)" }}>
+
+                      {/* Players table */}
+                      <div>
+                        <p className="text-[11px] font-black text-white mb-2 pt-3">👥 Players</p>
+                        <div className="space-y-1">
+                          {(item.players ?? []).map((p: any) => (
+                            <div key={p.userId || p.username}
+                              className="flex items-center gap-3 px-3 py-2 rounded-xl text-[11px]"
+                              style={{ background: p.isWinner ? "rgba(251,191,36,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${p.isWinner ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.05)"}` }}>
+                              <Avatar avatar={p.avatar} size="xs" />
+                              <span className="flex-1 font-semibold" style={{ color: p.isWinner ? "#fbbf24" : "#d1d5db" }}>
+                                {p.isBot ? "🤖 " : ""}{p.username} {p.isWinner ? "👑 WINNER" : ""}
+                              </span>
+                              <span className="text-dark-muted">Score: {p.score}</span>
+                              {!p.isBot && item.entryFee > 0 && (
+                                <button
+                                  disabled={!!refunding}
+                                  onClick={e => { e.stopPropagation(); doRefund(p.userId, item.entryFee, item.roomCode, p.username, item.id); }}
+                                  className="text-[10px] px-2.5 py-1 rounded-lg font-bold disabled:opacity-40"
+                                  style={{ background:"rgba(0,255,136,0.12)", color:"#00ff88", border:"1px solid rgba(0,255,136,0.25)" }}>
+                                  {refunding === `${item.id}-${p.userId}` ? "…" : `Refund ₹${item.entryFee}`}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Financial summary */}
+                      {(item.totalFees > 0 || item.totalPaid > 0 || item.totalRefunded > 0) && (
+                        <div>
+                          <p className="text-[11px] font-black text-white mb-2">💰 Financials</p>
+                          <div className="flex flex-wrap gap-3">
+                            <div className="rounded-xl px-3 py-2" style={{ background:"rgba(255,107,107,0.08)", border:"1px solid rgba(255,107,107,0.2)" }}>
+                              <p className="text-[10px] text-dark-muted">Fees Collected</p>
+                              <p className="text-sm font-black" style={{ color:"#f87171" }}>₹{item.totalFees}</p>
+                            </div>
+                            <div className="rounded-xl px-3 py-2" style={{ background:"rgba(0,255,136,0.08)", border:"1px solid rgba(0,255,136,0.2)" }}>
+                              <p className="text-[10px] text-dark-muted">Prize Paid Out</p>
+                              <p className="text-sm font-black" style={{ color:"#00ff88" }}>₹{item.totalPaid}</p>
+                            </div>
+                            <div className="rounded-xl px-3 py-2" style={{ background:"rgba(96,165,250,0.08)", border:"1px solid rgba(96,165,250,0.2)" }}>
+                              <p className="text-[10px] text-dark-muted">Refunded</p>
+                              <p className="text-sm font-black" style={{ color:"#60a5fa" }}>₹{item.totalRefunded}</p>
+                            </div>
+                            {item.totalFees > 0 && (
+                              <div className="rounded-xl px-3 py-2" style={{
+                                background: item.totalPaid > 0 ? "rgba(0,255,136,0.04)" : "rgba(251,191,36,0.08)",
+                                border: `1px solid ${item.totalPaid > 0 ? "rgba(0,255,136,0.15)" : "rgba(251,191,36,0.25)"}`,
+                              }}>
+                                <p className="text-[10px] text-dark-muted">Status</p>
+                                <p className="text-sm font-black" style={{ color: item.totalPaid > 0 ? "#00ff88" : "#fbbf24" }}>
+                                  {item.totalPaid > 0 ? "✅ Settled" : "⚠ Unsettled"}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Transaction log */}
+                      {(item.list ?? []).length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-black text-white mb-2">🧾 Transactions</p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[10px]">
+                              <thead>
+                                <tr style={{ borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+                                  <th className="text-left px-2 py-1.5 text-dark-muted font-semibold">Type</th>
+                                  <th className="text-left px-2 py-1.5 text-dark-muted font-semibold">Player</th>
+                                  <th className="text-center px-2 py-1.5 text-dark-muted font-semibold">Amount</th>
+                                  <th className="text-center px-2 py-1.5 text-dark-muted font-semibold">Status</th>
+                                  <th className="text-right px-2 py-1.5 text-dark-muted font-semibold">Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(item.list ?? []).map((t: any) => {
+                                  const tColor = ['winning','match_settlement'].includes(t.type) ? '#00ff88'
+                                    : t.type === 'refund' ? '#60a5fa'
+                                    : ['entry_locked','entry_fee'].includes(t.type) ? '#f87171'
+                                    : '#9ca3af';
+                                  const tPlayer = (item.players ?? []).find((p: any) => p.userId === t.userId);
+                                  return (
+                                    <tr key={t.id} style={{ borderBottom:"1px solid rgba(255,255,255,0.03)" }}>
+                                      <td className="px-2 py-1.5">
+                                        <span className="font-bold" style={{ color:tColor }}>{t.type.replace(/_/g,' ')}</span>
+                                      </td>
+                                      <td className="px-2 py-1.5 text-dark-muted">{tPlayer?.username ?? t.userId?.slice(-6)}</td>
+                                      <td className="px-2 py-1.5 text-center font-bold" style={{ color:tColor }}>
+                                        {['winning','match_settlement','refund'].includes(t.type) ? '+' : '-'}₹{t.amount}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-center">
+                                        <span style={{ color: t.status==='completed'?'#00ff88':t.status==='failed'?'#f87171':'#fbbf24' }}>
+                                          {t.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-1.5 text-right text-dark-muted whitespace-nowrap">
+                                        {new Date(t.createdAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})} {new Date(t.createdAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Rounds (for Game records) */}
+                      {(item.rounds ?? []).length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-black text-white mb-2">🎲 Rounds</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(item.rounds ?? []).map((r: any) => {
+                              const won = r.showPlayerWon;
+                              const winnerName = r.winnerUsername ?? ((item.players ?? []).find((p: any) => String(p.userId) === String(r.winnerId))?.username);
+                              const winnerBot  = r.winnerIsBot   ?? ((item.players ?? []).find((p: any) => String(p.userId) === String(r.winnerId))?.isBot);
+                              const callerName = r.showCallerUsername ?? ((item.players ?? []).find((p: any) => String(p.userId) === String(r.showPlayerId))?.username);
+                              const callerBot  = r.showCallerIsBot    ?? ((item.players ?? []).find((p: any) => String(p.userId) === String(r.showPlayerId))?.isBot);
+                              return (
+                                <div key={r.roundNumber} className="rounded-xl px-3 py-2 text-[10px] space-y-1"
+                                  style={{
+                                    background: won ? "rgba(0,255,136,0.05)" : "rgba(248,113,113,0.05)",
+                                    border: `1px solid ${won ? "rgba(0,255,136,0.18)" : "rgba(248,113,113,0.18)"}`,
+                                    minWidth:"110px",
+                                  }}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="font-black text-white">Round {r.roundNumber}</p>
+                                    <span className="font-bold px-1.5 py-0.5 rounded-md text-[9px]"
+                                      style={{ background: won ? "rgba(0,255,136,0.15)" : "rgba(248,113,113,0.15)", color: won ? "#00ff88" : "#f87171" }}>
+                                      {won ? "WIN" : "FAIL"}
+                                    </span>
+                                  </div>
+                                  <p className="text-dark-muted">Joker: <span className="font-bold text-yellow-400">{r.jokerRank}</span></p>
+                                  {winnerName && (
+                                    <p className="text-dark-muted">
+                                      Winner: <span className="font-semibold" style={{ color:"#fbbf24" }}>{winnerBot ? "🤖 " : ""}{winnerName}</span>
+                                    </p>
+                                  )}
+                                  {callerName && (
+                                    <p className="text-dark-muted">
+                                      Show by: <span style={{ color: won ? "#00ff88" : "#f87171" }}>{callerBot ? "🤖 " : ""}{callerName}</span>
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Stage results (for Survival) */}
+                      {(item.stageResults ?? []).length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-black text-white mb-2">🏟️ Stage Results</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(item.stageResults ?? []).map((s: any) => (
+                              <div key={s.stage} className="rounded-xl px-3 py-2 text-[10px] space-y-0.5"
+                                style={{
+                                  background: s.teamWon ?? s.playerWon ? "rgba(0,255,136,0.06)" : "rgba(255,107,107,0.06)",
+                                  border: `1px solid ${s.teamWon ?? s.playerWon ? "rgba(0,255,136,0.2)" : "rgba(255,107,107,0.2)"}`,
+                                  minWidth:"100px",
+                                }}>
+                                <p className="font-black text-white">Stage {s.stage}</p>
+                                <p style={{ color: s.teamWon ?? s.playerWon ? "#00ff88" : "#f87171" }}>
+                                  {s.teamWon ?? s.playerWon ? "✅ Won" : "❌ Lost"}
+                                </p>
+                                {s.pointsEarned > 0 && <p className="text-dark-muted">+{s.pointsEarned} pts</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
+            className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">← Prev</button>
+          <span className="text-xs text-dark-muted">{page} / {pages}</span>
+          <button onClick={() => setPage(p => Math.min(pages, p+1))} disabled={page === pages}
+            className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">Next →</button>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold"
+          style={{
+            background: toast.ok ? "linear-gradient(135deg,rgba(0,200,100,0.18),rgba(0,200,100,0.08))" : "linear-gradient(135deg,rgba(220,50,50,0.18),rgba(220,50,50,0.08))",
+            border: `1px solid ${toast.ok ? "rgba(0,200,100,0.45)" : "rgba(220,50,50,0.45)"}`,
+            backdropFilter:"blur(16px)",
+            color: toast.ok ? "#00e676" : "#ff6b6b",
+          }}>
+          {toast.ok ? "✅" : "❌"} {toast.msg}
         </div>
       )}
     </div>
@@ -5496,6 +6249,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "overview",      icon: "📊", label: "Dashboard" },
       { key: "rooms",         icon: "🎮", label: "Live Rooms" },
+      { key: "roomtracker",   icon: "🗂️", label: "Room Tracker" },
       { key: "gamereview",    icon: "🕵️", label: "Game Review" },
       { key: "tournaments",   icon: "🤖", label: "AI Championship" },
       { key: "gameconfig",    icon: "🎯", label: "Game Config" },
@@ -5761,6 +6515,7 @@ export function AdminPage() {
               {section === "gamereview" && <GameReviewPage />}
               {section === "holdsystem" && <HoldSystemSection />}
               {section === "spinanalytics" && <SpinAnalyticsSection />}
+              {section === "roomtracker" && <RoomTrackerSection />}
             </motion.div>
           </AnimatePresence>
         </div>

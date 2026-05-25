@@ -24,6 +24,7 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
       roundCount: g.roundCount,
       winnerId: g.winnerId,
       winnerUsername: g.winnerUsername,
+      isAiGame: g.players.some(p => p.isBot),
       myResult: g.players.find(p => p.userId === userId) ?? null,
       players: g.players.map(p => ({
         userId: p.userId,
@@ -56,13 +57,18 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/games/multiplayer-stats — free vs wager breakdown
+// GET /api/games/multiplayer-stats — free vs wager breakdown (human-only games, no bots)
 router.get('/multiplayer-stats', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
+    // Exclude any game that has a bot player — those are AI games, not multiplayer
     const [allGames, winTxns] = await Promise.all([
-      Game.find({ 'players.userId': userId, status: 'finished' })
+      Game.find({
+        'players.userId': userId,
+        status: 'finished',
+        players: { $not: { $elemMatch: { isBot: true } } },
+      })
         .select('roomId winnerId entryFee rounds')
         .lean(),
       Transaction.find({ userId, type: 'winning' }).lean(),
@@ -72,12 +78,17 @@ router.get('/multiplayer-stats', requireAuth, async (req: Request, res: Response
     const wagerGames = allGames.filter(g => g.entryFee && g.entryFee > 0);
 
     const calcStats = (games: typeof allGames) => {
-      const played = games.length;
-      const won    = games.filter(g => g.winnerId === userId).length;
+      const played     = games.length;
+      const won        = games.filter(g => g.winnerId === userId).length;
+      const roundsPlayed = games.reduce((s, g) => s + (g.rounds?.length ?? 0), 0);
+      const roundsWon    = games.reduce((s, g) => s + (g.rounds?.filter(r => r.winnerId === userId).length ?? 0), 0);
       return {
         played,
         won,
-        winRate: played > 0 ? Math.round((won / played) * 100) : 0,
+        winRate:      played > 0       ? Math.round((won       / played)       * 100) : 0,
+        roundsPlayed,
+        roundsWon,
+        roundWinRate: roundsPlayed > 0 ? Math.round((roundsWon / roundsPlayed) * 100) : 0,
       };
     };
 
