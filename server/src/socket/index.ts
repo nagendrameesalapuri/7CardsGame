@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User";
+import { Room } from "../models/Room";
 import { registerRoomHandlers, cancelPendingAbandon } from "./handlers/roomHandler";
 import {
   registerGameHandlers,
@@ -134,7 +135,17 @@ export function initSocketIO(io: Server) {
 
       const game = getActiveGame(roomCode);
       if (!game) {
-        socket.emit("game:error", "Game not found or already finished");
+        // Check if the room exists in DB as finished — means it was refunded on restart
+        const dbRoom = await Room.findOne({ code: roomCode }).select('status config paidPlayerIds').lean();
+        if (dbRoom && (dbRoom as any).status === 'finished') {
+          const entryFee = (dbRoom.config as any)?.entryFee ?? 0;
+          const msg = entryFee > 0
+            ? `The server was restarted during your game. Your ₹${entryFee} entry fee has been refunded to your wallet.`
+            : 'The server was restarted and your game could not be resumed. Please start a new game.';
+          socket.emit("game:abandoned", { message: msg });
+        } else {
+          socket.emit("game:error", "Game not found or already finished");
+        }
         return;
       }
 

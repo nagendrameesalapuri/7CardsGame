@@ -14,6 +14,11 @@ import { connectDatabase } from './config/database';
 import { Announcement } from './models/Announcement';
 import { configurePassport } from './config/passport';
 import { initSocketIO } from './socket';
+import { Room } from './models/Room';
+import { User } from './models/User';
+import { Transaction } from './models/Transaction';
+import { refundAbandonedGame } from './socket/handlers/roomHandler';
+import { getAllActiveRoomInfos } from './socket/handlers/gameHandler';
 
 import authRoutes from './routes/auth';
 import roomRoutes from './routes/rooms';
@@ -135,11 +140,57 @@ async function bootstrap() {
 
   initSocketIO(io);
 
+  // ── Startup: refund any games orphaned by previous crash/deployment ──────────
+  try {
+    const orphanedRooms = await Room.find({ status: 'playing' }).lean();
+    if (orphanedRooms.length > 0) {
+      console.log(`[Startup] Found ${orphanedRooms.length} orphaned room(s) from previous crash — refunding entry fees`);
+      for (const room of orphanedRooms) {
+        const entryFee = (room.config as any)?.entryFee ?? 0;
+        const paidIds: string[] = (room as any).paidPlayerIds ?? [];
+        if (entryFee > 0 && paidIds.length > 0) {
+          await refundAbandonedGame(room as any);
+          console.log(`[Startup] Refunded ₹${entryFee} to ${paidIds.length} player(s) for orphaned room ${room.code}`);
+        }
+        await Room.findByIdAndUpdate((room as any)._id, { status: 'finished' });
+      }
+    }
+  } catch (err) {
+    console.error('[Startup] Orphan-room cleanup failed:', err);
+  }
+
   // ── Start ────────────────────────────────────────────────────────────────────
-  httpServer.listen(PORT, () => {
+  const server = httpServer.listen(PORT, () => {
     console.log(`[Server] Running on http://localhost:${PORT}`);
     console.log(`[Server] Mode: ${process.env.NODE_ENV ?? 'development'}`);
   });
+
+  // ── Graceful shutdown: refund active games before deployment kill ─────────────
+  async function gracefulShutdown(signal: string) {
+    console.log(`[Server] ${signal} received — refunding active games before shutdown`);
+    try {
+      const activeInfos = getAllActiveRoomInfos();
+      for (const info of activeInfos) {
+        const room = await Room.findOne({ code: info.roomCode }).lean();
+        if (!room) continue;
+        const entryFee = (room.config as any)?.entryFee ?? 0;
+        const paidIds: string[] = (room as any).paidPlayerIds ?? [];
+        if (entryFee > 0 && paidIds.length > 0) {
+          await refundAbandonedGame(room as any);
+          console.log(`[Shutdown] Refunded ₹${entryFee} × ${paidIds.length} player(s) for room ${info.roomCode}`);
+        }
+        await Room.findOneAndUpdate({ code: info.roomCode }, { status: 'finished' });
+      }
+    } catch (err) {
+      console.error('[Shutdown] Refund error:', err);
+    }
+    server.close(() => process.exit(0));
+    // Force exit after 10 s if connections hang
+    setTimeout(() => process.exit(0), 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {
