@@ -20,355 +20,37 @@ import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
 
 type Tab = 'play' | 'history';
 
-// ── Premium playing card SVG ──────────────────────────────────────────────────
-function FloatingCard({ rank, suit, color, style }: { rank: string; suit: string; color: string; style?: React.CSSProperties }) {
-  return (
-    <div className="rounded-xl flex flex-col justify-between p-2 select-none"
-      style={{
-        width: 54, height: 76,
-        background: 'linear-gradient(145deg,#ffffff,#f0f0f0)',
-        border: '1px solid rgba(255,255,255,0.9)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.8)',
-        ...style,
-      }}>
-      <div style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{rank}</div>
-      <div style={{ color, fontSize: 22, lineHeight: 1, textAlign: 'center' }}>{suit}</div>
-      <div style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1, transform: 'rotate(180deg)' }}>{rank}</div>
-    </div>
-  );
-}
-
-// ── Left side decoration ──────────────────────────────────────────────────────
-function LeftSideDecor() {
-  const cards = [
-    { rank: 'K', suit: '♠', color: '#1a1a2e' },
-    { rank: 'Q', suit: '♥', color: '#c0392b' },
-    { rank: 'J', suit: '♦', color: '#c0392b' },
-    { rank: 'A', suit: '♣', color: '#1a1a2e' },
-  ];
-  return (
-    <div className="fixed left-0 top-0 bottom-0 pointer-events-none hidden xl:flex flex-col items-center justify-center gap-6 pl-6"
-      style={{ width: 'calc((100vw - 672px) / 2)', zIndex: 1 }}>
-
-      {/* Stacked cards fan */}
-      <div className="relative" style={{ width: 90, height: 120 }}>
-        {cards.map((c, i) => (
-          <motion.div key={i}
-            animate={{ y: [0, i % 2 === 0 ? -4 : 4, 0] }}
-            transition={{ duration: 3 + i * 0.5, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: i * 10, top: i * 8, zIndex: i }}>
-            <FloatingCard {...c} />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Suit symbols */}
-      <div className="flex flex-col gap-3 items-center">
-        {[
-          { s: '♠', color: 'rgba(129,140,248,0.7)', glow: 'rgba(99,102,241,0.4)' },
-          { s: '♥', color: 'rgba(248,113,113,0.7)', glow: 'rgba(239,68,68,0.3)' },
-          { s: '♦', color: 'rgba(251,191,36,0.7)',  glow: 'rgba(245,158,11,0.3)' },
-          { s: '♣', color: 'rgba(52,211,153,0.7)',  glow: 'rgba(16,185,129,0.3)' },
-        ].map(({ s, color, glow }, i) => (
-          <motion.div key={s}
-            animate={{ scale: [1, 1.12, 1], opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 2.5 + i * 0.4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
-            className="font-black"
-            style={{ fontSize: 28, color, textShadow: `0 0 16px ${glow}`, lineHeight: 1 }}>
-            {s}
-          </motion.div>
-        ))}
-      </div>
-
-      {/* XP tip card */}
-      <motion.div
-        animate={{ y: [0, -5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        className="rounded-2xl px-4 py-3 text-center"
-        style={{
-          background: 'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(168,85,247,0.12))',
-          border: '1px solid rgba(99,102,241,0.3)',
-          boxShadow: '0 8px 32px rgba(99,102,241,0.15)',
-          maxWidth: 130,
-        }}>
-        <p className="text-2xl mb-1">⭐</p>
-        <p className="text-[11px] font-black text-white leading-tight">Win games</p>
-        <p className="text-[11px] font-black text-white leading-tight">earn XP</p>
-        <p className="text-[10px] mt-1 font-semibold" style={{ color: '#a5b4fc' }}>Level up → unlock ranks</p>
-      </motion.div>
-
-      {/* Vertical label */}
-      <p className="text-[9px] font-black uppercase tracking-[0.3em] mt-2"
-        style={{ color: 'rgba(99,102,241,0.35)', writingMode: 'vertical-rl' }}>
-        Arena of Sevens
-      </p>
-    </div>
-  );
-}
-
-// ── Right side decoration ─────────────────────────────────────────────────────
-function RightSideDecor() {
-  const features = [
-    { icon: '🏆', title: '5-Stage',      sub: 'AI Tournament'    },
-    { icon: '⚔️', title: 'Wager',        sub: 'Real Stakes'      },
-    { icon: '🎁', title: 'Daily',        sub: 'Login Rewards'    },
-    { icon: '🎰', title: 'Lucky',        sub: 'Spin Every Day'   },
-  ];
-  return (
-    <div className="fixed right-0 top-0 bottom-0 pointer-events-none hidden xl:flex flex-col items-center justify-center gap-5 pr-6"
-      style={{ width: 'calc((100vw - 672px) / 2)', zIndex: 1 }}>
-
-      {/* Feature chips */}
-      <div className="flex flex-col gap-2 items-center w-full" style={{ maxWidth: 140 }}>
-        <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: 'rgba(52,211,153,0.5)' }}>Features</p>
-        {features.map((f, i) => (
-          <motion.div key={f.title}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 + i * 0.12 }}
-            whileHover={{ scale: 1.04, x: -3 }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
-            }}>
-            <span className="text-base">{f.icon}</span>
-            <div>
-              <p className="text-[11px] font-black text-white leading-none">{f.title}</p>
-              <p className="text-[9px] mt-0.5 font-semibold" style={{ color: 'rgba(148,163,184,0.65)' }}>{f.sub}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Stacked cards (mirrored) */}
-      <div className="relative" style={{ width: 90, height: 110 }}>
-        {[
-          { rank: '7', suit: '♦', color: '#c0392b' },
-          { rank: '7', suit: '♣', color: '#1a1a2e' },
-          { rank: '7', suit: '♠', color: '#1a1a2e' },
-        ].map((c, i) => (
-          <motion.div key={i}
-            animate={{ rotate: [0, i % 2 === 0 ? 2 : -2, 0] }}
-            transition={{ duration: 3 + i * 0.6, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'absolute', left: i * 12, top: i * 7, zIndex: i }}>
-            <FloatingCard {...c} />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Live badge */}
-      <motion.div
-        animate={{ y: [0, -5, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-        className="rounded-2xl px-4 py-3 text-center"
-        style={{
-          background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,182,212,0.1))',
-          border: '1px solid rgba(16,185,129,0.28)',
-          boxShadow: '0 8px 32px rgba(16,185,129,0.12)',
-          maxWidth: 130,
-        }}>
-        <div className="flex items-center justify-center gap-1.5 mb-1">
-          <motion.div className="w-2 h-2 rounded-full bg-emerald-400"
-            animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
-          <p className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Live</p>
-        </div>
-        <p className="text-xl font-black text-white">Low wins</p>
-        <p className="text-[10px] mt-1" style={{ color: 'rgba(52,211,153,0.7)' }}>Lowest score takes the round</p>
-      </motion.div>
-
-      {/* Vertical label */}
-      <p className="text-[9px] font-black uppercase tracking-[0.3em] mt-2"
-        style={{ color: 'rgba(16,185,129,0.35)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-        Master the Show
-      </p>
-    </div>
-  );
-}
-
-// ── Ambient floating orb ──────────────────────────────────────────────────────
-function AmbientOrb({ x, y, size, color, delay }: { x: string; y: string; size: number; color: string; delay: number }) {
-  return (
-    <motion.div
-      className="absolute rounded-full pointer-events-none"
-      style={{ left: x, top: y, width: size, height: size, background: color, filter: `blur(${size * 0.55}px)` }}
-      animate={{ y: [0, -18, 0], opacity: [0.35, 0.6, 0.35] }}
-      transition={{ repeat: Infinity, duration: 5 + delay, delay, ease: 'easeInOut' }}
-    />
-  );
-}
-
-// ── Rank progress ring (SVG) ──────────────────────────────────────────────────
-function RankRing({ pct, color, icon, label, level }: { pct: number; color: string; icon: string; label: string; level: number }) {
-  const r = 26; const circ = 2 * Math.PI * r;
-  return (
-    <div className="relative w-16 h-16 flex-shrink-0">
-      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3.5" />
-        <motion.circle
-          cx="32" cy="32" r={r} fill="none"
-          stroke={color} strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          initial={{ strokeDashoffset: circ }}
-          animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-          style={{ filter: `drop-shadow(0 0 4px ${color})` }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl leading-none">{icon}</span>
-        <span className="text-[9px] font-black leading-none mt-0.5" style={{ color }}>{level}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Multiplayer premium banner ────────────────────────────────────────────────
-function MultiplayerBanner({ minPlayers = 2, maxPlayers = 6 }: { minPlayers?: number; maxPlayers?: number }) {
-  const LP = [
-    { cy: 48,  emoji: '🎭', ring: '#6366f1' },
-    { cy: 88,  emoji: '🦁', ring: '#06b6d4' },
-    { cy: 128, emoji: '🐯', ring: '#a855f7' },
-  ];
-  const RP = [
-    { cy: 60,  emoji: '🦊', ring: '#10b981' },
-    { cy: 116, emoji: '🐺', ring: '#f59e0b' },
-  ];
-  const CX = 270, CY = 88, LX = 68, RX = 472;
-
-  return (
-    <svg viewBox="0 0 540 172" style={{ width: '100%', height: 'auto', display: 'block' }}>
-      <style>{`
-        @keyframes mp-up{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-        @keyframes mp-dn{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
-        @keyframes mp-dash{to{stroke-dashoffset:-20}}
-        .mp-u1{animation:mp-up 3s ease-in-out infinite}
-        .mp-u2{animation:mp-dn 3.4s ease-in-out infinite}
-        .mp-u3{animation:mp-up 2.8s ease-in-out infinite 0.5s}
-        .mp-u4{animation:mp-dn 3.1s ease-in-out infinite 0.2s}
-        .mp-u5{animation:mp-up 3.6s ease-in-out infinite 0.8s}
-        .mp-ds{stroke-dasharray:6 4;animation:mp-dash 1.1s linear infinite}
-      `}</style>
-      <defs>
-        <radialGradient id="mp-cg" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.2"/>
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
-        </radialGradient>
-        {[...LP,...RP].map((p,i)=>(
-          <radialGradient key={i} id={`mp-pg${i}`} cx="38%" cy="32%">
-            <stop offset="0%" stopColor={p.ring} stopOpacity="0.45"/>
-            <stop offset="100%" stopColor={p.ring} stopOpacity="0.08"/>
-          </radialGradient>
-        ))}
-        <radialGradient id="mp-hub" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#1e1b4b" stopOpacity="1"/>
-          <stop offset="100%" stopColor="#080520" stopOpacity="1"/>
-        </radialGradient>
-      </defs>
-
-      {/* ambient glow */}
-      <circle cx={CX} cy={CY} r="95" fill="url(#mp-cg)"/>
-
-      {/* connection lines LEFT */}
-      {LP.map((p,i)=>(
-        <line key={`l${i}`} className="mp-ds"
-          x1={LX+20} y1={p.cy} x2={CX-42} y2={CY}
-          stroke={p.ring} strokeWidth="1.3" strokeOpacity="0.5"/>
-      ))}
-      {/* connection lines RIGHT */}
-      {RP.map((p,i)=>(
-        <line key={`r${i}`} className="mp-ds"
-          x1={RX-20} y1={p.cy} x2={CX+42} y2={CY}
-          stroke={p.ring} strokeWidth="1.3" strokeOpacity="0.5"/>
-      ))}
-
-      {/* center pulse ring — SMIL */}
-      <circle cx={CX} cy={CY} fill="none" stroke="#6366f1" strokeWidth="2">
-        <animate attributeName="r" values="44;51;44" dur="2.5s" repeatCount="indefinite"/>
-        <animate attributeName="stroke-opacity" values="0.18;0.55;0.18" dur="2.5s" repeatCount="indefinite"/>
-      </circle>
-      {/* center outer ring */}
-      <circle cx={CX} cy={CY} r="40" fill="url(#mp-hub)" stroke="#6366f1" strokeWidth="1.3" strokeOpacity="0.7"/>
-      {/* decorative inner ring */}
-      <circle cx={CX} cy={CY} r="32" fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="0.8"/>
-      {/* suit symbols */}
-      <text x={CX-13} y={CY+2}  fontSize="13" fill="#818cf8" style={{userSelect:'none'}}>♠♥</text>
-      <text x={CX-13} y={CY+17} fontSize="13" fill="#f87171" style={{userSelect:'none'}}>♦♣</text>
-      {/* ARENA micro-label */}
-      <text x={CX} y={CY-17} textAnchor="middle" fontSize="7.5" fill="#a5b4fc" fontWeight="900"
-        letterSpacing="0.22em" style={{userSelect:'none'}}>ARENA</text>
-      {/* 2-5 players badge */}
-      <rect x={CX-34} y={CY+23} width="68" height="13" rx="6.5"
-        fill="rgba(6,182,212,0.1)" stroke="#06b6d4" strokeWidth="0.8" strokeOpacity="0.55"/>
-      <text x={CX} y={CY+32} textAnchor="middle" fontSize="7" fill="#67e8f9" fontWeight="700"
-        style={{userSelect:'none'}}>{minPlayers}–{maxPlayers} PLAYERS</text>
-
-      {/* left player nodes */}
-      {LP.map((p,i)=>(
-        <g key={`lp${i}`} className={`mp-u${i+1}`}>
-          <circle cx={LX} cy={p.cy} r="24" fill="none" stroke={p.ring} strokeWidth="1.5" strokeOpacity="0.28"/>
-          <circle cx={LX} cy={p.cy} r="19" fill={`url(#mp-pg${i})`}/>
-          <circle cx={LX} cy={p.cy} r="19" fill="rgba(4,2,16,0.55)"/>
-          <text x={LX} y={p.cy+7} textAnchor="middle" fontSize="18" style={{userSelect:'none'}}>{p.emoji}</text>
-          <text x={LX} y={p.cy-27} textAnchor="middle" fontSize="7" fill={p.ring} fontWeight="800"
-            style={{userSelect:'none'}}>P{i+1}</text>
-        </g>
-      ))}
-
-      {/* right player nodes */}
-      {RP.map((p,i)=>(
-        <g key={`rp${i}`} className={`mp-u${i+4}`}>
-          <circle cx={RX} cy={p.cy} r="24" fill="none" stroke={p.ring} strokeWidth="1.5" strokeOpacity="0.28"/>
-          <circle cx={RX} cy={p.cy} r="19" fill={`url(#mp-pg${i+3})`}/>
-          <circle cx={RX} cy={p.cy} r="19" fill="rgba(4,2,16,0.55)"/>
-          <text x={RX} y={p.cy+7} textAnchor="middle" fontSize="18" style={{userSelect:'none'}}>{p.emoji}</text>
-          <text x={RX} y={p.cy-27} textAnchor="middle" fontSize="7" fill={p.ring} fontWeight="800"
-            style={{userSelect:'none'}}>P{i+4}</text>
-        </g>
-      ))}
-
-      {/* title row */}
-      <text x={CX} y="13" textAnchor="middle" fontSize="13" fontWeight="900" fill="white"
-        letterSpacing="0.07em" style={{userSelect:'none'}}>MULTIPLAYER</text>
-      <text x={CX} y="27" textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.55)"
-        style={{userSelect:'none'}}>Play with friends in real time</text>
-      {/* online dot */}
-      <circle cx={CX+64} cy="9" r="3.5" fill="#22c55e">
-        <animate attributeName="opacity" values="1;0.3;1" dur="1.4s" repeatCount="indefinite"/>
-      </circle>
-      <text x={CX+70} y="13" fontSize="8" fill="#4ade80" fontWeight="600" style={{userSelect:'none'}}>Online</text>
-
-      {/* bottom stat chips */}
-      {([
-        { x: 107, text: '🌐 Real-time',       col: '#06b6d4' },
-        { x: 270, text: '⚡ Private & Public', col: '#818cf8' },
-        { x: 433, text: '🏆 Custom Rules',     col: '#10b981' },
-      ] as {x:number;text:string;col:string}[]).map(s=>(
-        <g key={s.text}>
-          <rect x={s.x-53} y="153" width="106" height="14" rx="7"
-            fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"/>
-          <text x={s.x} y="163" textAnchor="middle" fontSize="7.5" fill={s.col} fontWeight="600"
-            style={{userSelect:'none'}}>{s.text}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ── Shimmer overlay (for premium cards) ──────────────────────────────────────
 function Shimmer() {
   return (
-    <motion.div
-      className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl"
-      initial={false}
-    >
+    <motion.div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
       <motion.div
         className="absolute inset-y-0 w-1/3"
-        style={{ background: 'linear-gradient(105deg, transparent, rgba(255,255,255,0.04), transparent)', skewX: '-15deg' }}
+        style={{ background: 'linear-gradient(105deg,transparent,rgba(255,255,255,0.04),transparent)', skewX: '-15deg' }}
         animate={{ x: ['-100%', '400%'] }}
         transition={{ repeat: Infinity, duration: 3.5, ease: 'linear', repeatDelay: 2 }}
       />
     </motion.div>
+  );
+}
+
+function RankRing({ pct, color, icon, level }: { pct: number; color: string; icon: string; level: number }) {
+  const r = 22; const circ = 2 * Math.PI * r;
+  return (
+    <div className="relative w-14 h-14 flex-shrink-0">
+      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3" />
+        <motion.circle cx="28" cy="28" r={r} fill="none" stroke={color} strokeWidth="3"
+          strokeLinecap="round" strokeDasharray={circ}
+          initial={{ strokeDashoffset: circ }}
+          animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
+          style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-lg leading-none">{icon}</span>
+        <span className="text-[9px] font-black leading-none mt-0.5" style={{ color }}>{level}</span>
+      </div>
+    </div>
   );
 }
 
@@ -389,8 +71,6 @@ export function LobbyPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('play');
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
-  const [aiRounds, setAiRounds] = useState(5);
-  const [aiRoundsText, setAiRoundsText] = useState('5');
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
@@ -405,7 +85,7 @@ export function LobbyPage() {
     },
   });
 
-  const clampedAiRounds = Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, aiRounds));
+  const clampedAiRounds = Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, 5));
 
   const startAiGame = (botCount: number, personality = 'smart', rounds?: number, modeName?: string) => {
     setAiLoading(true);
@@ -413,7 +93,6 @@ export function LobbyPage() {
       ? Math.max(adminConfig.gameConfig.minRounds, Math.min(adminConfig.gameConfig.maxRounds, rounds))
       : clampedAiRounds;
     const name = `${user?.username ?? 'My'}'s ${modeName ?? 'AI'} Game`;
-
     createRoom({
       name: name.length > 30 ? `${name.slice(0, 27)}...` : name,
       maxPlayers: botCount + 1,
@@ -442,14 +121,7 @@ export function LobbyPage() {
     fetchRooms();
 
     configApi.getPublic()
-      .then(r => {
-        setAdminConfig(r.data);
-        setAiRounds(v => {
-          const clamped = Math.max(r.data.gameConfig.minRounds, Math.min(r.data.gameConfig.maxRounds, v));
-          setAiRoundsText(String(clamped));
-          return clamped;
-        });
-      })
+      .then(r => setAdminConfig(r.data))
       .catch(() => {});
 
     const unsubConfig = on('admin:config_updated', (cfg) => {
@@ -466,13 +138,11 @@ export function LobbyPage() {
     }
     const unsubProg = subscribeProgression();
 
-    // Auto-join from notification deep link: /lobby?join=ROOMCODE
     const joinCode = searchParams.get('join');
     if (joinCode) {
       setSearchParams({}, { replace: true });
       setTimeout(() => joinRoom(joinCode.toUpperCase()), 500);
     }
-
 
     return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
   }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -490,11 +160,7 @@ export function LobbyPage() {
   const maxBots = adminConfig.gameConfig.maxBots ?? 4;
   const maxPlayersLimit = adminConfig.gameConfig.maxPlayers ?? 6;
   const effectiveMaxBots = Math.min(maxBots, maxPlayersLimit - 1, 9);
-  const botOptions = Array.from({ length: effectiveMaxBots }, (_, i) => ({
-    bots: i + 1,
-    label: `${i + 1} Bot${i + 1 > 1 ? 's' : ''}`,
-    desc: `${i + 2} players`,
-  }));
+  const botOptions = Array.from({ length: effectiveMaxBots }, (_, i) => i + 1);
 
   const waitingRooms = publicRooms.filter(r => r.status === 'waiting');
   const liveRooms    = publicRooms.filter(r => r.status === 'playing');
@@ -502,40 +168,17 @@ export function LobbyPage() {
   const rankCfg = progress ? (RANK_CONFIG[progress.rank] ?? RANK_CONFIG.bronze) : null;
   const xpPct   = progress ? Math.round((progress.xpProgress / Math.max(1, progress.xpNeeded)) * 100) : 0;
 
-  const getResumeGameInfo = (code: string) => {
+  const getResumeInfo = (code: string) => {
     const meta = roomMeta[code];
-    if (!meta) return {
-      icon: '🎮', title: 'Game in Progress', sub: `Room ${code} · Tap to rejoin`,
-      gradient: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.35)', accent: '#fbbf24', badge: 'LIVE',
-    };
+    if (!meta) return { icon: '🎮', title: 'Resume Game', sub: `Room ${code}`, accent: '#fbbf24', border: 'rgba(251,191,36,0.35)', badge: 'LIVE' };
     const name: string = meta.name ?? '';
-    const botCount: number = meta.config?.botCount ?? 0;
     const entryFee: number = meta.config?.entryFee ?? 0;
-    if (name.startsWith('Team Survival')) return {
-      icon: '👥', title: 'Team Survival', sub: 'Championship · Team match in progress',
-      gradient: 'linear-gradient(135deg,rgba(139,92,246,0.13),rgba(99,102,241,0.06))',
-      border: 'rgba(139,92,246,0.45)', accent: '#c4b5fd', badge: 'TEAM',
-    };
-    if (name.startsWith('Survival S')) return {
-      icon: '🏆', title: 'AI Survival', sub: 'Championship · Tournament in progress',
-      gradient: 'linear-gradient(135deg,rgba(16,185,129,0.13),rgba(6,182,212,0.06))',
-      border: 'rgba(16,185,129,0.45)', accent: '#6ee7b7', badge: 'TOURNAMENT',
-    };
-    if (entryFee > 0) return {
-      icon: '⚔️', title: 'Wager Match', sub: `${entryFee} pts · Stakes game in progress`,
-      gradient: 'linear-gradient(135deg,rgba(239,68,68,0.13),rgba(245,158,11,0.06))',
-      border: 'rgba(239,68,68,0.4)', accent: '#fca5a5', badge: 'WAGER',
-    };
-    if (botCount > 0) return {
-      icon: '🤖', title: 'Play vs AI', sub: `${botCount} bot${botCount > 1 ? 's' : ''} · AI match in progress`,
-      gradient: 'linear-gradient(135deg,rgba(59,130,246,0.13),rgba(6,182,212,0.06))',
-      border: 'rgba(59,130,246,0.4)', accent: '#93c5fd', badge: 'VS AI',
-    };
-    return {
-      icon: '🌐', title: 'Multiplayer', sub: 'Live match · Tap to rejoin',
-      gradient: 'linear-gradient(135deg,rgba(99,102,241,0.13),rgba(167,139,250,0.06))',
-      border: 'rgba(99,102,241,0.4)', accent: '#a5b4fc', badge: 'LIVE',
-    };
+    const botCount: number = meta.config?.botCount ?? 0;
+    if (name.startsWith('Team Survival')) return { icon: '👥', title: 'Team Survival', sub: 'Championship in progress', accent: '#c4b5fd', border: 'rgba(139,92,246,0.45)', badge: 'TEAM' };
+    if (name.startsWith('Survival S')) return { icon: '🏆', title: 'AI Survival', sub: 'Tournament in progress', accent: '#6ee7b7', border: 'rgba(16,185,129,0.45)', badge: 'TOURNAMENT' };
+    if (entryFee > 0) return { icon: '⚔️', title: 'Wager Match', sub: `₹${entryFee} stakes game`, accent: '#fca5a5', border: 'rgba(239,68,68,0.4)', badge: 'WAGER' };
+    if (botCount > 0) return { icon: '🤖', title: 'Play vs AI', sub: `${botCount} bot${botCount > 1 ? 's' : ''} · AI match`, accent: '#93c5fd', border: 'rgba(59,130,246,0.4)', badge: 'VS AI' };
+    return { icon: '🌐', title: 'Multiplayer', sub: 'Live match · Tap to rejoin', accent: '#a5b4fc', border: 'rgba(99,102,241,0.4)', badge: 'LIVE' };
   };
 
   return (
@@ -544,314 +187,246 @@ export function LobbyPage() {
         {showDailyLogin && <DailyLoginModal onClose={() => setShowDailyLogin(false)} />}
       </AnimatePresence>
 
-      {/* ── Global ambient background ── */}
+      {/* Ambient background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-        <AmbientOrb x="5%"   y="10%"  size={220} color="rgba(99,102,241,0.13)"  delay={0}   />
-        <AmbientOrb x="75%"  y="5%"   size={180} color="rgba(16,185,129,0.10)"  delay={1.2} />
-        <AmbientOrb x="60%"  y="55%"  size={250} color="rgba(168,85,247,0.09)"  delay={2.1} />
-        <AmbientOrb x="15%"  y="65%"  size={160} color="rgba(239,68,68,0.07)"   delay={0.7} />
-        <AmbientOrb x="88%"  y="80%"  size={200} color="rgba(245,158,11,0.08)"  delay={1.8} />
-        {/* Subtle grid */}
-        <div className="absolute inset-0 opacity-[0.025]"
-          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.4) 1px,transparent 1px)', backgroundSize: '48px 48px' }} />
+        <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.12),transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-1/3 right-0 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.09),transparent 70%)', filter: 'blur(50px)' }} />
+        <div className="absolute top-1/2 left-0 w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.07),transparent 70%)', filter: 'blur(50px)' }} />
       </div>
 
-      <LeftSideDecor />
-      <RightSideDecor />
+      <div className="relative max-w-lg mx-auto px-0 sm:px-2" style={{ zIndex: 1 }}>
 
-      <div className="relative max-w-2xl mx-auto" style={{ zIndex: 1 }}>
-
-        {/* ── Premium hero header ── */}
-        <motion.div initial={{ opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-          className="text-center pt-2 pb-5 sm:pb-7">
-          <div className="relative inline-block">
-            <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-none"
-              style={{ background: 'linear-gradient(135deg,#ffffff 0%,#c7d2fe 35%,#a78bfa 65%,#818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', textShadow: 'none' }}>
-              GAME LOBBY
+        {/* ── Header ── */}
+        <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+          className="flex items-center justify-between pt-1 pb-4 sm:pb-5">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none"
+              style={{ background: 'linear-gradient(135deg,#ffffff,#c7d2fe 50%,#a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              Game Lobby
             </h1>
-            {/* glow under text */}
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3/4 h-2 rounded-full"
-              style={{ background: 'radial-gradient(ellipse,rgba(129,140,248,0.5),transparent 70%)', filter: 'blur(4px)' }} />
+            <p className="text-xs text-dark-muted mt-0.5">
+              {user?.username ? `Welcome back, ${user.username}` : 'Jump into a game'}
+            </p>
           </div>
-          <p className="text-dark-muted text-xs sm:text-sm mt-2 tracking-wide">
-            {user?.username ? `Welcome back, ${user.username}` : 'Create a room or jump into a game'}
-          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowGuide(true)}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all"
+              style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+              📖
+            </button>
+            <button onClick={() => setShowSupport(true)}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }}>
+              🎧
+            </button>
+          </div>
         </motion.div>
 
-        {/* ── Premium rank card ── */}
+        {/* ── Rank card ── */}
         {progress && !user?.isGuest && rankCfg && (
           <motion.button
-            initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}
-            whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+            whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}
             onClick={() => navigate('/progression')}
-            className="w-full flex items-center gap-4 mb-5 px-4 py-3 rounded-2xl relative overflow-hidden"
+            className="w-full flex items-center gap-3 mb-4 px-4 py-3 rounded-2xl relative overflow-hidden text-left"
             style={{
-              background: `linear-gradient(135deg, ${rankCfg.color}0d, rgba(10,12,22,0.95))`,
-              border: `1px solid ${rankCfg.color}30`,
-              boxShadow: `0 4px 32px ${rankCfg.color}12, 0 1px 0 rgba(255,255,255,0.05) inset`,
-            }}
-          >
+              background: `linear-gradient(135deg,${rankCfg.color}0e,rgba(10,12,22,0.96))`,
+              border: `1px solid ${rankCfg.color}28`,
+              boxShadow: `0 2px 20px ${rankCfg.color}10`,
+            }}>
             <Shimmer />
-            <RankRing pct={xpPct} color={rankCfg.color} icon={rankCfg.icon} label={rankCfg.label} level={progress.level} />
-            <div className="flex-1 min-w-0 text-left">
-              <div className="flex items-center gap-2 mb-1">
+            <RankRing pct={xpPct} color={rankCfg.color} icon={rankCfg.icon} level={progress.level} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span className="text-sm font-black" style={{ color: rankCfg.color }}>{rankCfg.label}</span>
-                <span className="text-[10px] text-dark-muted font-semibold">Level {progress.level}</span>
+                <span className="text-[10px] text-dark-muted">Lv.{progress.level}</span>
                 {progress.winStreak >= 3 && (
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse"
-                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
-                    🔥 {progress.winStreak} Streak
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}>
+                    🔥 {progress.winStreak}
                   </span>
                 )}
+                {progress.canClaimDaily && (
+                  <motion.span animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                    🎁 Daily
+                  </motion.span>
+                )}
               </div>
-              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
                 <motion.div className="h-full rounded-full"
                   initial={{ width: 0 }} animate={{ width: `${xpPct}%` }}
                   transition={{ duration: 1, ease: 'easeOut' }}
-                  style={{ background: `linear-gradient(90deg, ${rankCfg.color}bb, ${rankCfg.color})`, boxShadow: `0 0 8px ${rankCfg.color}80` }} />
+                  style={{ background: `linear-gradient(90deg,${rankCfg.color}99,${rankCfg.color})` }} />
               </div>
               <p className="text-[10px] text-dark-muted mt-1">{progress.xpProgress} / {progress.xpNeeded} XP</p>
             </div>
-            <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-              {progress.canClaimDaily && (
-                <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}
-                  className="text-[10px] font-black px-2 py-1 rounded-xl"
-                  style={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.35)' }}>
-                  🎁 Claim Daily
-                </motion.span>
-              )}
-              <span className="text-[9px] text-dark-muted">View Stats →</span>
-            </div>
+            <span className="text-[10px] text-dark-muted flex-shrink-0">Stats →</span>
           </motion.button>
         )}
 
         {/* ── Tabs ── */}
-        <div className="flex items-center gap-3 mb-5 sm:mb-7">
-          <div className="flex gap-1 p-1 rounded-2xl flex-1"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            {([
-              { key: 'play', label: '🎮', text: 'Play' },
-              { key: 'history', label: '📋', text: 'History' },
-            ] as { key: Tab; label: string; text: string }[]).map(tab => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all"
-                style={activeTab === tab.key
-                  ? { background: 'linear-gradient(135deg,rgba(129,140,248,0.3),rgba(99,102,241,0.2))', color: '#c7d2fe', boxShadow: '0 0 12px rgba(99,102,241,0.2)' }
-                  : { color: 'rgba(255,255,255,0.35)' }}>
-                <span>{tab.label}</span>
-                <span>{tab.text}</span>
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setShowGuide(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-            style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}
-            title="How to Play">
-            📖
-          </button>
-          <button onClick={() => setShowSupport(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}>
-            🎧
-          </button>
+        <div className="flex gap-1 p-1 rounded-2xl mb-4"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          {([
+            { key: 'play', icon: '🎮', label: 'Play' },
+            { key: 'history', icon: '📋', label: 'History' },
+          ] as { key: Tab; icon: string; label: string }[]).map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm transition-all"
+              style={activeTab === t.key
+                ? { background: 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(99,102,241,0.18))', color: '#c7d2fe', boxShadow: '0 0 12px rgba(99,102,241,0.18)' }
+                : { color: 'rgba(255,255,255,0.35)' }}>
+              <span>{t.icon}</span><span>{t.label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* ── Resume game banners (one per active room) ── */}
-        {resumeRoomCodes.map((code, i) => {
-          const info = getResumeGameInfo(code);
-          return (
-            <motion.div key={code}
-              initial={{ opacity: 0, y: -14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: i * 0.07, type: 'spring', stiffness: 320, damping: 28 }}
-              className="mb-2 relative overflow-hidden rounded-2xl"
-              style={{ background: info.gradient, border: `1px solid ${info.border}`, boxShadow: `0 4px 24px ${info.border.replace('0.45','0.1').replace('0.4','0.08')}` }}>
-              <Shimmer />
-              {/* Ambient glow blob */}
-              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none"
-                style={{ background: `radial-gradient(circle, ${info.border.replace('0.45','0.2').replace('0.4','0.15')}, transparent 70%)`, filter: 'blur(20px)' }} />
-
-              <div className="relative flex items-center gap-3 px-4 py-3">
-                {/* Icon with live pulse */}
-                <div className="relative flex-shrink-0">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ background: info.border.replace('0.45','0.15').replace('0.4','0.12'), border: `1px solid ${info.border}` }}>
+        {/* ── Resume game banners ── */}
+        <AnimatePresence>
+          {resumeRoomCodes.map((code, i) => {
+            const info = getResumeInfo(code);
+            return (
+              <motion.div key={code}
+                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="mb-3 relative overflow-hidden rounded-2xl"
+                style={{ border: `1px solid ${info.border}`, background: 'rgba(10,8,20,0.96)' }}>
+                <div className="absolute inset-x-0 top-0 h-0.5 rounded-t-2xl"
+                  style={{ background: `linear-gradient(90deg,${info.accent}88,${info.accent}22)` }} />
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                    style={{ background: `${info.border.replace('0.45','0.15').replace('0.4','0.12')}`, border: `1px solid ${info.border}` }}>
                     {info.icon}
                   </div>
-                  {/* Live dot */}
-                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                    style={{ background: '#0f172a', border: `1.5px solid ${info.accent}` }}>
-                    <motion.div className="w-1.5 h-1.5 rounded-full"
-                      animate={{ opacity: [1, 0.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
-                      style={{ background: info.accent }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-black" style={{ color: info.accent }}>{info.title}</span>
+                      <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.2 }}
+                        className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                        style={{ background: `${info.border.replace('0.45','0.15').replace('0.4','0.12')}`, color: info.accent, border: `1px solid ${info.border}` }}>
+                        {info.badge}
+                      </motion.span>
+                    </div>
+                    <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{info.sub}</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button variant="primary" size="sm" onClick={() => { resumeGame(code); navigate('/game'); }}>▶ Resume</Button>
+                    <button onClick={() => clearResume(code)} className="text-dark-muted text-sm px-1">✕</button>
                   </div>
                 </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
 
-                {/* Text */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                    <p className="font-black text-sm leading-tight" style={{ color: info.accent }}>{info.title}</p>
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
-                      style={{ background: info.border.replace('0.45','0.18').replace('0.4','0.15'), color: info.accent, border: `1px solid ${info.border}` }}>
-                      {info.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                    {info.sub} · <span style={{ color: 'rgba(255,255,255,0.25)' }}>{code}</span>
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 flex-shrink-0">
-                  <Button variant="primary" size="sm" onClick={() => { resumeGame(code); navigate('/game'); }}>▶ Resume</Button>
-                  <button onClick={() => clearResume(code)} className="text-dark-muted hover:text-white text-sm px-2 transition-colors">✕</button>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
-
+        {/* ── History tab ── */}
         {activeTab === 'history' && <HistoryTab />}
 
+        {/* ── Play tab ── */}
         {activeTab === 'play' && (
-          <div className="space-y-4">
+          <div className="space-y-3 pb-8">
 
-            {/* ── AI Survival Championship ── */}
+            {/* AI Survival Championship */}
             {adminConfig.featureFlags.survivalEnabled !== false && (
               <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                whileHover={{ scale: 1.012, y: -3 }} whileTap={{ scale: 0.99 }}
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}
                 onClick={() => navigate('/survival')}
-                className="relative overflow-hidden rounded-2xl cursor-pointer group"
+                className="relative overflow-hidden rounded-2xl cursor-pointer"
                 style={{
-                  background: 'linear-gradient(145deg,rgba(3,16,12,0.97),rgba(4,20,16,0.95))',
-                  border: '1px solid rgba(16,185,129,0.35)',
-                  boxShadow: '0 4px 40px rgba(16,185,129,0.1)',
-                }}
-              >
+                  background: 'linear-gradient(135deg,rgba(5,20,15,0.98),rgba(4,18,14,0.96))',
+                  border: '1px solid rgba(16,185,129,0.3)',
+                  boxShadow: '0 4px 32px rgba(16,185,129,0.08)',
+                }}>
                 <Shimmer />
-                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.22),transparent 70%)', filter: 'blur(28px)' }} />
-                <div className="absolute -bottom-8 left-1/3 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(6,182,212,0.12),transparent 70%)', filter: 'blur(24px)' }} />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-6xl opacity-8 group-hover:opacity-15 transition-opacity select-none">🏆</div>
-
-                <div className="relative flex items-center gap-4 px-5 py-4">
-                  <div className="flex-shrink-0 relative">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                      style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.22),rgba(6,182,212,0.15))', border: '1px solid rgba(16,185,129,0.35)' }}>
-                      🏆
-                    </div>
-                    {/* Stage indicators */}
+                <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.2),transparent 70%)', filter: 'blur(24px)' }} />
+                <div className="flex items-center gap-4 px-4 py-4 relative">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0 relative"
+                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,182,212,0.12))', border: '1px solid rgba(16,185,129,0.3)' }}>
+                    🏆
                     <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
                       {[1,2,3,4,5].map(s => (
-                        <div key={s} className="w-1.5 h-1.5 rounded-full" style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
+                        <div key={s} className="w-1 h-1 rounded-full" style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
                       ))}
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-base font-black text-white leading-tight">AI Survival Championship</p>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.3)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-base font-black text-white">AI Survival Championship</p>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        style={{ background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.28)' }}>
                         5 STAGES
                       </span>
                     </div>
-                    <p className="text-xs text-dark-muted">Beat 5 AI personalities · Earn points · 4 tiers</p>
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <p className="text-xs text-dark-muted mb-2">Beat 5 AI personalities · Earn points · 4 tiers</p>
+                    <div className="flex flex-wrap gap-1">
                       {['🛡 Safe','⚡ Aggr.','🎭 Bluff','🧠 Smart','💀 Boss'].map((p, i) => (
-                        <span key={p} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
-                          style={{
-                            background: i < 2 ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.12)',
-                            color: i < 2 ? '#6ee7b7' : 'rgba(199,210,254,0.7)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                          }}>
+                        <span key={p} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: 'rgba(255,255,255,0.05)', color: i < 2 ? '#6ee7b7' : 'rgba(199,210,254,0.65)', border: '1px solid rgba(255,255,255,0.07)' }}>
                           {p}
                         </span>
                       ))}
                     </div>
                   </div>
-                  <motion.div
-                    className="flex-shrink-0 flex flex-col items-end gap-2"
-                    animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2.2 }}
-                  >
-                    <span className="text-xs font-black px-3 py-2 rounded-xl"
-                      style={{ background: 'linear-gradient(135deg,#10b981,#6366f1)', color: '#fff', boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}>
-                      Enter →
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-semibold">Use wallet points</span>
+                  <motion.div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                    animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
+                    style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontSize: 16 }}>
+                    →
                   </motion.div>
                 </div>
               </motion.div>
             )}
 
-            {/* ── Play vs AI ── */}
+            {/* Play vs AI */}
             {botOptions.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                whileHover={{ scale: 1.012, y: -3 }} whileTap={{ scale: 0.99 }}
-              >
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}>
                 <button
                   onClick={() => setShowPlayVsAI(true)}
                   disabled={aiLoading}
-                  className="w-full relative overflow-hidden rounded-2xl cursor-pointer text-left disabled:opacity-50"
+                  className="w-full relative overflow-hidden rounded-2xl text-left disabled:opacity-60"
                   style={{
-                    background: 'linear-gradient(145deg,rgba(8,6,28,0.98),rgba(16,10,42,0.96))',
-                    border: '1px solid rgba(99,102,241,0.38)',
-                    boxShadow: '0 4px 40px rgba(99,102,241,0.12)',
-                  }}
-                >
+                    background: 'linear-gradient(135deg,rgba(10,8,32,0.98),rgba(14,10,40,0.96))',
+                    border: '1px solid rgba(99,102,241,0.32)',
+                    boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
+                  }}>
                   <Shimmer />
-                  {/* Background art */}
-                  <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.22),transparent 70%)', filter: 'blur(28px)' }} />
-                  <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.12),transparent 70%)', filter: 'blur(24px)' }} />
-                  {/* Decorative circuit lines */}
-                  <svg className="absolute inset-0 w-full h-full opacity-[0.04] pointer-events-none" viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <path d="M0,60 L40,60 L60,30 L100,30 L120,60 L200,60" stroke="rgba(129,140,248,1)" strokeWidth="1" fill="none" />
-                    <path d="M200,60 L260,60 L280,90 L320,90 L340,60 L400,60" stroke="rgba(129,140,248,1)" strokeWidth="1" fill="none" />
-                    <circle cx="200" cy="60" r="3" fill="rgba(129,140,248,1)" />
-                  </svg>
-
-                  <div className="relative flex items-center gap-4 px-5 py-4">
-                    <div className="flex-shrink-0 relative">
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl"
-                        style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.18))', border: '1px solid rgba(99,102,241,0.4)' }}>
-                        🤖
-                      </div>
+                  <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)', filter: 'blur(24px)' }} />
+                  <div className="flex items-center gap-4 px-4 py-4 relative">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0 relative"
+                      style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.35)' }}>
+                      🤖
                       <motion.div
-                        animate={{ scale: [1, 1.6, 1], opacity: [0.8, 0, 0.8] }}
-                        transition={{ repeat: Infinity, duration: 2.2 }}
-                        className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full"
-                        style={{ background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}
-                      />
+                        animate={{ scale: [1, 1.8, 1], opacity: [0.9, 0, 0.9] }}
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full"
+                        style={{ background: '#22c55e' }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <p className="text-base sm:text-xl font-black text-white leading-tight">Play vs AI</p>
-                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                          style={{ background: 'rgba(99,102,241,0.22)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.4)' }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-base font-black text-white">Play vs AI</p>
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                          style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
                           4 MODES
                         </span>
-                        {aiLoading && <span className="text-[9px] text-green-400 animate-pulse font-bold">Starting…</span>}
+                        {aiLoading && <span className="text-[9px] text-emerald-400 font-bold animate-pulse">Starting…</span>}
                       </div>
-                      <p className="text-xs text-dark-muted">Casual Duel · Survival Clash · Chaos Arena · Boss Rush</p>
-                      <div className="flex gap-1.5 mt-2 flex-wrap">
-                        {[
-                          { label: '🛡 Safe',       color: 'rgba(34,197,94,0.7)' },
-                          { label: '⚡ Aggressive', color: 'rgba(245,158,11,0.7)' },
-                          { label: '🎭 Bluff',      color: 'rgba(168,85,247,0.7)' },
-                          { label: '🧠 Smart',      color: 'rgba(96,165,250,0.7)' },
-                          { label: '💀 Boss',       color: 'rgba(239,68,68,0.7)' },
-                        ].map(p => (
-                          <span key={p.label} className="text-[9px] font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: 'rgba(255,255,255,0.05)', color: p.color, border: '1px solid rgba(255,255,255,0.07)' }}>
-                            {p.label}
+                      <p className="text-xs text-dark-muted mb-2">Casual Duel · Survival Clash · Chaos Arena · Boss Rush</p>
+                      <div className="flex flex-wrap gap-1">
+                        {['🛡 Safe','⚡ Aggressive','🎭 Bluff','🧠 Smart','💀 Boss'].map((p, i) => (
+                          <span key={p} className="text-[9px] px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'rgba(255,255,255,0.04)', color: ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(168,85,247,0.8)','rgba(96,165,250,0.8)','rgba(239,68,68,0.8)'][i], border: '1px solid rgba(255,255,255,0.06)' }}>
+                            {p}
                           </span>
                         ))}
                       </div>
                     </div>
-                    <motion.div
-                      animate={{ x: [0, 5, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
-                      className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
-                      style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc', fontSize: 18 }}>
+                    <motion.div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                      animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
+                      style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 16 }}>
                       →
                     </motion.div>
                   </div>
@@ -859,127 +434,117 @@ export function LobbyPage() {
               </motion.div>
             )}
 
-            {/* ── Multiplayer ── */}
+            {/* Multiplayer */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
               className="relative overflow-hidden rounded-2xl"
               style={{
-                background: 'linear-gradient(150deg,rgba(8,5,28,0.99) 0%,rgba(4,2,18,0.97) 60%,rgba(6,3,22,0.98) 100%)',
-                border: '1px solid rgba(99,102,241,0.32)',
-                boxShadow: '0 12px 48px rgba(99,102,241,0.14), 0 4px 16px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset, 0 -1px 0 rgba(99,102,241,0.12) inset',
-              }}
-            >
-              {/* corner glows */}
-              <div className="absolute -top-12 -left-8 w-44 h-44 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.18),transparent 70%)', filter: 'blur(28px)' }} />
-              <div className="absolute -bottom-10 right-1/4 w-36 h-36 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle,rgba(6,182,212,0.12),transparent 70%)', filter: 'blur(22px)' }} />
-              <div className="absolute -top-8 right-0 w-32 h-32 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.1),transparent 70%)', filter: 'blur(20px)' }} />
+                background: 'linear-gradient(135deg,rgba(8,5,28,0.98),rgba(4,2,18,0.97))',
+                border: '1px solid rgba(99,102,241,0.28)',
+                boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
+              }}>
+              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.15),transparent 70%)', filter: 'blur(28px)' }} />
 
-              {/* premium banner */}
-              <div className="relative pt-2 px-2">
-                <MultiplayerBanner minPlayers={adminConfig.gameConfig.minPlayers} maxPlayers={adminConfig.gameConfig.maxPlayers} />
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 pt-4 pb-3 relative" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(168,85,247,0.12))', border: '1px solid rgba(99,102,241,0.3)' }}>
+                  🌐
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-base font-black text-white">Multiplayer</p>
+                    <div className="flex items-center gap-1">
+                      <motion.div className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+                        animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1.2 }} />
+                      <span className="text-[10px] text-emerald-400 font-semibold">Online</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-dark-muted">Play with others · 2–{adminConfig.gameConfig.maxPlayers} players</p>
+                </div>
               </div>
 
-              {/* action buttons */}
-              <div className="relative px-4 pb-4 grid grid-cols-2 gap-3">
+              {/* Action buttons */}
+              <div className="grid grid-cols-2 gap-3 px-4 py-3 relative">
                 <motion.button
-                  whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
+                  whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}
                   onClick={() => setShowCreate(true)}
-                  className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-xl font-black text-sm relative overflow-hidden"
-                  style={{
-                    background: 'linear-gradient(135deg,#10b981,#059669)',
-                    color: '#fff',
-                    boxShadow: '0 6px 20px rgba(16,185,129,0.38), 0 1px 0 rgba(255,255,255,0.12) inset',
-                  }}
-                >
+                  className="flex items-center justify-center gap-2 py-3.5 px-3 rounded-2xl font-black text-sm relative overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 4px 20px rgba(16,185,129,0.35)' }}>
                   <Shimmer />
                   <span className="text-lg">➕</span>
                   <div className="text-left">
                     <div className="text-xs font-black leading-tight">Create Room</div>
-                    <div className="text-[9px] font-normal opacity-70 leading-tight">Set your own rules</div>
+                    <div className="text-[9px] opacity-75 leading-tight">Set your rules</div>
                   </div>
                 </motion.button>
                 <motion.button
-                  whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
+                  whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}
                   onClick={() => setShowJoin(true)}
-                  className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-xl font-black text-sm relative overflow-hidden"
-                  style={{
-                    background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(99,102,241,0.08))',
-                    color: '#a5b4fc',
-                    border: '1px solid rgba(99,102,241,0.35)',
-                    boxShadow: '0 4px 16px rgba(99,102,241,0.1)',
-                  }}
-                >
+                  className="flex items-center justify-center gap-2 py-3.5 px-3 rounded-2xl font-black text-sm relative overflow-hidden"
+                  style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}>
                   <Shimmer />
                   <span className="text-lg">🔑</span>
                   <div className="text-left">
                     <div className="text-xs font-black leading-tight">Join with Code</div>
-                    <div className="text-[9px] font-normal opacity-60 leading-tight">Enter room code</div>
+                    <div className="text-[9px] opacity-60 leading-tight">Enter room code</div>
                   </div>
                 </motion.button>
               </div>
             </motion.div>
 
-            {/* ── Public Rooms ── */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center text-sm"
-                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.25)' }}>🌐</div>
-                <h2 className="text-sm font-black text-white tracking-wide">Public Rooms</h2>
+            {/* Public Rooms */}
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <h2 className="text-sm font-black text-white">Public Rooms</h2>
                 {publicRooms.length > 0 && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto"
-                    style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
-                    {publicRooms.length} open
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.22)' }}>
+                    {publicRooms.length}
                   </span>
                 )}
               </div>
 
               {publicRooms.length === 0 ? (
                 <div className="text-center py-10 rounded-2xl"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.07)' }}>
-                  <p className="text-4xl mb-3">🃏</p>
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.06)' }}>
+                  <p className="text-3xl mb-2">🃏</p>
                   <p className="text-sm font-semibold text-dark-muted">No public rooms yet</p>
-                  <p className="text-xs text-dark-muted opacity-60 mt-1">Create one and invite friends!</p>
+                  <p className="text-xs text-dark-muted opacity-50 mt-1">Be the first to create one!</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {/* Waiting rooms */}
                   {waitingRooms.length > 0 && (
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-dark-muted font-bold mb-2 flex items-center gap-1.5">
+                      <p className="text-[10px] uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5 px-1"
+                        style={{ color: 'rgba(148,163,184,0.5)' }}>
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                        Waiting to Start
+                        Open · Waiting
                       </p>
-                      <div className="grid sm:grid-cols-2 gap-2">
+                      <div className="space-y-2">
                         {waitingRooms.map((r, i) => (
                           <motion.div key={r.code}
-                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                            className="relative overflow-hidden rounded-xl px-4 py-3 flex items-center justify-between gap-3 transition-all"
-                            style={{
-                              background: 'rgba(255,255,255,0.03)',
-                              border: '1px solid rgba(255,255,255,0.07)',
-                            }}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
+                            className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                 <p className="font-bold text-white text-sm truncate">{r.name}</p>
                                 {r.entryFee > 0 && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}>
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.22)' }}>
                                     ₹{r.entryFee}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-dark-muted text-xs">
+                              <p className="text-xs" style={{ color: 'rgba(148,163,184,0.6)' }}>
                                 {r.playerCount}/{r.maxPlayers} players · {r.roundCount}R
                                 {r.entryFee > 0 && ` · Pot ₹${r.entryFee * r.playerCount}`}
                               </p>
                             </div>
                             <motion.button
-                              whileHover={{ scale: joiningRoomCode ? 1 : 1.06 }} whileTap={{ scale: joiningRoomCode ? 1 : 0.96 }}
+                              whileHover={{ scale: joiningRoomCode ? 1 : 1.05 }} whileTap={{ scale: 0.96 }}
                               disabled={!!joiningRoomCode}
                               onClick={() => {
                                 if (joiningRoomCode) return;
@@ -987,9 +552,9 @@ export function LobbyPage() {
                                 joinRoom(r.code);
                                 setTimeout(() => setJoiningRoomCode(null), 4000);
                               }}
-                              className="flex-shrink-0 text-xs font-black px-3 py-1.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
-                              {joiningRoomCode === r.code ? 'Joining…' : 'Join'}
+                              className="flex-shrink-0 text-xs font-black px-4 py-2 rounded-xl disabled:opacity-50"
+                              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 3px 12px rgba(16,185,129,0.28)' }}>
+                              {joiningRoomCode === r.code ? '…' : 'Join'}
                             </motion.button>
                           </motion.div>
                         ))}
@@ -1000,36 +565,36 @@ export function LobbyPage() {
                   {/* Live rooms */}
                   {liveRooms.length > 0 && spectatorModeEnabled && (
                     <div>
-                      <p className="text-[10px] uppercase tracking-widest text-dark-muted font-bold mb-2 flex items-center gap-1.5">
+                      <p className="text-[10px] uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5 px-1"
+                        style={{ color: 'rgba(148,163,184,0.5)' }}>
                         <motion.span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"
                           animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
                         Live Matches
                       </p>
-                      <div className="grid sm:grid-cols-2 gap-2">
+                      <div className="space-y-2">
                         <AnimatePresence>
                           {liveRooms.map((r, i) => (
                             <motion.div key={r.code}
-                              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{ delay: i * 0.05 }}
-                              className="relative overflow-hidden rounded-xl px-4 py-3 flex items-center justify-between gap-3"
-                              style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)' }}
-                            >
-                              <div className="min-w-0">
+                              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                              transition={{ delay: i * 0.04 }}
+                              className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                              style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 mb-0.5">
                                   <p className="font-bold text-white text-sm truncate">{r.name}</p>
-                                  <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}
+                                  <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}
                                     className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                    style={{ background: 'rgba(239,68,68,0.2)', color: '#fca5a5' }}>LIVE</motion.span>
+                                    style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>LIVE</motion.span>
                                 </div>
-                                <p className="text-dark-muted text-xs">
+                                <p className="text-xs" style={{ color: 'rgba(148,163,184,0.6)' }}>
                                   {r.playerCount} players{r.spectatorCount > 0 && ` · 👁 ${r.spectatorCount}`}
                                 </p>
                               </div>
                               <motion.button
-                                whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.96 }}
+                                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
                                 onClick={() => navigate(`/spectate/${r.code}`)}
-                                className="flex-shrink-0 text-xs font-black px-3 py-1.5 rounded-lg"
-                                style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>
+                                className="flex-shrink-0 text-xs font-black px-3 py-2 rounded-xl"
+                                style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}>
                                 👁 Watch
                               </motion.button>
                             </motion.div>
@@ -1042,8 +607,6 @@ export function LobbyPage() {
               )}
             </motion.div>
 
-            {/* ── Bottom spacer ── */}
-            <div className="h-4" />
           </div>
         )}
       </div>
