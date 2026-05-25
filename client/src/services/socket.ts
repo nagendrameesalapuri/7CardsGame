@@ -72,7 +72,11 @@ export function connectSocket(token?: string, guestToken?: string): Socket {
     setQuality('offline');
   });
   socket.io.on('reconnect_attempt', () => setQuality('reconnecting'));
-  socket.io.on('reconnect', () => setQuality('good'));
+  socket.io.on('reconnect', () => {
+    setQuality('good');
+    // Rejoin team room after reconnect to receive team broadcasts
+    socket!.emit('survival:team_status');
+  });
 
   return socket;
 }
