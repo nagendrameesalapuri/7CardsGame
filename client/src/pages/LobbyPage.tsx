@@ -469,9 +469,10 @@ export function LobbyPage() {
     // Auto-join from notification deep link: /lobby?join=ROOMCODE
     const joinCode = searchParams.get('join');
     if (joinCode) {
-      setSearchParams({}, { replace: true }); // clear the param from URL
-      setTimeout(() => joinRoom(joinCode.toUpperCase()), 500); // slight delay for socket to be ready
+      setSearchParams({}, { replace: true });
+      setTimeout(() => joinRoom(joinCode.toUpperCase()), 500);
     }
+
 
     return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
   }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps

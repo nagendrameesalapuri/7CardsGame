@@ -84,6 +84,10 @@ export const usersApi = {
 
 export const gamesApi = {
   history: () => api.get<{ games: any[] }>("/games/history"),
+  multiplayerStats: () => api.get<{
+    free:  { played: number; won: number; winRate: number };
+    wager: { played: number; won: number; winRate: number; totalSpent: number; totalEarned: number; netProfit: number };
+  }>("/games/multiplayer-stats"),
 };
 
 export type NotificationCategory =
@@ -408,6 +412,12 @@ export const survivalApi = {
     runWinRate: number; bestStage: number;
     totalEarned: number; totalSpent: number; netPoints: number;
   }>('/survival/stats'),
+  teamStats: () => api.get<{
+    runsPlayed: number; runsWon: number; runsLost: number;
+    stagesPlayed: number; stagesWon: number; stageWinRate: number;
+    runWinRate: number; bestStage: number;
+    totalEarned: number; totalSpent: number; netPoints: number;
+  }>('/survival/team-stats'),
   active:  () => api.get<{ battles: any[] }>('/survival/active'),
 };
 

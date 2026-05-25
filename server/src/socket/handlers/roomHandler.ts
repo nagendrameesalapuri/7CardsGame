@@ -389,6 +389,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     } catch (_) {}
   });
 
+
   // ── Leave Room ─────────────────────────────────────────────────────────────
   socket.on("room:leave", async () => {
     try {

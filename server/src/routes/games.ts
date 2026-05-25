@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { Game } from '../models/Game';
+import { Transaction } from '../models/Transaction';
 
 const router = Router();
 
@@ -52,6 +53,50 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
     res.json({ games: formatted });
   } catch {
     res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+// GET /api/games/multiplayer-stats — free vs wager breakdown
+router.get('/multiplayer-stats', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const [allGames, winTxns] = await Promise.all([
+      Game.find({ 'players.userId': userId, status: 'finished' })
+        .select('roomId winnerId entryFee rounds')
+        .lean(),
+      Transaction.find({ userId, type: 'winning' }).lean(),
+    ]);
+
+    const freeGames  = allGames.filter(g => !g.entryFee || g.entryFee === 0);
+    const wagerGames = allGames.filter(g => g.entryFee && g.entryFee > 0);
+
+    const calcStats = (games: typeof allGames) => {
+      const played = games.length;
+      const won    = games.filter(g => g.winnerId === userId).length;
+      return {
+        played,
+        won,
+        winRate: played > 0 ? Math.round((won / played) * 100) : 0,
+      };
+    };
+
+    const wagerRoomCodes = new Set(wagerGames.map(g => g.roomId));
+    const wagerWinTxns   = winTxns.filter(t => wagerRoomCodes.has((t as any).metadata?.roomCode));
+    const totalEarned    = wagerWinTxns.reduce((s, t) => s + t.amount, 0);
+    const totalSpent     = wagerGames.reduce((s, g) => s + (g.entryFee ?? 0), 0);
+
+    res.json({
+      free:  calcStats(freeGames),
+      wager: {
+        ...calcStats(wagerGames),
+        totalSpent,
+        totalEarned,
+        netProfit: totalEarned - totalSpent,
+      },
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to load multiplayer stats' });
   }
 });
 

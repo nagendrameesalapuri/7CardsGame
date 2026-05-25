@@ -1144,6 +1144,18 @@ function FeaturesSection({
         </div>
       </div>
 
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">Leaderboard</p>
+        <div className="rounded-xl p-4" style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.18)' }}>
+          <Toggle
+            label="Leaderboard"
+            desc="Show the public leaderboard page to all players"
+            value={flags.leaderboardEnabled ?? true}
+            onChange={(v) => setFlags((f: any) => ({ ...f, leaderboardEnabled: v }))}
+          />
+        </div>
+      </div>
+
       <button
         onClick={save}
         disabled={saving}

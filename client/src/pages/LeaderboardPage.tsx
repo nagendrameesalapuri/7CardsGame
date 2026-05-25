@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { progressionApi } from '../services/api';
+import { useConfigStore } from '../store/configStore';
 import { Layout } from '../components/layout/Layout';
 import { Avatar } from '../components/ui/Avatar';
 import { AchievementBadge } from '../components/AchievementBadge';
@@ -78,8 +79,13 @@ export function LeaderboardPage() {
   const [leaders, setLeaders] = useState<LeaderEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [category, setCategory] = useState<Category>('xp');
+  const { flags, load: loadConfig } = useConfigStore();
+  const enabled = flags.leaderboardEnabled !== false;
+
+  useEffect(() => { loadConfig(); }, []); // eslint-disable-line
 
   useEffect(() => {
+    if (!enabled) { setIsLoading(false); return; }
     setIsLoading(true);
     progressionApi.leaderboard(category)
       .then(r => {
@@ -91,7 +97,7 @@ export function LeaderboardPage() {
         setLeaders(mergeWithDummy(real, sortKey));
       })
       .finally(() => setIsLoading(false));
-  }, [category]);
+  }, [category, enabled]);
 
   const PODIUM = ['🥇', '🥈', '🥉'];
   const CATEGORY_TABS: { key: Category; label: string; emoji: string }[] = [
@@ -126,7 +132,16 @@ export function LeaderboardPage() {
           ))}
         </div>
 
-        {isLoading ? (
+        {!enabled ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center py-20 rounded-2xl text-center"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <p className="text-5xl mb-4">🏆</p>
+            <p className="text-lg font-bold text-white mb-1">Leaderboard Unavailable</p>
+            <p className="text-sm text-dark-muted">The leaderboard is currently disabled. Check back soon!</p>
+          </motion.div>
+        ) : isLoading ? (
           <div className="text-center py-16 text-dark-muted animate-pulse">Loading...</div>
         ) : (
           <div className="space-y-2">

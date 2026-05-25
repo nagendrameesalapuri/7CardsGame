@@ -714,6 +714,7 @@ function InstallBanner() {
   );
 }
 
+
 // Detect admin subdomain (admin.yourdomain.com) — auto-route to admin panel
 const IS_ADMIN_SUBDOMAIN = window.location.hostname.startsWith('admin.');
 

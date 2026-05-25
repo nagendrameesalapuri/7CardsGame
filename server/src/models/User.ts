@@ -20,7 +20,6 @@ export interface IUser extends Document {
     showAttempts: number;
     showSuccesses: number;
   };
-  friends: mongoose.Types.ObjectId[];
   lastSeenAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -47,7 +46,6 @@ const UserSchema = new Schema<IUser>(
       showAttempts: { type: Number, default: 0 },
       showSuccesses: { type: Number, default: 0 },
     },
-    friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     lastSeenAt: { type: Date },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

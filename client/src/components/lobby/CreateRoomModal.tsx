@@ -15,7 +15,6 @@ interface CreateRoomModalProps {
   adminConfig?: PublicAdminConfig | null;
 }
 
-
 export function CreateRoomModal({ isOpen, onClose, adminConfig }: CreateRoomModalProps) {
   const { createRoom } = useGameStore();
   const { user } = useAuthStore();

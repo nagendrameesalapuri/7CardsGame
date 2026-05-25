@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Avatar } from '../ui/Avatar';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { useNotificationStore } from '../../store/notificationStore';
+import { useConfigStore } from '../../store/configStore';
 import { on } from '../../services/socket';
 
 const TYPE_COLOR: Record<string, string> = {
@@ -171,9 +172,12 @@ export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const { unreadCount, historyUnread, addNotification } = useNotificationStore();
+  const { flags, load: loadConfig } = useConfigStore();
   const [bellOpen, setBellOpen] = useState(false);
 
   const totalUnread = unreadCount + historyUnread;
+
+  useEffect(() => { loadConfig(); }, []); // eslint-disable-line
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -188,9 +192,11 @@ export function Header() {
     }
   }, [isAuthenticated, addNotification]);
 
+  const leaderboardEnabled = flags.leaderboardEnabled !== false;
+
   const navItems = [
     { to: '/lobby',         label: 'Play',    icon: '⚔️' },
-    { to: '/leaderboard',   label: 'Board',   icon: '🏆' },
+    ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Board', icon: '🏆' }] : []),
     { to: '/wallet',        label: 'Rewards', icon: '🎁' },
     { to: '/notifications', label: 'Alerts',  icon: '🔔' },
     { to: '/profile',       label: 'Profile', icon: '👤' },
@@ -216,7 +222,7 @@ export function Header() {
           {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-6 text-sm text-dark-muted">
             <Link to="/lobby"         className="hover:text-white transition-colors">Play</Link>
-            <Link to="/leaderboard"   className="hover:text-white transition-colors">Leaderboard</Link>
+            {leaderboardEnabled && <Link to="/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>}
             <Link to="/wallet"        className="hover:text-white transition-colors">Rewards</Link>
             <Link to="/notifications" className="hover:text-white transition-colors">Alerts</Link>
             <Link to="/profile"       className="hover:text-white transition-colors">Profile</Link>

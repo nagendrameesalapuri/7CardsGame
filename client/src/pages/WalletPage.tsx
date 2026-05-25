@@ -1114,8 +1114,9 @@ export function WalletPage() {
                         : isLocked ? "rgba(251,146,60,0.15)" : isDebit ? "rgba(248,113,113,0.1)" : "rgba(74,222,128,0.1)";
 
                       // Amount display
-                      const amountStr = isNeutral ? `₹${tx.amount} held`
-                        : isDebit ? `-₹${tx.amount}` : `+₹${tx.amount}`;
+                      const amt = Number(tx.amount).toFixed(2);
+                      const amountStr = isNeutral ? `₹${amt} held`
+                        : isDebit ? `-₹${amt}` : `+₹${amt}`;
                       const amountColor = isNeutral ? "#fde047" : isDebit ? "#f87171" : "#4ade80";
 
                       // Balance trail (if available)
@@ -1147,11 +1148,6 @@ export function WalletPage() {
                                   hour: "2-digit", minute: "2-digit",
                                 })}
                               </p>
-                              {showTrail && (
-                                <p className="text-[10px] text-dark-muted mt-0.5 font-mono">
-                                  ₹{tx.balanceBefore} → ₹{tx.balanceAfter}
-                                </p>
-                              )}
                             </div>
                             <div className="text-right flex-shrink-0">
                               <p className="text-sm font-black" style={{ color: amountColor }}>{amountStr}</p>
@@ -1160,6 +1156,16 @@ export function WalletPage() {
                               )}
                             </div>
                           </div>
+                          {/* Balance trail — full width row so it never gets clipped on mobile */}
+                          {showTrail && (
+                            <div className="px-4 pb-2.5 flex items-center gap-2">
+                              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+                              <p className="text-[11px] font-mono font-semibold" style={{ color: "rgba(148,163,184,0.7)" }}>
+                                ₹{Number(tx.balanceBefore).toFixed(2)} → ₹{Number(tx.balanceAfter).toFixed(2)}
+                              </p>
+                              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+                            </div>
+                          )}
                           {/* Hold detail row */}
                           {isHold && (
                             <div className="px-4 pb-2.5 flex items-center gap-2">

@@ -149,6 +149,42 @@ router.get('/history', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+router.get('/team-stats', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const records = await SurvivalTeam.find({
+      'members.userId': userId,
+      status: { $in: ['completed', 'abandoned'] },
+    }).lean();
+
+    const runsPlayed = records.length;
+    const runsWon    = records.filter(r => r.status === 'completed').length;
+    const runsLost   = records.filter(r => r.status === 'abandoned').length;
+
+    let stagesWon = 0, stagesPlayed = 0, totalEarned = 0, totalSpent = 0, bestStage = 0;
+    for (const r of records) {
+      stagesPlayed += r.stageResults.length;
+      stagesWon    += r.stageResults.filter((s: any) => s.teamWon).length;
+      totalEarned  += r.totalPointsEarned;
+      if (r.stageResults.length > 0) totalSpent += r.entryPoints;
+      const reached = r.stageResults.length > 0 ? Math.max(...r.stageResults.map((s: any) => s.stage)) : 0;
+      if (reached > bestStage) bestStage = reached;
+      if (r.status === 'completed') bestStage = 5;
+    }
+
+    res.json({
+      runsPlayed, runsWon, runsLost,
+      stagesPlayed, stagesWon,
+      stageWinRate: stagesPlayed > 0 ? Math.round((stagesWon / stagesPlayed) * 100) : 0,
+      runWinRate:   runsPlayed   > 0 ? Math.round((runsWon   / runsPlayed)   * 100) : 0,
+      bestStage, totalEarned, totalSpent,
+      netPoints: totalEarned - totalSpent,
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to load team stats' });
+  }
+});
+
 router.get('/team-history', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;

@@ -1,6 +1,9 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { User } from '../models/User';
+import { Transaction } from '../models/Transaction';
+
+const JOINING_BONUS = 30; // ₹30 for new Google sign-ups
 
 export function configurePassport(): void {
   // Skip Google OAuth if credentials are not configured
@@ -28,7 +31,22 @@ export function configurePassport(): void {
                 email: profile.emails?.[0]?.value,
                 avatar: googleAvatar ?? 'avatar_1',
                 isGuest: false,
+                walletBalance: JOINING_BONUS,
               });
+              // Log the joining bonus as a transaction for audit trail
+              await Transaction.create({
+                userId: String(user._id),
+                type: 'bonus',
+                amount: JOINING_BONUS,
+                status: 'completed',
+                description: 'Welcome bonus — new account joining reward',
+                balanceBefore: 0,
+                balanceAfter: JOINING_BONUS,
+                heldBefore: 0,
+                heldAfter: 0,
+                metadata: { reason: 'joining_bonus' },
+              });
+              console.info(`[Auth] New user ${user.username} — ₹${JOINING_BONUS} joining bonus credited`);
             } else if (googleAvatar && user.avatar !== googleAvatar) {
               // Keep avatar in sync with Google profile photo
               user.avatar = googleAvatar;

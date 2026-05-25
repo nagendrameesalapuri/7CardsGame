@@ -6,6 +6,7 @@ import { progressionApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
 import { notify } from '../services/notify';
 import { useAuthStore } from '../store/authStore';
+import { useConfigStore } from '../store/configStore';
 
 const RARITY_COLOR: Record<string, string> = {
   common: '#9ca3af', rare: '#60a5fa', epic: '#a855f7', legendary: '#fbbf24',
@@ -455,6 +456,7 @@ function DailyRewardSection({ progress }: { progress: any }) {
 export function ProgressionPage() {
   const { user } = useAuthStore();
   const { progress, loaded, load, subscribe } = useProgressionStore();
+  const { flags, load: loadConfig } = useConfigStore();
   const navigate = useNavigate();
   const [allAchievements, setAllAchievements] = useState<any[]>([]);
   const [tab, setTab] = useState<'overview' | 'achievements' | 'leaderboard'>('overview');
@@ -462,13 +464,20 @@ export function ProgressionPage() {
   const [lbCategory, setLbCategory] = useState<'xp' | 'streak' | 'survival'>('xp');
   const [lbLoading, setLbLoading] = useState(false);
 
+  const leaderboardEnabled = flags.leaderboardEnabled !== false;
+
   useEffect(() => {
     if (!user) { navigate('/'); return; }
     load();
+    loadConfig();
     progressionApi.achievements().then(r => setAllAchievements(r.data.achievements)).catch(() => {});
     const unsub = subscribe();
     return unsub;
-  }, []);
+  }, []); // eslint-disable-line
+
+  useEffect(() => {
+    if (tab === 'leaderboard' && !leaderboardEnabled) setTab('overview');
+  }, [leaderboardEnabled, tab]);
 
   useEffect(() => {
     if (tab !== 'leaderboard') return;
@@ -509,8 +518,8 @@ export function ProgressionPage() {
 
         {/* Tabs */}
         <div className="flex rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          {(['overview', 'achievements', 'leaderboard'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} className="flex-1 py-2.5 text-sm font-semibold capitalize transition-all"
+          {(['overview', 'achievements', ...(leaderboardEnabled ? ['leaderboard'] : [])] as const).map(t => (
+            <button key={t} onClick={() => setTab(t as any)} className="flex-1 py-2.5 text-sm font-semibold capitalize transition-all"
               style={tab === t ? { background: 'rgba(168,85,247,0.18)', color: '#c084fc' } : { color: '#6b7280' }}>
               {t === 'overview' ? '📊 Overview' : t === 'achievements' ? '🏅 Achievements' : '🏆 Leaderboard'}
             </button>

@@ -141,6 +141,9 @@ export default function createAdminRouter(io: Server) {
         if (typeof featureFlags.teamArenaDisabledReason === "string") {
           (cfg.featureFlags as any).teamArenaDisabledReason = featureFlags.teamArenaDisabledReason.trim().slice(0, 100);
         }
+        if (typeof featureFlags.leaderboardEnabled === "boolean") {
+          (cfg.featureFlags as any).leaderboardEnabled = featureFlags.leaderboardEnabled;
+        }
       }
 
       if (gameConfig) {
@@ -1594,19 +1597,23 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
-  // ── Hold System: Clear exploit flags + reset in-memory tracker ──────────────
+  // ── Hold System: Clear all hold/release transactions + reset tracker ─────────
   router.post("/hold-system/clear", requireAdmin, async (_req: Request, res: Response) => {
     try {
-      // Unset exploitFlag on all old flagged transactions
-      const result = await Transaction.updateMany(
+      // Delete all entry_hold and entry_released transactions (internal accounting, no real money movement)
+      const deleted = await Transaction.deleteMany({
+        type: { $in: ['entry_hold', 'entry_released'] },
+      });
+      // Unset exploitFlag on any remaining flagged transactions
+      await Transaction.updateMany(
         { 'metadata.exploitFlag': true },
         { $unset: { 'metadata.exploitFlag': '' } },
       );
       // Reset the in-memory anti-exploit tracker for all users
       _resetHoldExploitTracker();
-      res.json({ success: true, cleared: result.modifiedCount });
+      res.json({ success: true, deleted: deleted.deletedCount });
     } catch (err) {
-      res.status(500).json({ error: 'Failed to clear exploit flags' });
+      res.status(500).json({ error: 'Failed to clear hold data' });
     }
   });
 
