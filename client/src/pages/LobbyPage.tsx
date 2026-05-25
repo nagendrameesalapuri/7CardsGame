@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { roomsApi, configApi } from '../services/api';
+import { roomsApi, configApi, walletApi } from '../services/api';
+import { notify } from '../services/notify';
 import { on } from '../services/socket';
 import { Layout } from '../components/layout/Layout';
 import { RoomLobby } from '../components/lobby/RoomLobby';
@@ -17,6 +18,9 @@ import { DailyLoginModal } from '../components/DailyLoginModal';
 import { PlayVsAIModal } from '../components/lobby/PlayVsAIModal';
 import { GameGuideModal } from '../components/lobby/GameGuideModal';
 import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
+import { SpinWheelModal } from '../components/wallet/SpinWheelModal';
+import { PointsSpinModal } from '../components/wallet/PointsSpinModal';
+import { LaunchBonusModal } from '../components/wallet/LaunchBonusModal';
 
 type Tab = 'play' | 'history';
 
@@ -65,10 +69,15 @@ export function LobbyPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showDailyLogin, setShowDailyLogin] = useState(false);
+  const [showSpin, setShowSpin] = useState(false);
+  const [showPointsSpin, setShowPointsSpin] = useState(false);
+  const [showLaunchBonus, setShowLaunchBonus] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
   const { progress, load: loadProgression, subscribe: subscribeProgression } = useProgressionStore();
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [joiningRoomCode, setJoiningRoomCode] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiPoints, setAiPoints] = useState<number>((user as any)?.aiPoints ?? 0);
   const [activeTab, setActiveTab] = useState<Tab>('play');
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
@@ -144,7 +153,49 @@ export function LobbyPage() {
       setTimeout(() => joinRoom(joinCode.toUpperCase()), 500);
     }
 
-    return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); };
+    // Load wallet balance and AI points on mount
+    if (!user?.isGuest) {
+      walletApi.get().then(r => {
+        setWalletBalance(r.data.balance);
+        setAiPoints((r.data as any).aiPoints ?? 0);
+        if (!(r.data as any).launchBonusClaimed) {
+          setShowLaunchBonus(true);
+        }
+      }).catch(() => {});
+    }
+
+    // Daily spin unlock notification
+    const lastExhaustedDate = localStorage.getItem('spin_exhausted_date');
+    const today = new Date().toISOString().slice(0, 10);
+    if (lastExhaustedDate && lastExhaustedDate < today) {
+      walletApi.spinStatus().then(r => {
+        if (r.data.spinsLeft > 0) {
+          localStorage.removeItem('spin_exhausted_date');
+          notify.success(`🎰 Daily spins reset! You have ${r.data.spinsLeft} free spins. Win up to ₹100!`, { duration: 8000 });
+          if (typeof window.Notification !== 'undefined' && window.Notification.permission === 'granted') {
+            new window.Notification('🎰 Money Spin Unlocked!', { body: 'Your daily spins are ready! Win up to ₹100 today.' });
+          } else if (typeof window.Notification !== 'undefined' && window.Notification.permission !== 'denied') {
+            window.Notification.requestPermission().then(p => {
+              if (p === 'granted') new window.Notification('🎰 Money Spin Unlocked!', { body: 'Your daily spins are ready! Win up to ₹100 today.' });
+            }).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    }
+
+    // AI points won — update local state and record mode win in localStorage
+    const unsubAiPoints = on('ai:points_earned', (d: { points: number; total: number; modeId: string; modeLabel: string }) => {
+      setAiPoints(d.total);
+      try {
+        const LS_KEY = 'ai_mode_stats_v1';
+        const stats = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}');
+        const prev = stats[d.modeId] ?? { played: 0, won: 0 };
+        stats[d.modeId] = { ...prev, won: prev.won + 1 };
+        localStorage.setItem(LS_KEY, JSON.stringify(stats));
+      } catch {}
+    });
+
+    return () => { unsub(); unsubGame(); unsubLobby(); unsubConfig(); unsubProg(); unsubAiPoints(); };
   }, [isAuthenticated, navigate, subscribeToEvents, fetchRooms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -434,6 +485,83 @@ export function LobbyPage() {
               </motion.div>
             )}
 
+            {/* Spin & Win */}
+            {!user?.isGuest && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }}
+                className="relative overflow-hidden rounded-2xl"
+                style={{
+                  background: 'linear-gradient(135deg,rgba(6,8,26,0.98),rgba(4,5,18,0.97))',
+                  border: '1px solid rgba(250,204,21,0.22)',
+                  boxShadow: '0 4px 32px rgba(250,204,21,0.05)',
+                }}>
+                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(250,204,21,0.13),transparent 70%)', filter: 'blur(28px)' }} />
+                <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.1),transparent 70%)', filter: 'blur(24px)' }} />
+
+                {/* Header */}
+                <div className="flex items-center gap-3 px-4 pt-4 pb-3 relative" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg,rgba(250,204,21,0.18),rgba(251,146,60,0.1))', border: '1px solid rgba(250,204,21,0.28)' }}>
+                    🎰
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-black text-white">Spin &amp; Win</p>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        style={{ background: 'rgba(250,204,21,0.15)', color: '#fde047', border: '1px solid rgba(250,204,21,0.28)' }}>
+                        DAILY
+                      </span>
+                    </div>
+                    <p className="text-xs text-dark-muted">Spin wheels · Win real ₹ daily</p>
+                  </div>
+                </div>
+
+                {/* Spin buttons */}
+                <div className="flex flex-col gap-2 px-4 py-3 relative">
+                  {/* Money Spin */}
+                  <motion.button
+                    whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                    onClick={() => setShowSpin(true)}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl relative overflow-hidden"
+                    style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(168,85,247,0.12))', border: '1px solid rgba(99,102,241,0.35)' }}>
+                    <Shimmer />
+                    <span className="text-xl relative z-10 flex-shrink-0">🎰</span>
+                    <div className="flex-1 text-left relative z-10">
+                      <div className="text-xs font-black text-white leading-tight">Money Spin</div>
+                      <div className="text-[9px] leading-tight" style={{ color: 'rgba(165,180,252,0.7)' }}>₹5/spin · 3/day</div>
+                    </div>
+                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full relative z-10 flex-shrink-0"
+                      style={{ background: 'rgba(99,102,241,0.3)', color: '#c7d2fe', border: '1px solid rgba(99,102,241,0.35)' }}>
+                      WIN ₹100
+                    </span>
+                  </motion.button>
+
+                  {/* Points Spin */}
+                  <motion.button
+                    whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                    onClick={() => setShowPointsSpin(true)}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl relative overflow-hidden"
+                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.14),rgba(6,182,212,0.08))', border: '1px solid rgba(16,185,129,0.32)' }}>
+                    <Shimmer />
+                    <span className="text-xl relative z-10 flex-shrink-0">⭐</span>
+                    <div className="flex-1 text-left relative z-10">
+                      <div className="text-xs font-black text-white leading-tight">Points Spin</div>
+                      <div className="text-[9px] leading-tight" style={{ color: 'rgba(52,211,153,0.7)' }}>100 pts/spin · 10/day</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 relative z-10 flex-shrink-0">
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(16,185,129,0.25)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.32)' }}>
+                        WIN REAL ₹
+                      </span>
+                      <span className="text-[9px] font-bold" style={{ color: '#34d399' }}>
+                        ⭐ {aiPoints.toLocaleString()}
+                      </span>
+                    </div>
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Multiplayer */}
             <motion.div
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
@@ -619,6 +747,7 @@ export function LobbyPage() {
           startAiGame(botCount, personality, rounds, modeName);
         }}
         loading={aiLoading}
+        aiPoints={aiPoints}
         adminMaxRounds={adminConfig.gameConfig.maxRounds ?? 20}
         adminMinRounds={adminConfig.gameConfig.minRounds ?? 1}
       />
@@ -628,6 +757,30 @@ export function LobbyPage() {
 
       <AnimatePresence>
         {showGuide && <GameGuideModal onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSpin && (
+          <SpinWheelModal
+            onClose={() => setShowSpin(false)}
+            onBalanceUpdate={(b) => { setWalletBalance(b); }}
+          />
+        )}
+        {showPointsSpin && (
+          <PointsSpinModal
+            onClose={() => setShowPointsSpin(false)}
+            onBalanceUpdate={(b, pts) => { setWalletBalance(b); setAiPoints(pts); }}
+          />
+        )}
+        {showLaunchBonus && (
+          <LaunchBonusModal
+            onClaim={(pts, spins) => {
+              setAiPoints(pts);
+              setShowLaunchBonus(false);
+            }}
+            onClose={() => setShowLaunchBonus(false)}
+          />
+        )}
       </AnimatePresence>
     </Layout>
   );

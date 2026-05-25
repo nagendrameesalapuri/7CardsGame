@@ -346,6 +346,7 @@ export interface User {
   isGuest: boolean;
   isBanned?: boolean;
   isAdmin?: boolean;
+  aiPoints?: number;
   stats: UserStats;
   createdAt: string;
 }

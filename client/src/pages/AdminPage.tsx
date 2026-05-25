@@ -49,7 +49,8 @@ type Section =
   | "playerintel"
   | "missedpayouts"
   | "gamereview"
-  | "holdsystem";
+  | "holdsystem"
+  | "spinanalytics";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -453,6 +454,8 @@ function UsersSection() {
   const [total, setTotal] = useState(0);
   const [actionId, setActionId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editPointsUser, setEditPointsUser] = useState<{ id: string; username: string; aiPoints: number } | null>(null);
+  const [pointsDelta, setPointsDelta] = useState('');
 
   // Debounce search — only fire query 400 ms after user stops typing
   useEffect(() => {
@@ -573,9 +576,11 @@ function UsersSection() {
             <motion.div
               key={String(u.id)}
               layout
-              className="p-3 rounded-xl flex items-center gap-3"
+              className="p-3 rounded-xl flex flex-col gap-2"
               style={{ ...cardStyle, opacity: u.isBanned ? 0.6 : 1 }}
             >
+              {/* Info row */}
+              <div className="flex items-center gap-3">
               <Avatar avatar={u.avatar} size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -649,8 +654,10 @@ function UsersSection() {
                   {formatLastSeen(u.lastSeenAt, u.isOnline)}
                 </p>
               </div>
+              </div>{/* end info row */}
 
-              <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+              {/* Buttons row */}
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {u.isBanned ? (
                   <button
                     onClick={() => doAction(() => admin.unbanUser(u.id))}
@@ -702,6 +709,14 @@ function UsersSection() {
                   title={u.isAdmin ? "Remove admin rights" : "Grant admin rights"}
                 >
                   {u.isAdmin ? "🛡 Admin" : "Make Admin"}
+                </button>
+                <button
+                  onClick={() => { setPointsDelta(''); setEditPointsUser({ id: String(u.id), username: u.username, aiPoints: u.aiPoints ?? 0 }); }}
+                  className="text-[11px] px-2 py-1 rounded-lg font-semibold"
+                  style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+                  title="Add / deduct AI points"
+                >
+                  ⭐ {u.aiPoints ?? 0}
                 </button>
                 <button
                   onClick={() => doAction(() => admin.kickUser(u.id))}
@@ -756,23 +771,57 @@ function UsersSection() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text"
-          >
-            ← Prev
-          </button>
-          <span className="text-xs text-dark-muted">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text"
-          >
-            Next →
-          </button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">← Prev</button>
+          <span className="text-xs text-dark-muted">{page} / {totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-xs text-dark-muted disabled:opacity-30 hover:text-dark-text">Next →</button>
+        </div>
+      )}
+
+      {/* ── Edit AI Points modal ─────────────────────────────────────────── */}
+      {editPointsUser && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setEditPointsUser(null); }}>
+          <div style={{ background: 'linear-gradient(160deg,#0d0b20,#130d2e)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20, padding: 24, width: '100%', maxWidth: 340, boxShadow: '0 0 40px rgba(34,197,94,0.15)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ color: '#fff', fontWeight: 900, fontSize: 16, margin: 0 }}>⭐ AI Points</h3>
+                <p style={{ color: '#22c55e', fontSize: 11, margin: '2px 0 0' }}>{editPointsUser.username} · Current: {editPointsUser.aiPoints}</p>
+              </div>
+              <button onClick={() => setEditPointsUser(null)} style={{ background: 'rgba(255,255,255,0.07)', border: 'none', color: '#9ca3af', cursor: 'pointer', width: 28, height: 28, borderRadius: '50%', fontSize: 14 }}>✕</button>
+            </div>
+            <input
+              type="number"
+              value={pointsDelta}
+              onChange={e => setPointsDelta(e.target.value)}
+              placeholder="e.g. 500 or -100"
+              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 15, outline: 'none', boxSizing: 'border-box' }}
+            />
+            <p style={{ color: '#6b7280', fontSize: 10, marginTop: 6 }}>Positive = add points · Negative = deduct points</p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                onClick={async () => {
+                  const delta = parseInt(pointsDelta);
+                  if (!delta || isNaN(delta)) return;
+                  try {
+                    const r = await admin.adjustAiPoints(editPointsUser.id, delta);
+                    setUsers(prev => prev.map(u => String(u.id) === editPointsUser.id ? { ...u, aiPoints: r.data.aiPoints } : u));
+                    setEditPointsUser(prev => prev ? { ...prev, aiPoints: r.data.aiPoints } : null);
+                    setPointsDelta('');
+                  } catch (e: any) { alert(e?.response?.data?.error ?? 'Failed'); }
+                }}
+                disabled={!pointsDelta || isNaN(parseInt(pointsDelta))}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontWeight: 900, fontSize: 13, color: '#fff', background: 'linear-gradient(135deg,#16a34a,#22c55e)', border: 'none', cursor: 'pointer', opacity: !pointsDelta ? 0.5 : 1 }}
+              >
+                Apply
+              </button>
+              <button
+                onClick={() => { setPointsDelta(''); setEditPointsUser(null); }}
+                style={{ padding: '10px 16px', borderRadius: 12, fontWeight: 700, fontSize: 13, color: '#9ca3af', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -5175,6 +5224,261 @@ function HoldSystemSection() {
   );
 }
 
+// ── Spin Analytics Section ────────────────────────────────────────────────────
+
+interface SpinUserStat {
+  id: string;
+  username: string;
+  avatar: string;
+  moneySpinsToday: number;
+  moneySpinLimit: number;
+  pointsSpinsToday: number;
+  pointsSpinLimit: number;
+  allTimeMoneySpin: number;
+  allTimePointsSpin: number;
+  totalMoneyWon: number;
+  lastSpinAt?: string;
+}
+
+function SpinAnalyticsSection() {
+  const [users, setUsers] = React.useState<SpinUserStat[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [moneyLimit, setMoneyLimit] = React.useState(3);
+  const [pointsLimit, setPointsLimit] = React.useState(3);
+  const [savingLimits, setSavingLimits] = React.useState(false);
+  const [resettingId, setResettingId] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  const showToast = (type: "success" | "error", msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const { data } = await admin.getSpinAnalytics();
+      setUsers(data.users ?? []);
+      setMoneyLimit(data.moneySpinLimit ?? 3);
+      setPointsLimit(data.pointsSpinLimit ?? 3);
+    } catch {
+      setError("Failed to load spin analytics");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const handleSaveLimits = async () => {
+    setSavingLimits(true);
+    try {
+      await admin.updateConfig({ spinConfig: { moneySpinDailyLimit: moneyLimit, pointsSpinDailyLimit: pointsLimit } });
+      showToast("success", "Spin limits saved");
+    } catch {
+      showToast("error", "Failed to save limits");
+    } finally {
+      setSavingLimits(false);
+    }
+  };
+
+  const handleReset = async (userId: string, type: "money" | "points") => {
+    setResettingId(`${userId}-${type}`);
+    try {
+      await admin.resetUserSpins(userId, type);
+      showToast("success", `${type === "money" ? "Money" : "Points"} spin reset`);
+      await load();
+    } catch {
+      showToast("error", "Failed to reset");
+    } finally {
+      setResettingId(null);
+    }
+  };
+
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <div className="w-8 h-8 rounded-full border-2 border-indigo-500/40 border-t-indigo-500 animate-spin" />
+    </div>
+  );
+
+  if (error) return <div className="text-red-400 text-sm p-4">{error}</div>;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-white">Spin Analytics</h2>
+          <p className="text-xs text-dark-muted mt-0.5">Daily spin usage, all-time stats, and limit management</p>
+        </div>
+        <button onClick={load}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-colors"
+          style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
+          ↺ Refresh
+        </button>
+      </div>
+
+      {/* Global Limits Card */}
+      <div className="rounded-2xl p-4 space-y-4" style={cardStyle}>
+        <p className="text-sm font-bold text-white">Global Daily Limits</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.18)" }}>
+            <p className="text-xs font-semibold" style={{ color: "#818cf8" }}>Money Spin Daily Limit</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setMoneyLimit(v => Math.max(1, v - 1))}
+                className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
+                −
+              </button>
+              <span className="w-8 text-center font-bold text-sm" style={{ color: "#818cf8" }}>{moneyLimit}</span>
+              <button onClick={() => setMoneyLimit(v => Math.min(20, v + 1))}
+                className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
+                +
+              </button>
+            </div>
+          </div>
+          <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <p className="text-xs font-semibold" style={{ color: "#34d399" }}>Points Spin Daily Limit</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPointsLimit(v => Math.max(1, v - 1))}
+                className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
+                −
+              </button>
+              <span className="w-8 text-center font-bold text-sm" style={{ color: "#34d399" }}>{pointsLimit}</span>
+              <button onClick={() => setPointsLimit(v => Math.min(20, v + 1))}
+                className="w-7 h-7 rounded-lg bg-dark-border text-dark-text font-bold text-sm flex items-center justify-center hover:bg-dark-border/80">
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+        <button onClick={handleSaveLimits} disabled={savingLimits}
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.18))", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.35)" }}>
+          {savingLimits ? "Saving…" : "Save Limits"}
+        </button>
+      </div>
+
+      {/* Users Table */}
+      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <span>🎰</span>
+          <h3 className="text-sm font-black text-white">Player Spin Stats</h3>
+          <span className="text-[10px] font-black px-2 py-0.5 rounded-full ml-1"
+            style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}>
+            {users.length}
+          </span>
+        </div>
+
+        {users.length === 0 ? (
+          <p className="text-dark-muted text-xs px-4 py-6 text-center">No spin data yet</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+                  <th className="text-left px-4 py-2 text-dark-muted font-semibold">Player</th>
+                  <th className="text-center px-3 py-2 font-semibold" style={{ color: "#818cf8" }}>Money Today</th>
+                  <th className="text-center px-3 py-2 font-semibold" style={{ color: "#34d399" }}>Points Today</th>
+                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Money</th>
+                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Points</th>
+                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Money Won</th>
+                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Last Spin</th>
+                  <th className="text-center px-3 py-2 text-dark-muted font-semibold">Reset</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                    className="hover:bg-white/[0.015] transition-colors">
+                    {/* Player */}
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar avatar={u.avatar} size="sm" />
+                        <span className="font-semibold text-white truncate max-w-[100px]">{u.username}</span>
+                      </div>
+                    </td>
+                    {/* Money Today */}
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="font-bold" style={{ color: u.moneySpinsToday >= u.moneySpinLimit ? "#f87171" : "#818cf8" }}>
+                        {u.moneySpinsToday}/{u.moneySpinLimit}
+                      </span>
+                      <span className="ml-1 text-dark-muted">
+                        ({Math.max(0, u.moneySpinLimit - u.moneySpinsToday)} left)
+                      </span>
+                    </td>
+                    {/* Points Today */}
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="font-bold" style={{ color: u.pointsSpinsToday >= u.pointsSpinLimit ? "#f87171" : "#34d399" }}>
+                        {u.pointsSpinsToday}/{u.pointsSpinLimit}
+                      </span>
+                      <span className="ml-1 text-dark-muted">
+                        ({Math.max(0, u.pointsSpinLimit - u.pointsSpinsToday)} left)
+                      </span>
+                    </td>
+                    {/* All-Time Money Spins */}
+                    <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimeMoneySpin}</td>
+                    {/* All-Time Points Spins */}
+                    <td className="px-3 py-2.5 text-center text-dark-muted font-medium">{u.allTimePointsSpin}</td>
+                    {/* Money Won */}
+                    <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fbbf24" }}>
+                      ₹{u.totalMoneyWon.toLocaleString("en-IN")}
+                    </td>
+                    {/* Last Spin */}
+                    <td className="px-3 py-2.5 text-center text-dark-muted">
+                      {u.lastSpinAt
+                        ? new Date(u.lastSpinAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+                        : "—"}
+                    </td>
+                    {/* Reset Buttons */}
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1 justify-center">
+                        <button
+                          onClick={() => handleReset(u.id, "money")}
+                          disabled={resettingId === `${u.id}-money`}
+                          className="text-[11px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40"
+                          style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.25)" }}>
+                          {resettingId === `${u.id}-money` ? "…" : "Reset Money"}
+                        </button>
+                        <button
+                          onClick={() => handleReset(u.id, "points")}
+                          disabled={resettingId === `${u.id}-points`}
+                          className="text-[11px] px-2 py-1 rounded-lg font-semibold transition-all disabled:opacity-40"
+                          style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }}>
+                          {resettingId === `${u.id}-points` ? "…" : "Reset Points"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Inline toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold"
+          style={{
+            background: toast.type === "success"
+              ? "linear-gradient(135deg,rgba(0,200,100,0.18),rgba(0,200,100,0.08))"
+              : "linear-gradient(135deg,rgba(220,50,50,0.18),rgba(220,50,50,0.08))",
+            border: toast.type === "success"
+              ? "1px solid rgba(0,200,100,0.45)"
+              : "1px solid rgba(220,50,50,0.45)",
+            backdropFilter: "blur(16px)",
+            color: toast.type === "success" ? "#00e676" : "#ff6b6b",
+          }}>
+          <span>{toast.type === "success" ? "✅" : "❌"}</span>
+          <span>{toast.msg}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -5223,6 +5527,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
       { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
       { key: "holdsystem",    icon: "🔒", label: "Hold Monitor" },
+      { key: "spinanalytics", icon: "🎰", label: "Spin Analytics" },
       { key: "walletconfig",  icon: "⚙️", label: "Reward Config" },
     ],
   },
@@ -5455,6 +5760,7 @@ export function AdminPage() {
               )}
               {section === "gamereview" && <GameReviewPage />}
               {section === "holdsystem" && <HoldSystemSection />}
+              {section === "spinanalytics" && <SpinAnalyticsSection />}
             </motion.div>
           </AnimatePresence>
         </div>

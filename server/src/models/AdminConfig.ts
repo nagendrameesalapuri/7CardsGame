@@ -39,6 +39,10 @@ export interface IAdminConfig extends Document {
     qrEnabled: boolean;
     qrCodeUrl: string;
   };
+  spinConfig: {
+    moneySpinDailyLimit: number;
+    pointsSpinDailyLimit: number;
+  };
   updatedAt: Date;
 }
 
@@ -95,6 +99,10 @@ const AdminConfigSchema = new Schema<IAdminConfig>(
       upiName: { type: String, default: "7Cards Game" },
       qrEnabled: { type: Boolean, default: true },
       qrCodeUrl: { type: String, default: "" },
+    },
+    spinConfig: {
+      moneySpinDailyLimit:  { type: Number, default: 3,  min: 1, max: 50 },
+      pointsSpinDailyLimit: { type: Number, default: 10, min: 1, max: 100 },
     },
   },
   { timestamps: true },

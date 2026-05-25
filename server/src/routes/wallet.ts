@@ -7,6 +7,8 @@ import { Transaction } from '../models/Transaction';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
 import { DepositRequest } from '../models/DepositRequest';
 import { sendDepositRequestEmail } from '../services/mailer';
+import { SpinLog } from '../models/SpinLog';
+import { getAdminConfig } from '../models/AdminConfig';
 
 const router = Router();
 
@@ -37,7 +39,7 @@ router.post('/dev/add', async (req: Request, res: Response) => {
 // ── GET /api/wallet ───────────────────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user!.id).select('walletBalance heldBalance isGuest');
+    const user = await User.findById(req.user!.id).select('walletBalance heldBalance isGuest aiPoints launchBonusClaimed bonusSpins');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const [transactions, withdrawalRequests, depositRequests] = await Promise.all([
@@ -71,6 +73,9 @@ router.get('/', async (req: Request, res: Response) => {
       heldBalance,
       availableBalance,
       isGuest: user.isGuest,
+      aiPoints: (user as any).aiPoints ?? 0,
+      launchBonusClaimed: (user as any).launchBonusClaimed ?? false,
+      bonusSpins: (user as any).bonusSpins ?? 0,
       lockedRewards,
       transactions,
       withdrawalRequests,
@@ -312,6 +317,364 @@ router.post('/redeem', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Wallet] Redeem error:', err);
     res.status(500).json({ error: 'Failed to process redemption' });
+  }
+});
+
+// ── POST /api/wallet/spin — money spin (₹5 per spin, dynamic daily limit) ──────
+const SPIN_COST = 5;
+let SPIN_DAILY_LIMIT = 3; // updated dynamically from admin config
+
+const SPIN_PRIZES = [
+  { label: 'Try Again', amount: 0,   type: 'cash', weight: 35, color: '#4b5563', icon: '😔' },
+  { label: '₹2 Back',  amount: 2,   type: 'cash', weight: 25, color: '#6366f1', icon: '🥈' },
+  { label: '₹5 Back',  amount: 5,   type: 'cash', weight: 15, color: '#8b5cf6', icon: '🎯' },
+  { label: '₹10',      amount: 10,  type: 'cash', weight: 10, color: '#06b6d4', icon: '✨' },
+  { label: '500 XP',   amount: 500, type: 'xp',   weight: 8,  color: '#f59e0b', icon: '🎁' },
+  { label: '₹20',      amount: 20,  type: 'cash', weight: 4,  color: '#22c55e', icon: '💰' },
+  { label: '₹50',      amount: 50,  type: 'cash', weight: 2,  color: '#f97316', icon: '🌟' },
+  { label: '₹100 🎉',  amount: 100, type: 'cash', weight: 1,  color: '#eab308', icon: '🏆' },
+] as const;
+
+function pickPrize() {
+  const total = SPIN_PRIZES.reduce((s, p) => s + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of SPIN_PRIZES) {
+    r -= p.weight;
+    if (r <= 0) return p;
+  }
+  return SPIN_PRIZES[0];
+}
+
+router.post('/spin', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot use the spin' });
+
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const cfg = await getAdminConfig();
+    SPIN_DAILY_LIMIT = (cfg as any).spinConfig?.moneySpinDailyLimit ?? 3;
+
+    const user = await User.findById(req.user!.id).select('walletBalance spinLastDate spinDailyCount bonusSpins stats username');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const hasBonusSpin = ((user as any).bonusSpins ?? 0) > 0;
+
+    if (!hasBonusSpin) {
+      // Normal daily limit check
+      const spinsToday = user.spinLastDate === today ? (user.spinDailyCount ?? 0) : 0;
+      if (spinsToday >= SPIN_DAILY_LIMIT) {
+        return res.status(400).json({ error: `Daily limit reached — ${SPIN_DAILY_LIMIT} spins per day`, spinsLeft: 0 });
+      }
+      if ((user.walletBalance ?? 0) < SPIN_COST) {
+        return res.status(400).json({ error: `You need ₹${SPIN_COST} to spin` });
+      }
+    }
+
+    // Deduct cost (free if bonus spin)
+    const isFreeSplin = hasBonusSpin;
+    if (hasBonusSpin) {
+      (user as any).bonusSpins -= 1;
+    } else {
+      user.walletBalance -= SPIN_COST;
+    }
+
+    // Pick prize
+    const prize = pickPrize();
+
+    // Apply prize
+    if (prize.type === 'cash' && prize.amount > 0) {
+      user.walletBalance += prize.amount;
+    } else if (prize.type === 'xp') {
+      user.stats.totalPointsEarned = (user.stats.totalPointsEarned ?? 0) + prize.amount;
+    }
+
+    // Update daily spin count (only for paid spins)
+    if (!isFreeSplin) {
+      const spinsToday2 = user.spinLastDate === today ? (user.spinDailyCount ?? 0) : 0;
+      user.spinLastDate = today;
+      user.spinDailyCount = spinsToday2 + 1;
+    }
+    await user.save();
+
+    const spinsRemainingToday = isFreeSplin
+      ? Math.max(0, SPIN_DAILY_LIMIT - (user.spinLastDate === today ? (user.spinDailyCount ?? 0) : 0))
+      : Math.max(0, SPIN_DAILY_LIMIT - (user.spinDailyCount ?? 0));
+
+    // Two transactions: cost deduction + prize credit (so wallet history is clear)
+    const balanceAfterCost  = user.walletBalance - (prize.type === 'cash' ? prize.amount : 0);
+    const effectiveCost     = isFreeSplin ? 0 : SPIN_COST;
+    const balanceBeforeSpin = balanceAfterCost + effectiveCost;
+
+    // 1) Spin cost (skipped for free bonus spins)
+    if (!isFreeSplin) {
+      await Transaction.create({
+        userId: req.user!.id,
+        type: 'entry_fee',
+        amount: SPIN_COST,
+        status: 'completed',
+        description: `Money Spin — cost`,
+        balanceBefore: balanceBeforeSpin,
+        balanceAfter: balanceAfterCost,
+        heldBefore: user.heldBalance ?? 0,
+        heldAfter: user.heldBalance ?? 0,
+        metadata: { spinPrize: prize.label, prizeType: prize.type },
+      });
+    }
+
+    // 2) Prize credit (only if won something)
+    if (prize.type === 'cash' && prize.amount > 0) {
+      await Transaction.create({
+        userId: req.user!.id,
+        type: 'bonus',
+        amount: prize.amount,
+        status: 'completed',
+        description: `Money Spin — won ₹${prize.amount} (${prize.label})`,
+        balanceBefore: balanceAfterCost,
+        balanceAfter: user.walletBalance,
+        heldBefore: user.heldBalance ?? 0,
+        heldAfter: user.heldBalance ?? 0,
+        metadata: { spinPrize: prize.label, prizeAmount: prize.amount, prizeType: prize.type },
+      });
+    } else if (prize.type === 'xp' && prize.amount > 0) {
+      await Transaction.create({
+        userId: req.user!.id,
+        type: 'bonus',
+        amount: 0,
+        status: 'completed',
+        description: `Money Spin — won ${prize.amount} XP (${prize.label})`,
+        balanceBefore: balanceAfterCost,
+        balanceAfter: balanceAfterCost,
+        heldBefore: user.heldBalance ?? 0,
+        heldAfter: user.heldBalance ?? 0,
+        metadata: { spinPrize: prize.label, prizeAmount: prize.amount, prizeType: 'xp' },
+      });
+    }
+
+    // Log spin for analytics/history (fire-and-forget)
+    SpinLog.create({
+      userId: req.user!.id,
+      username: user.username,
+      spinType: 'money',
+      isFree: isFreeSplin,
+      costRupees: isFreeSplin ? 0 : SPIN_COST,
+      costPoints: 0,
+      prizeType: prize.amount === 0 ? 'none' : prize.type as any,
+      prizeAmount: prize.amount,
+      prizeLabel: prize.label,
+      prizeIcon: prize.icon,
+    }).catch(() => {});
+
+    res.json({
+      prize,
+      balance: user.walletBalance,
+      spinsLeft: spinsRemainingToday,
+      bonusSpins: (user as any).bonusSpins ?? 0,
+      isFreeSplin,
+    });
+  } catch (err) {
+    console.error('[Spin] Error:', err);
+    res.status(500).json({ error: 'Spin failed, please try again' });
+  }
+});
+
+// ── GET /api/wallet/spin/status — check daily spins remaining ─────────────────
+router.get('/spin/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const [user, cfg] = await Promise.all([
+      User.findById(req.user!.id).select('spinLastDate spinDailyCount bonusSpins').lean() as any,
+      getAdminConfig(),
+    ]);
+    const limit = (cfg as any).spinConfig?.moneySpinDailyLimit ?? 3;
+    const spinsToday = user?.spinLastDate === today ? (user?.spinDailyCount ?? 0) : 0;
+    const bonusSpins = user?.bonusSpins ?? 0;
+    res.json({ spinsLeft: Math.max(0, limit - spinsToday), bonusSpins, spinsUsed: Math.min(spinsToday, limit), dailyLimit: limit, cost: SPIN_COST });
+  } catch {
+    res.status(500).json({ error: 'Failed to get spin status' });
+  }
+});
+
+export { SPIN_PRIZES, SPIN_COST, SPIN_DAILY_LIMIT };
+
+// ── POST /api/wallet/points-spin — spin wheel using AI points ─────────────────
+const POINTS_SPIN_COST        = 100;
+let POINTS_SPIN_DAILY_LIMIT   = 10; // updated dynamically
+
+const POINTS_SPIN_PRIZES = [
+  { label: 'Try Again', amount: 0,   type: 'cash',   weight: 22, color: '#4b5563', icon: '😔' },
+  { label: '+50 pts',   amount: 50,  type: 'points', weight: 20, color: '#6366f1', icon: '⭐' },
+  { label: '₹2',        amount: 2,   type: 'cash',   weight: 17, color: '#8b5cf6', icon: '💎' },
+  { label: '+100 pts',  amount: 100, type: 'points', weight: 14, color: '#0891b2', icon: '💫' },
+  { label: '₹5',        amount: 5,   type: 'cash',   weight: 12, color: '#06b6d4', icon: '✨' },
+  { label: '₹10',       amount: 10,  type: 'cash',   weight: 7,  color: '#22c55e', icon: '🎯' },
+  { label: '+300 pts',  amount: 300, type: 'points', weight: 5,  color: '#f97316', icon: '🌟' },
+  { label: '₹20',       amount: 20,  type: 'cash',   weight: 3,  color: '#eab308', icon: '🏆' },
+] as const;
+
+function pickPointsPrize() {
+  const total = POINTS_SPIN_PRIZES.reduce((s, p) => s + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of POINTS_SPIN_PRIZES) { r -= p.weight; if (r <= 0) return p; }
+  return POINTS_SPIN_PRIZES[0];
+}
+
+router.post('/points-spin', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot use the spin' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const cfg = await getAdminConfig();
+    POINTS_SPIN_DAILY_LIMIT = (cfg as any).spinConfig?.pointsSpinDailyLimit ?? 10;
+
+    const user = await User.findById(req.user!.id).select('walletBalance aiPoints pointsSpinLastDate pointsSpinDailyCount username');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const spinsToday = user.pointsSpinLastDate === today ? (user.pointsSpinDailyCount ?? 0) : 0;
+    if (spinsToday >= POINTS_SPIN_DAILY_LIMIT)
+      return res.status(400).json({ error: `Daily limit reached — ${POINTS_SPIN_DAILY_LIMIT} point spins per day`, spinsLeft: 0 });
+
+    const currentPoints = user.aiPoints ?? 0;
+    if (currentPoints < POINTS_SPIN_COST)
+      return res.status(400).json({ error: `You need ${POINTS_SPIN_COST} AI points to spin` });
+
+    // Deduct points
+    user.aiPoints = currentPoints - POINTS_SPIN_COST;
+    const prize = pickPointsPrize();
+
+    // Credit prize — cash or AI points
+    const balBefore = user.walletBalance;
+    if (prize.type === 'cash' && prize.amount > 0) {
+      user.walletBalance += prize.amount;
+    } else if (prize.type === 'points' && prize.amount > 0) {
+      user.aiPoints = (user.aiPoints ?? 0) + prize.amount;
+    }
+
+    user.pointsSpinLastDate   = today;
+    user.pointsSpinDailyCount = spinsToday + 1;
+    await user.save();
+
+    // Transaction: cash prizes only (points are internal)
+    if (prize.type === 'cash' && prize.amount > 0) {
+      await Transaction.create({
+        userId: req.user!.id,
+        type: 'bonus',
+        amount: prize.amount,
+        status: 'completed',
+        description: `Points Spin — won ₹${prize.amount} (${prize.label})`,
+        balanceBefore: balBefore,
+        balanceAfter: user.walletBalance,
+        heldBefore: user.heldBalance ?? 0,
+        heldAfter: user.heldBalance ?? 0,
+        metadata: { spinPrize: prize.label, prizeAmount: prize.amount, prizeType: 'points_spin' },
+      });
+    }
+
+    // Log spin for analytics/history (fire-and-forget)
+    SpinLog.create({
+      userId: req.user!.id,
+      username: user.username,
+      spinType: 'points',
+      isFree: false,
+      costRupees: 0,
+      costPoints: POINTS_SPIN_COST,
+      prizeType: prize.amount === 0 ? 'none' : prize.type as any,
+      prizeAmount: prize.amount,
+      prizeLabel: prize.label,
+      prizeIcon: prize.icon,
+    }).catch(() => {});
+
+    res.json({
+      prize,
+      balance: user.walletBalance,
+      aiPoints: user.aiPoints,
+      spinsLeft: Math.max(0, POINTS_SPIN_DAILY_LIMIT - (spinsToday + 1)),
+    });
+  } catch (err) {
+    console.error('[PointsSpin] Error:', err);
+    res.status(500).json({ error: 'Spin failed, please try again' });
+  }
+});
+
+// ── GET /api/wallet/points-spin/status ───────────────────────────────────────
+router.get('/points-spin/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const [user, cfg] = await Promise.all([
+      User.findById(req.user!.id).select('aiPoints pointsSpinLastDate pointsSpinDailyCount').lean() as any,
+      getAdminConfig(),
+    ]);
+    const limit = (cfg as any).spinConfig?.pointsSpinDailyLimit ?? 10;
+    const spinsToday = user?.pointsSpinLastDate === today ? (user?.pointsSpinDailyCount ?? 0) : 0;
+    res.json({
+      spinsLeft: Math.max(0, limit - spinsToday),
+      aiPoints:  user?.aiPoints ?? 0,
+      dailyLimit: limit,
+      cost: POINTS_SPIN_COST,
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to get spin status' });
+  }
+});
+
+// ── GET /api/wallet/spin-history — server-side spin history for the user ─────
+router.get('/spin-history', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const logs = await SpinLog.find({ userId: req.user!.id })
+      .sort({ createdAt: -1 }).limit(100).lean();
+    res.json({ logs });
+  } catch {
+    res.status(500).json({ error: 'Failed to load spin history' });
+  }
+});
+
+// ── DELETE /api/wallet/withdrawal/:id — cancel pending withdrawal ─────────────
+router.delete('/withdrawal/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const wr = await WithdrawalRequest.findOne({ _id: req.params.id, userId: req.user!.id });
+    if (!wr) return res.status(404).json({ error: 'Withdrawal request not found' });
+    if (wr.status !== 'pending') return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+
+    // Refund the amount back to wallet
+    const updated = await User.findByIdAndUpdate(
+      req.user!.id,
+      { $inc: { walletBalance: wr.amount } },
+      { new: true },
+    );
+
+    // Mark withdrawal as rejected (cancelled by user)
+    wr.status = 'rejected';
+    wr.adminNote = 'Cancelled by user';
+    await wr.save();
+
+    // Update the pending transaction to failed
+    await Transaction.findOneAndUpdate(
+      { userId: req.user!.id, 'metadata.withdrawalRequestId': wr.id, status: 'pending' },
+      { status: 'failed', description: `Withdrawal cancelled by user — ₹${wr.amount} refunded` },
+    );
+
+    res.json({ balance: updated?.walletBalance, message: `₹${wr.amount} refunded to your wallet.` });
+  } catch (err) {
+    console.error('[Wallet] Cancel withdrawal error:', err);
+    res.status(500).json({ error: 'Failed to cancel withdrawal' });
+  }
+});
+
+// ── POST /api/wallet/claim-launch-bonus ──────────────────────────────────────
+router.post('/claim-launch-bonus', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot claim bonuses' });
+    const user = await User.findById(req.user!.id).select('launchBonusClaimed aiPoints bonusSpins');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if ((user as any).launchBonusClaimed) return res.status(400).json({ error: 'Launch bonus already claimed' });
+
+    (user as any).aiPoints      = ((user as any).aiPoints ?? 0) + 250;
+    (user as any).bonusSpins    = ((user as any).bonusSpins ?? 0) + 1;
+    (user as any).launchBonusClaimed = true;
+    await user.save();
+
+    res.json({ aiPoints: (user as any).aiPoints, bonusSpins: (user as any).bonusSpins });
+  } catch (err) {
+    console.error('[Wallet] claim-launch-bonus error:', err);
+    res.status(500).json({ error: 'Failed to claim bonus' });
   }
 });
 

@@ -1025,25 +1025,28 @@ export function WalletPage() {
 
           {/* ── Action Buttons ────────────────────────────────────────────── */}
           {!isGuest && (
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setShowVoucherSubmit(true)}
-                className="flex flex-col items-center gap-2 py-4 rounded-2xl font-bold transition-all active:scale-95"
-                style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)" }}>
-                <span className="text-2xl">🎟️</span>
-                <div className="text-center">
-                  <p className="text-indigo-300 text-sm font-black leading-tight">Submit Voucher</p>
-                  <p className="text-[10px] text-dark-muted">Earn Tournament Credits</p>
-                </div>
-              </button>
-              <button onClick={() => setShowRedeem(true)} disabled={balance < 50}
-                className="flex flex-col items-center gap-2 py-4 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-40"
-                style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}>
-                <span className="text-2xl">🎁</span>
-                <div className="text-center">
-                  <p className="text-purple-300 text-sm font-black leading-tight">Redeem Rewards</p>
-                  <p className="text-[10px] text-dark-muted">Get brand gift vouchers</p>
-                </div>
-              </button>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setShowVoucherSubmit(true)}
+                  className="flex flex-col items-center gap-2 py-4 rounded-2xl font-bold transition-all active:scale-95"
+                  style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                  <span className="text-2xl">🎟️</span>
+                  <div className="text-center">
+                    <p className="text-indigo-300 text-sm font-black leading-tight">Submit Voucher</p>
+                    <p className="text-[10px] text-dark-muted">Earn Tournament Credits</p>
+                  </div>
+                </button>
+                <button onClick={() => setShowRedeem(true)} disabled={balance < 50}
+                  className="flex flex-col items-center gap-2 py-4 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}>
+                  <span className="text-2xl">🎁</span>
+                  <div className="text-center">
+                    <p className="text-purple-300 text-sm font-black leading-tight">Redeem Rewards</p>
+                    <p className="text-[10px] text-dark-muted">Get brand gift vouchers</p>
+                  </div>
+                </button>
+              </div>
+
             </div>
           )}
 
@@ -1298,7 +1301,25 @@ export function WalletPage() {
                             <p className="text-xs text-red-400/80 mt-2">{w.adminNote ? `Reason: ${w.adminNote}` : "Redemption could not be processed."}</p>
                           )}
                           {w.status === "pending" && (
-                            <p className="text-xs text-yellow-400/70 mt-1">Admin will deliver your voucher within 24 hours.</p>
+                            <div className="flex items-center justify-between mt-2">
+                              <p className="text-xs text-yellow-400/70">Admin will deliver your voucher within 24 hours.</p>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('Cancel this withdrawal and refund ₹' + w.amount + ' to your wallet?')) return;
+                                  try {
+                                    const { data } = await walletApi.cancelWithdrawal(w._id);
+                                    notify.success(data.message);
+                                    load();
+                                  } catch (err: any) {
+                                    notify.error(err?.response?.data?.error ?? 'Failed to cancel');
+                                  }
+                                }}
+                                className="text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ml-2"
+                                style={{ background: 'rgba(255,60,60,0.1)', color: '#ff6b6b', border: '1px solid rgba(255,60,60,0.25)' }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           )}
                           {w.status === "approved" && (
                             <p className="text-xs text-green-400/70 mt-1">Voucher is being prepared for delivery.</p>

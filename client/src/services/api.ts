@@ -176,6 +176,20 @@ export const walletApi = {
     bankDetails?: { accountNumber: string; ifsc: string; accountName: string };
   }) =>
     api.post<{ balance: number; message: string }>("/wallet/withdraw", data),
+  cancelWithdrawal: (id: string) =>
+    api.delete<{ balance: number; message: string }>(`/wallet/withdrawal/${id}`),
+  spin: () =>
+    api.post<{ prize: { label: string; amount: number; type: string; icon: string; color: string }; balance: number; spinsLeft: number; spinsUsed: number }>('/wallet/spin'),
+  spinStatus: () =>
+    api.get<{ spinsLeft: number; spinsUsed: number; dailyLimit: number; cost: number }>('/wallet/spin/status'),
+  pointsSpin: () =>
+    api.post<{ prize: { label: string; amount: number; type: string; icon: string; color: string }; balance: number; aiPoints: number; spinsLeft: number }>('/wallet/points-spin'),
+  pointsSpinStatus: () =>
+    api.get<{ spinsLeft: number; aiPoints: number; dailyLimit: number; cost: number }>('/wallet/points-spin/status'),
+  claimLaunchBonus: () =>
+    api.post<{ aiPoints: number; bonusSpins: number }>("/wallet/claim-launch-bonus"),
+  spinHistory: () =>
+    api.get<{ logs: any[] }>("/wallet/spin-history"),
   devAdd: (amount: number) =>
     api.post<{ balance: number; message: string }>("/wallet/dev/add", {
       amount,
@@ -249,6 +263,7 @@ export const admin = {
   banUser: (id: string) => adminApi.post(`/users/${id}/ban`),
   unbanUser: (id: string) => adminApi.post(`/users/${id}/unban`),
   setAdmin: (id: string, isAdmin: boolean) => adminApi.post(`/users/${id}/set-admin`, { isAdmin }),
+  adjustAiPoints: (id: string, delta: number, note?: string) => adminApi.post<{ aiPoints: number; username: string }>(`/users/${id}/ai-points`, { delta, note }),
   kickUser: (id: string) => adminApi.post(`/users/${id}/kick`),
   resetUserStats: (id: string) => adminApi.post(`/users/${id}/reset-stats`),
   deleteUser: (id: string) => adminApi.delete(`/users/${id}`),
@@ -388,6 +403,12 @@ export const admin = {
   updateAnnouncement: (id: string, data: { active?: boolean; message?: string; type?: string }) =>
     adminApi.patch<{ announcement: any }>(`/announcements/${id}`, data),
   deleteAnnouncement: (id: string) => adminApi.delete(`/announcements/${id}`),
+
+  getSpinAnalytics: () =>
+    adminApi.get<{ users: any[]; moneySpinLimit: number; pointsSpinLimit: number }>("/spin-analytics"),
+
+  resetUserSpins: (userId: string, type: "money" | "points") =>
+    adminApi.post(`/spin-analytics/${userId}/reset`, { type }),
 };
 
 export const announcementsApi = {

@@ -40,6 +40,7 @@ import {
 import { getBadge } from "../../utils/badgeCache";
 import { recordEvent } from "../../utils/gameAnalytics";
 import { notifyWinStreak } from "../../services/notificationTriggers";
+import { getOnlineUserIds } from "../index";
 import { teamArenaAugment, isTeamArenaGame } from "../../engine/TeamArenaCoordinator";
 
 // In-memory game state store  (gameId → GameState)
@@ -1117,6 +1118,24 @@ async function handleMatchEnd(io: Server, state: GameState) {
   const humanPlayers = state.players.filter((p) => !p.isBot);
   const roundsInMatch = state.roundNumber;
   const hasBots = state.players.some((p) => p.isBot);
+
+  // Derive AI mode for point rewards
+  const botCount = state.players.filter((p) => p.isBot).length;
+  const botPersonality = gameBotPersonality.get(state.id) ?? 'smart';
+  const AI_MODE_POINTS: Record<string, { id: string; label: string; points: number }> = {
+    boss_rush:      { id: 'boss_rush',      label: 'Boss Rush',      points: 250 },
+    casual_duel:    { id: 'casual_duel',    label: 'Casual Duel',    points: 50  },
+    survival_clash: { id: 'survival_clash', label: 'Survival Clash', points: 100 },
+    chaos_arena:    { id: 'chaos_arena',    label: 'Chaos Arena',    points: 150 },
+  };
+  const aiModeKey = hasBots
+    ? botPersonality === 'boss' ? 'boss_rush'
+    : botCount === 3 ? 'chaos_arena'
+    : botCount === 2 ? 'survival_clash'
+    : 'casual_duel'
+    : null;
+  const aiModeInfo = aiModeKey ? AI_MODE_POINTS[aiModeKey] : null;
+
   for (const p of humanPlayers) {
     const isWinner = p.id === matchResult.winnerId;
     User.findByIdAndUpdate(p.userId, {
@@ -1124,8 +1143,25 @@ async function handleMatchEnd(io: Server, state: GameState) {
         "stats.gamesPlayed": 1,
         "stats.gamesWon": isWinner ? 1 : 0,
         "stats.roundsPlayed": roundsInMatch,
+        ...(hasBots && isWinner && aiModeInfo ? { aiPoints: aiModeInfo.points } : {}),
       },
     }).catch(console.error);
+
+    // Award AI points and notify winner
+    if (hasBots && isWinner && aiModeInfo) {
+      User.findById(p.userId).select('aiPoints').lean().then((u: any) => {
+        const newTotal = (u?.aiPoints ?? 0) + aiModeInfo.points;
+        const winnerSocketId = getOnlineUserIds().get(p.userId);
+        if (winnerSocketId) {
+          io.to(winnerSocketId).emit('ai:points_earned', {
+            points: aiModeInfo.points,
+            total: newTotal,
+            modeId: aiModeInfo.id,
+            modeLabel: aiModeInfo.label,
+          });
+        }
+      }).catch(console.error);
+    }
 
     // Award XP (non-blocking)
     const baseXp = isWinner

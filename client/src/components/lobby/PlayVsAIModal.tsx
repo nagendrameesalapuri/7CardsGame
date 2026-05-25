@@ -2,6 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProgressionStore } from '../../store/progressionStore';
 
+// ── AI Points reward per mode ─────────────────────────────────────────────────
+
+const MODE_POINTS: Record<string, number> = {
+  casual_duel:    50,
+  survival_clash: 100,
+  chaos_arena:    150,
+  boss_rush:      250,
+};
+
 // ── AI Mode definitions ───────────────────────────────────────────────────────
 
 interface AIMode {
@@ -231,79 +240,51 @@ function ModeCard({
         style={{ background: mode.glowColor, filter: 'blur(20px)', opacity: hovered ? 1 : 0.5, transition: 'opacity 0.3s' }}
       />
 
-      <div className="relative p-3.5 flex flex-col gap-2.5 flex-1">
-        {/* Header: icon + name/badge block (no justify-between — badge sits next to name) */}
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-            style={{ background: `${mode.accentColor}18`, border: `1px solid ${mode.accentColor}35` }}
-          >
+      <div className="relative p-3 flex flex-col gap-2 flex-1">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+            style={{ background: `${mode.accentColor}18`, border: `1px solid ${mode.accentColor}35` }}>
             {mode.emoji}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap leading-none mb-0.5">
-              <p className="font-black text-white text-sm leading-tight">{mode.name}</p>
+              <p className="font-black text-white text-[13px] leading-tight">{mode.name}</p>
               <DiffBadge difficulty={mode.difficulty} color={mode.diffColor} />
             </div>
-            <p className="text-[10px] text-dark-muted truncate leading-none">{mode.tagline}</p>
+            <p className="text-[9px] text-dark-muted truncate leading-none">{mode.tagline}</p>
           </div>
         </div>
 
-        {/* Description — fixed 2-line height so all cards stay uniform */}
-        <p className="text-[11px] text-dark-muted leading-relaxed line-clamp-2">{mode.description}</p>
+        {/* Description */}
+        <p className="text-[10px] text-dark-muted leading-snug line-clamp-2">{mode.description}</p>
 
-        {/* Personality chips — single row, no wrap */}
-        <div className="flex gap-1 overflow-hidden">
-          {mode.personalityChips.map((chip) => (
-            <span
-              key={chip}
-              className="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: `${mode.accentColor}15`, color: mode.accentColor, border: `1px solid ${mode.accentColor}30` }}
-            >
-              {chip}
+        {/* Config + points row */}
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[9px] text-dark-muted">👥 1v{mode.botCount} · {mode.rounds}R</span>
+          <div className="flex items-center gap-1.5">
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black"
+              style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+              ⭐ +{MODE_POINTS[mode.id] ?? 0}
             </span>
-          ))}
+            {winRate !== null && (
+              <span className="text-[9px] font-semibold" style={{ color: winRate >= 50 ? '#22c55e' : '#f59e0b' }}>
+                {winRate}% win
+              </span>
+            )}
+          </div>
         </div>
-
-        {/* Config + tag row */}
-        <div className="flex items-center justify-between gap-1 text-[10px] text-dark-muted">
-          <span className="flex items-center gap-1 flex-shrink-0">
-            <span>👥</span>
-            <span>1v{mode.botCount} · {mode.rounds}R</span>
-          </span>
-          {winRate !== null ? (
-            <span className="font-semibold" style={{ color: winRate >= 50 ? '#22c55e' : '#f59e0b' }}>
-              {winRate}% win
-            </span>
-          ) : (
-            <span
-              className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold truncate"
-              style={{ background: `${mode.tagColor}15`, color: mode.tagColor, border: `1px solid ${mode.tagColor}30` }}
-            >
-              {mode.tag}
-            </span>
-          )}
-        </div>
-
-        {/* Push button to bottom */}
-        <div className="flex-1" />
 
         {/* Start button */}
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => onStart(mode)}
-          disabled={loading}
-          className="w-full py-2.5 rounded-xl font-black text-sm text-white transition-all disabled:opacity-40"
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={() => onStart(mode)} disabled={loading}
+          className="w-full py-2 rounded-xl font-black text-xs text-white transition-all disabled:opacity-40"
           style={{
-            background: hovered
-              ? `linear-gradient(135deg, ${mode.accentColor}ee, ${mode.accentColor}99)`
-              : `${mode.accentColor}22`,
+            background: hovered ? `linear-gradient(135deg, ${mode.accentColor}ee, ${mode.accentColor}99)` : `${mode.accentColor}22`,
             border: `1px solid ${mode.accentColor}55`,
-            boxShadow: hovered ? `0 0 14px ${mode.glowColor}` : 'none',
+            boxShadow: hovered ? `0 0 12px ${mode.glowColor}` : 'none',
             transition: 'background 0.2s, box-shadow 0.2s',
-          }}
-        >
+          }}>
           {loading ? 'Starting…' : `▶ Start ${mode.name}`}
         </motion.button>
       </div>
@@ -390,26 +371,95 @@ function DailyChallengeBanner({
 
 // ── Quick stats bar ───────────────────────────────────────────────────────────
 
-function QuickStats({ progress, totalPlayed }: { progress: any; totalPlayed: number }) {
-  const items = [
-    { label: 'Win Streak',   value: progress?.winStreak ?? 0,     color: '#fbbf24', emoji: '🔥' },
-    { label: 'Best Streak',  value: progress?.maxWinStreak ?? 0,  color: '#ef4444', emoji: '⚡' },
-    { label: 'AI Games',     value: totalPlayed,                   color: '#60a5fa', emoji: '🤖' },
-    { label: 'Total Wins',   value: progress?.totalWins ?? 0,     color: '#22c55e', emoji: '✅' },
-  ];
+function QuickStats({ progress, totalPlayed, aiPoints }: { progress: any; totalPlayed: number; aiPoints: number }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
-      {items.map((s) => (
-        <div
-          key={s.label}
-          className="rounded-xl p-2.5 text-center"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          <p className="text-base">{s.emoji}</p>
-          <p className="text-lg font-black leading-none mt-0.5" style={{ color: s.color }}>{s.value}</p>
+    <div className="grid grid-cols-3 gap-2">
+      {[
+        { label: 'Streak',   value: progress?.winStreak ?? 0, color: '#fbbf24', emoji: '🔥' },
+        { label: 'AI Games', value: totalPlayed,               color: '#60a5fa', emoji: '🤖' },
+        { label: 'Wins',     value: progress?.totalWins ?? 0, color: '#22c55e', emoji: '✅' },
+      ].map((s) => (
+        <div key={s.label} className="rounded-xl p-2 text-center"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-sm leading-none">{s.emoji}</p>
+          <p className="text-sm font-black leading-none mt-1" style={{ color: s.color }}>{s.value}</p>
           <p className="text-[8px] text-dark-muted mt-0.5 leading-tight">{s.label}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Promo flow banner ─────────────────────────────────────────────────────────
+
+const SPIN_COST = 100;
+
+function PromoBanner({ aiPoints }: { aiPoints: number }) {
+  const spinsAvailable   = Math.floor(aiPoints / SPIN_COST);
+  const ptsToNextSpin    = SPIN_COST - (aiPoints % SPIN_COST);
+  const progressPct      = Math.min(100, ((aiPoints % SPIN_COST) / SPIN_COST) * 100);
+
+  const steps = [
+    { icon: '🎮', label: 'Play AI', sub: 'Beat opponents' },
+    { icon: '⭐', label: 'Earn Pts', sub: 'Win points' },
+    { icon: '🎰', label: 'Spin Wheel', sub: '100 pts/spin' },
+    { icon: '💰', label: 'Win ₹', sub: 'Real money!' },
+  ];
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(168,85,247,0.08),rgba(34,197,94,0.08))', border: '1px solid rgba(99,102,241,0.25)' }}>
+
+      {/* Flow steps */}
+      <div className="flex items-center justify-between px-3 pt-3 pb-2">
+        {steps.map((s, i) => (
+          <React.Fragment key={s.label}>
+            <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
+                style={{ background: i === 0 ? 'rgba(99,102,241,0.2)' : i === 1 ? 'rgba(168,85,247,0.2)' : i === 2 ? 'rgba(34,197,94,0.2)' : 'rgba(251,191,36,0.2)', border: `1px solid ${['rgba(99,102,241,0.35)','rgba(168,85,247,0.35)','rgba(34,197,94,0.35)','rgba(251,191,36,0.35)'][i]}` }}>
+                {s.icon}
+              </div>
+              <p className="text-[9px] font-black text-white text-center leading-tight">{s.label}</p>
+              <p className="text-[8px] text-dark-muted text-center leading-tight">{s.sub}</p>
+            </div>
+            {i < steps.length - 1 && (
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.6, delay: i * 0.3 }}
+                className="text-[10px] font-black flex-shrink-0" style={{ color: '#6366f1', marginBottom: 12 }}>›</motion.div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Points status bar */}
+      <div className="px-3 pb-3">
+        <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black" style={{ color: '#a5b4fc' }}>⭐ {aiPoints.toLocaleString()} pts</span>
+              {spinsAvailable > 0 && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                  🎰 {spinsAvailable} spin{spinsAvailable > 1 ? 's' : ''} ready!
+                </span>
+              )}
+            </div>
+            <span className="text-[9px] text-dark-muted">
+              {spinsAvailable > 0 ? 'Go spin now →' : `${ptsToNextSpin} pts to spin`}
+            </span>
+          </div>
+          {/* Progress to next spin */}
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+            <motion.div className="h-full rounded-full"
+              initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              style={{ background: 'linear-gradient(90deg,#6366f1,#a855f7,#22c55e)' }} />
+          </div>
+          {spinsAvailable > 0 && (
+            <p className="text-[8px] text-center mt-1" style={{ color: 'rgba(74,222,128,0.7)' }}>
+              Open Spin &amp; Win on the lobby to cash out!
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -444,6 +494,7 @@ interface PlayVsAIModalProps {
   onClose: () => void;
   onStart: (botCount: number, personality: string, rounds: number, modeName: string) => void;
   loading: boolean;
+  aiPoints?: number;
   adminMaxRounds: number;
   adminMinRounds: number;
 }
@@ -453,6 +504,7 @@ export function PlayVsAIModal({
   onClose,
   onStart,
   loading,
+  aiPoints = 0,
   adminMaxRounds,
   adminMinRounds,
 }: PlayVsAIModalProps) {
@@ -512,7 +564,7 @@ export function PlayVsAIModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 48, scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 360, damping: 32 }}
-            className="w-full sm:max-w-lg max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl flex flex-col"
+            className="w-full sm:max-w-md max-h-[86vh] sm:max-h-[82vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl flex flex-col"
             style={{
               background: 'linear-gradient(160deg,rgba(10,12,22,0.98),rgba(8,6,18,0.99))',
               border: '1px solid rgba(255,255,255,0.08)',
@@ -526,54 +578,47 @@ export function PlayVsAIModal({
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl"
-                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}
-                >
+            <div className="flex items-center justify-between px-4 pt-3 pb-2.5 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
+                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
                   🤖
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-white leading-tight">Play vs AI</h2>
-                  <p className="text-[10px] text-dark-muted">Choose your challenge</p>
+                  <h2 className="text-base font-black text-white leading-tight">Play vs AI</h2>
+                  <p className="text-[9px] text-dark-muted">Choose your challenge</p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-xl text-dark-muted hover:text-white transition-colors"
-                style={{ background: 'rgba(255,255,255,0.06)' }}
-              >
+              <button onClick={onClose}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-dark-muted hover:text-white transition-colors text-sm"
+                style={{ background: 'rgba(255,255,255,0.06)' }}>
                 ✕
               </button>
             </div>
 
             {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-5">
+            <div className="flex-1 overflow-y-auto px-4 pb-5 space-y-4">
 
               {/* Streak banner */}
               <StreakBanner streak={progress?.winStreak ?? 0} />
 
+              {/* Promo banner */}
+              <PromoBanner aiPoints={aiPoints} />
+
               {/* Quick stats */}
-              {(progress || totalPlayed > 0) && (
-                <QuickStats progress={progress} totalPlayed={totalPlayed} />
-              )}
+              <QuickStats progress={progress} totalPlayed={totalPlayed} aiPoints={aiPoints} />
 
               {/* Mode cards — 2 column grid */}
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold mb-3">Choose Your Battle</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold mb-2">Choose Your Battle</p>
+                <div className="grid grid-cols-2 gap-2.5">
                   {AI_MODES.map((mode, i) => (
                     <motion.div
                       key={mode.id}
-                      initial={{ opacity: 0, y: 16 }}
+                      initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.07 }}
-                      style={
-                        highlightMode === mode.id
-                          ? { outline: `2px solid ${mode.accentColor}`, borderRadius: 16 }
-                          : {}
-                      }
+                      transition={{ delay: i * 0.06 }}
+                      style={highlightMode === mode.id ? { outline: `2px solid ${mode.accentColor}`, borderRadius: 16 } : {}}
                     >
                       <ModeCard
                         mode={mode}
@@ -588,24 +633,12 @@ export function PlayVsAIModal({
 
               {/* Daily challenge */}
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold mb-2">Today's Challenge</p>
+                <p className="text-[10px] uppercase tracking-widest text-dark-muted font-semibold mb-1.5">Today's Challenge</p>
                 <DailyChallengeBanner
                   challenge={dailyChallenge}
                   completed={dailyCompleted}
                   onGoToMode={handleGoToMode}
                 />
-              </div>
-
-              {/* AI personality showcase */}
-              <PersonalityStrip />
-
-              {/* Tips */}
-              <div
-                className="rounded-xl p-3 text-[10px] text-dark-muted leading-relaxed"
-                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-              >
-                <span className="text-white font-semibold">💡 Strategy tip: </span>
-                Each AI has a distinct playstyle. Safe AI defends and preserves combos. Boss AI reads your patterns and adapts — it feels human because it is designed to be.
               </div>
             </div>
           </motion.div>

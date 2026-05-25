@@ -12,6 +12,13 @@ export interface IUser extends Document {
   guestToken?: string;
   walletBalance: number;
   heldBalance: number;
+  aiPoints: number;
+  bonusSpins: number;
+  launchBonusClaimed: boolean;
+  spinLastDate?: string;
+  spinDailyCount: number;
+  pointsSpinLastDate?: string;
+  pointsSpinDailyCount: number;
   stats: {
     gamesPlayed: number;
     gamesWon: number;
@@ -37,8 +44,15 @@ const UserSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     isAdmin: { type: Boolean, default: false },
     guestToken:    { type: String, sparse: true, unique: true },
-    walletBalance: { type: Number, default: 0, min: 0 },
-    heldBalance:   { type: Number, default: 0, min: 0 },
+    walletBalance:   { type: Number, default: 0 },
+    heldBalance:     { type: Number, default: 0, min: 0 },
+    aiPoints:             { type: Number, default: 0 },
+    bonusSpins:           { type: Number, default: 0 },
+    launchBonusClaimed:   { type: Boolean, default: false },
+    spinLastDate:         { type: String },
+    spinDailyCount:       { type: Number, default: 0 },
+    pointsSpinLastDate:   { type: String },
+    pointsSpinDailyCount: { type: Number, default: 0 },
     stats: {
       gamesPlayed: { type: Number, default: 0 },
       gamesWon: { type: Number, default: 0 },

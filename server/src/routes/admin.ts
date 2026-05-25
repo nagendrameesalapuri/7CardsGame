@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { requireAdmin } from "../middleware/adminAuth";
 import { AdminConfig, getAdminConfig } from "../models/AdminConfig";
+import { SpinLog } from "../models/SpinLog";
 import { User } from "../models/User";
 import { Room } from "../models/Room";
 import { Game } from "../models/Game";
@@ -66,11 +67,13 @@ export default function createAdminRouter(io: Server) {
   router.get("/config/public", async (_req: Request, res: Response) => {
     try {
       const cfg = await getAdminConfig();
+      const sc = (cfg as any).spinConfig;
       res.json({
         featureFlags: cfg.featureFlags,
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
         survivalConfig: cfg.survivalConfig,
+        spinConfig: { moneySpinDailyLimit: sc?.moneySpinDailyLimit ?? 3, pointsSpinDailyLimit: sc?.pointsSpinDailyLimit ?? 10 },
       });
     } catch {
       res.status(500).json({ error: "Failed to load config" });
@@ -229,14 +232,27 @@ export default function createAdminRouter(io: Server) {
         cfg.markModified("survivalConfig");
       }
 
+      const { spinConfig } = req.body;
+      if (spinConfig) {
+        const existing = (cfg as any).spinConfig ?? {};
+        if (typeof spinConfig.moneySpinDailyLimit === 'number')
+          existing.moneySpinDailyLimit = Math.max(1, Math.min(50, Math.round(spinConfig.moneySpinDailyLimit)));
+        if (typeof spinConfig.pointsSpinDailyLimit === 'number')
+          existing.pointsSpinDailyLimit = Math.max(1, Math.min(100, Math.round(spinConfig.pointsSpinDailyLimit)));
+        (cfg as any).spinConfig = existing;
+        cfg.markModified('spinConfig');
+      }
+
       await cfg.save();
 
+      const savedSc = (cfg as any).spinConfig;
       // Notify all connected clients of the updated config
       io.emit("admin:config_updated", {
         featureFlags: cfg.featureFlags,
         gameConfig: cfg.gameConfig,
         walletConfig: cfg.walletConfig,
         survivalConfig: cfg.survivalConfig,
+        spinConfig: { moneySpinDailyLimit: savedSc?.moneySpinDailyLimit ?? 3, pointsSpinDailyLimit: savedSc?.pointsSpinDailyLimit ?? 10 },
       });
 
       res.json(cfg);
@@ -248,15 +264,23 @@ export default function createAdminRouter(io: Server) {
   // ── Overview stats ──────────────────────────────────────────────────────────
   router.get("/stats", async (_req: Request, res: Response) => {
     try {
-      const [totalUsers, totalGames, activeRooms] = await Promise.all([
+      const [totalUsers, totalGames] = await Promise.all([
         User.countDocuments(),
         Game.countDocuments({ status: "finished" }),
-        Room.countDocuments({ status: { $in: ["waiting", "playing"] } }),
       ]);
       const onlineCount = getOnlineUserIds().size;
-      const liveGames = getAllActiveRoomInfos().filter(
-        (r) => r.status === "playing",
-      ).length;
+
+      // Count active rooms using the same logic as the rooms list endpoint
+      // (in-memory + DB not in memory, excluding private survival/tiebreak waiting rooms)
+      const inMemoryInfos = getAllActiveRoomInfos();
+      const inMemoryCodes = new Set(inMemoryInfos.map((r) => r.roomCode));
+      const dbOnlyCount = await Room.countDocuments({
+        status: { $in: ["waiting", "playing"] },
+        code: { $nin: [...inMemoryCodes] },
+        $nor: [{ 'config.isPrivate': true, status: 'waiting', name: /^(Survival|Tiebreak)/ }],
+      });
+      const activeRooms = inMemoryInfos.length + dbOnlyCount;
+      const liveGames = inMemoryInfos.filter((r) => r.status === "playing").length;
 
       res.json({ totalUsers, totalGames, activeRooms, onlineCount, liveGames });
     } catch {
@@ -419,6 +443,7 @@ export default function createAdminRouter(io: Server) {
           isGuest: u.isGuest,
           isBanned: (u as any).isBanned ?? false,
           isAdmin: (u as any).isAdmin ?? false,
+          aiPoints: (u as any).aiPoints ?? 0,
           isOnline: onlineIds.has(u._id.toString()),
           stats: u.stats,
           createdAt: u.createdAt,
@@ -486,6 +511,26 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true, isAdmin: user.isAdmin });
     } catch {
       res.status(500).json({ error: "Failed to update admin status" });
+    }
+  });
+
+  // ── AI Points: add or deduct ─────────────────────────────────────────────────
+  router.post("/users/:id/ai-points", async (req: Request, res: Response) => {
+    try {
+      const { delta, note } = req.body as { delta: number; note?: string };
+      if (typeof delta !== 'number' || delta === 0)
+        return res.status(400).json({ error: 'delta must be a non-zero number' });
+      const user = await User.findById(req.params.id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      const current = user.aiPoints ?? 0;
+      const newPoints = Math.max(0, current + delta);
+      await User.findByIdAndUpdate(req.params.id, { aiPoints: newPoints });
+      const action = delta > 0 ? 'added' : 'deducted';
+      const label = delta > 0 ? `+${delta}` : `${delta}`;
+      console.log(`[Admin] AI points ${action} for ${user.username}: ${current} → ${newPoints} (${label}) ${note ? '— ' + note : ''}`);
+      res.json({ aiPoints: newPoints, username: user.username });
+    } catch {
+      res.status(500).json({ error: 'Failed to update AI points' });
     }
   });
 
@@ -1631,6 +1676,85 @@ export default function createAdminRouter(io: Server) {
       res.json({ success: true, deleted: deleted.deletedCount });
     } catch (err) {
       res.status(500).json({ error: 'Failed to clear hold data' });
+    }
+  });
+
+  // ── Spin analytics ──────────────────────────────────────────────────────────
+  router.get('/spin-analytics', requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const cfg = await getAdminConfig();
+      const sc = (cfg as any).spinConfig ?? {};
+      const moneyLimit  = sc.moneySpinDailyLimit  ?? 3;
+      const pointsLimit = sc.pointsSpinDailyLimit ?? 10;
+
+      // Primary: all users who have ever spun (from User fields — covers pre-SpinLog history)
+      const spinners = await User.find({
+        $or: [
+          { spinDailyCount: { $gt: 0 } },
+          { pointsSpinDailyCount: { $gt: 0 } },
+          { 'stats.totalPointsEarned': { $gt: 0 } },
+        ],
+        isGuest: false,
+      }).select('username avatar spinLastDate spinDailyCount pointsSpinLastDate pointsSpinDailyCount').lean() as any[];
+
+      // Enrich with SpinLog aggregate (all-time stats, only available for spins after SpinLog was added)
+      const spinLogAgg = await SpinLog.aggregate([
+        {
+          $group: {
+            _id: '$userId',
+            allTimeMoneySpin:  { $sum: { $cond: [{ $eq: ['$spinType', 'money']  }, 1, 0] } },
+            allTimePointsSpin: { $sum: { $cond: [{ $eq: ['$spinType', 'points'] }, 1, 0] } },
+            totalMoneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$prizeType', 'cash'] }] }, '$prizeAmount', 0] } },
+            lastSpinAt:        { $max: '$createdAt' },
+          },
+        },
+      ]);
+      const slMap = Object.fromEntries(spinLogAgg.map(a => [String(a._id), a]));
+
+      const result = spinners.map((u: any) => {
+        const uid = String(u._id);
+        const sl = slMap[uid] ?? {};
+        const moneyToday  = u.spinLastDate === today  ? (u.spinDailyCount  ?? 0) : 0;
+        const pointsToday = u.pointsSpinLastDate === today ? (u.pointsSpinDailyCount ?? 0) : 0;
+        return {
+          id: uid,
+          username: u.username,
+          avatar: u.avatar ?? 'avatar_1',
+          moneySpinsToday:  moneyToday,
+          moneySpinLimit:   moneyLimit,
+          pointsSpinsToday: pointsToday,
+          pointsSpinLimit:  pointsLimit,
+          allTimeMoneySpin:  sl.allTimeMoneySpin  ?? (u.spinDailyCount  ?? 0),
+          allTimePointsSpin: sl.allTimePointsSpin ?? (u.pointsSpinDailyCount ?? 0),
+          totalMoneyWon:     Math.round((sl.totalMoneyWon ?? 0) * 100) / 100,
+          lastSpinAt: sl.lastSpinAt ?? (u.spinLastDate ? new Date(u.spinLastDate) : null),
+        };
+      }).filter((u: any) => u.moneySpinsToday > 0 || u.pointsSpinsToday > 0 || u.allTimeMoneySpin > 0 || u.allTimePointsSpin > 0)
+        .sort((a: any, b: any) => (b.moneySpinsToday + b.pointsSpinsToday) - (a.moneySpinsToday + a.pointsSpinsToday));
+
+      res.json({ users: result, moneySpinLimit: moneyLimit, pointsSpinLimit: pointsLimit });
+    } catch (err) {
+      console.error('[Admin] spin-analytics error:', err);
+      res.status(500).json({ error: 'Failed to load spin analytics' });
+    }
+  });
+
+  router.post('/spin-analytics/:userId/reset', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { type } = req.body as { type: 'money' | 'points' };
+      if (type === 'money') {
+        await User.findByIdAndUpdate(userId, { spinDailyCount: 0, spinLastDate: '' });
+      } else if (type === 'points') {
+        await User.findByIdAndUpdate(userId, { pointsSpinDailyCount: 0, pointsSpinLastDate: '' });
+      } else {
+        return res.status(400).json({ error: 'type must be money or points' });
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Admin] reset spin error:', err);
+      res.status(500).json({ error: 'Failed to reset spins' });
     }
   });
 

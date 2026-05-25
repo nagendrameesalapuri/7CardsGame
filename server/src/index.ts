@@ -140,21 +140,28 @@ async function bootstrap() {
 
   initSocketIO(io);
 
-  // ── Startup: refund any games orphaned by previous crash/deployment ──────────
+  // ── Startup: refund games orphaned by previous crash/deployment ─────────────
+  // Uses atomic claim (status: 'playing' → 'finished') to prevent double-refund
+  // when two server instances start simultaneously during a rolling deployment.
   try {
-    const orphanedRooms = await Room.find({ status: 'playing' }).lean();
-    if (orphanedRooms.length > 0) {
-      console.log(`[Startup] Found ${orphanedRooms.length} orphaned room(s) from previous crash — refunding entry fees`);
-      for (const room of orphanedRooms) {
-        const entryFee = (room.config as any)?.entryFee ?? 0;
-        const paidIds: string[] = (room as any).paidPlayerIds ?? [];
-        if (entryFee > 0 && paidIds.length > 0) {
-          await refundAbandonedGame(room as any);
-          console.log(`[Startup] Refunded ₹${entryFee} to ${paidIds.length} player(s) for orphaned room ${room.code}`);
-        }
-        await Room.findByIdAndUpdate((room as any)._id, { status: 'finished' });
+    let orphanCount = 0;
+    while (true) {
+      // Atomically claim ONE orphaned room — only succeeds if it's still 'playing'
+      const claimed = await Room.findOneAndUpdate(
+        { status: 'playing' },
+        { $set: { status: 'finished', matchState: 'abandoned' } },
+        { new: false }, // return old doc so we have paidPlayerIds before clearing
+      );
+      if (!claimed) break; // no more orphaned rooms
+      orphanCount++;
+      const entryFee = (claimed.config as any)?.entryFee ?? 0;
+      const paidIds: string[] = (claimed as any).paidPlayerIds ?? [];
+      if (entryFee > 0 && paidIds.length > 0) {
+        await refundAbandonedGame(claimed as any);
+        console.log(`[Startup] Refunded ₹${entryFee} × ${paidIds.length} player(s) for orphaned room ${claimed.code}`);
       }
     }
+    if (orphanCount > 0) console.log(`[Startup] Processed ${orphanCount} orphaned room(s)`);
   } catch (err) {
     console.error('[Startup] Orphan-room cleanup failed:', err);
   }
@@ -171,15 +178,19 @@ async function bootstrap() {
     try {
       const activeInfos = getAllActiveRoomInfos();
       for (const info of activeInfos) {
-        const room = await Room.findOne({ code: info.roomCode }).lean();
-        if (!room) continue;
-        const entryFee = (room.config as any)?.entryFee ?? 0;
-        const paidIds: string[] = (room as any).paidPlayerIds ?? [];
+        // Atomic claim — if another instance already claimed it, skip
+        const claimed = await Room.findOneAndUpdate(
+          { code: info.roomCode, status: 'playing' },
+          { $set: { status: 'finished', matchState: 'abandoned' } },
+          { new: false },
+        );
+        if (!claimed) continue;
+        const entryFee = (claimed.config as any)?.entryFee ?? 0;
+        const paidIds: string[] = (claimed as any).paidPlayerIds ?? [];
         if (entryFee > 0 && paidIds.length > 0) {
-          await refundAbandonedGame(room as any);
+          await refundAbandonedGame(claimed as any);
           console.log(`[Shutdown] Refunded ₹${entryFee} × ${paidIds.length} player(s) for room ${info.roomCode}`);
         }
-        await Room.findOneAndUpdate({ code: info.roomCode }, { status: 'finished' });
       }
     } catch (err) {
       console.error('[Shutdown] Refund error:', err);

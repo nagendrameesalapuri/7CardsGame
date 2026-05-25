@@ -249,6 +249,7 @@ type EventMap = {
   'survival:team_quit_result':  { refunded: boolean; refundAmount: number };
   'survival:team_error':        string;
   'progression:update':       { xpGained: number; multiplier: number; newXp: number; newLevel: number; newRank: string; leveled: boolean; rankedUp: boolean; winStreak: number; xpProgress: number; xpNeeded: number; newAchievements?: any[] };
+  'ai:points_earned':         { points: number; total: number; modeId: string; modeLabel: string };
   // Voice chat (WebRTC signaling)
   'voice:peers': { userId: string; username: string }[];
   'voice:peer_joined': { userId: string; username: string };
