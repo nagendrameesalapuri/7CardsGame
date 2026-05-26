@@ -108,7 +108,14 @@ export interface MatchResult {
   winnerId: string;
   winnerIds?: string[]; // all tied match winners
   winnerUsername: string; // "Player A & Player B" on tie
-  finalScores: { playerId: string; username: string; totalScore: number }[];
+  finalScores: {
+    playerId: string;
+    userId: string;
+    username: string;
+    avatar: string;
+    isBot: boolean;
+    totalScore: number;
+  }[];
   prizePool?: number; // total pot for cash games
   prizePerWinner?: number; // amount each winner receives
 }

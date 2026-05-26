@@ -7,6 +7,7 @@ import {
   Room as RoomType,
 } from "../../../../shared/src/types";
 import { sendBulkNotification } from "../../services/fcmService";
+import { getOnlineUserIds } from "../index";
 
 /** Generate a random 6-character uppercase room code. */
 function generateRoomCode(): string {
@@ -389,6 +390,58 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     } catch (_) {}
   });
 
+
+  // ── Invite Favorites to Room ───────────────────────────────────────────────
+  socket.on("room:invite_friends", async ({ targetUserIds }: { targetUserIds: string[] }) => {
+    try {
+      if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) return;
+      const roomCode = socket.data.roomCode as string | undefined;
+      if (!roomCode) return;
+
+      const room = await Room.findOne({ code: roomCode, status: 'waiting' }).lean();
+      if (!room) return;
+
+      // Verify sender is in this room
+      const inRoom = (room.players as any[]).some((p: any) => p.userId === userId);
+      if (!inRoom) return;
+
+      const modeName = (room.config as any).botPersonality
+        ? ({ safe: 'Casual Duel', smart: 'Survival Clash', aggressive: 'Chaos Arena', bluff: 'Bluff Mode', boss: 'Boss Rush' } as any)[(room.config as any).botPersonality] ?? 'Multiplayer'
+        : 'Multiplayer';
+
+      const onlineIds = getOnlineUserIds();
+      const validIds = targetUserIds.filter(id => id && id !== userId).slice(0, 10);
+      const offlineIds: string[] = [];
+
+      for (const targetId of validIds) {
+        if (onlineIds.has(targetId)) {
+          // Real-time invite
+          io.to(`user:${targetId}`).emit('room:invite_received', {
+            roomCode: room.code,
+            roomName: (room as any).name,
+            inviterUsername: username,
+            inviterAvatar: avatar,
+            modeName,
+            entryFee: (room.config as any).entryFee ?? 0,
+          });
+        } else {
+          offlineIds.push(targetId);
+        }
+      }
+
+      // DB notification for offline users
+      if (offlineIds.length > 0) {
+        sendBulkNotification(offlineIds, {
+          title: `🎮 ${username} invited you!`,
+          message: `Join "${(room as any).name}" · ${modeName} · Code: ${room.code}`,
+          category: 'multiplayer',
+          type: 'info',
+          actionUrl: `/lobby?join=${room.code}`,
+          skipThrottle: true,
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  });
 
   // ── Leave Room ─────────────────────────────────────────────────────────────
   socket.on("room:leave", async () => {

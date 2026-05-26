@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { notify } from '../services/notify';
 import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
 import { AchievementBadge } from '../components/AchievementBadge';
+import { PlayerProfileModal } from '../components/ui/PlayerProfileModal';
 
 const STAGE_NAMES = ['', 'Safe Bot', 'Aggressive Bot', 'Bluff Bot', 'Smart AI', 'Boss AI'];
 const STAGE_ICONS = ['', '🛡️', '⚔️', '🃏', '🧠', '👑'];
@@ -160,10 +161,17 @@ export function ProfilePage() {
   const [mpStats, setMpStats] = useState<any>(null);
   const [allAchievements, setAllAchievements] = useState<any[]>([]);
   const [recentGames, setRecentGames] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'stats' | 'achievements' | 'history'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'achievements' | 'history' | 'favorites'>('stats');
   const [tournamentTab, setTournamentTab] = useState<'solo' | 'team'>('solo');
   const [mpTab, setMpTab] = useState<'free' | 'wager'>('free');
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Array<{ userId: string; username: string; avatar: string; addedAt: string; lastSeenAt?: string | null; isOnline?: boolean }>>([]);
+  const [favRemoving, setFavRemoving] = useState<Set<string>>(new Set());
+  const [favAdding, setFavAdding] = useState<Set<string>>(new Set());
+  const [favSearch, setFavSearch] = useState('');
+  const [favSearchResults, setFavSearchResults] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
+  const [favSearchLoading, setFavSearchLoading] = useState(false);
+  const [viewingPlayer, setViewingPlayer] = useState<{ userId: string; username: string; avatar: string; isOnline: boolean; lastSeenAt: string | null } | null>(null);
 
   useEffect(() => { if (!user) loadMe(); }, []); // eslint-disable-line
 
@@ -186,8 +194,40 @@ export function ProfilePage() {
       loadProgression();
       progressionApi.achievements().then(r => setAllAchievements(r.data.achievements)).catch(() => {});
       gamesApi.history().then(r => setRecentGames(r.data.games.slice(0, 8))).catch(() => {});
+      usersApi.getFavorites().then(r => setFavorites(r.data.favorites)).catch(() => {});
     }
   }, [user?.id]); // eslint-disable-line
+
+  const removeFavorite = async (userId: string) => {
+    setFavRemoving(prev => new Set(prev).add(userId));
+    try {
+      await usersApi.removeFavorite(userId);
+      setFavorites(prev => prev.filter(f => f.userId !== userId));
+    } catch {}
+    setFavRemoving(prev => { const n = new Set(prev); n.delete(userId); return n; });
+  };
+
+  const addFavoriteById = async (u: { id: string; username: string; avatar: string }) => {
+    setFavAdding(prev => new Set(prev).add(u.id));
+    try {
+      await usersApi.addFavorite(u.id);
+      setFavorites(prev => [...prev, { userId: u.id, username: u.username, avatar: u.avatar, addedAt: new Date().toISOString() }]);
+    } catch {}
+    setFavAdding(prev => { const n = new Set(prev); n.delete(u.id); return n; });
+  };
+
+  useEffect(() => {
+    const q = favSearch.trim();
+    if (!q) { setFavSearchResults([]); return; }
+    setFavSearchLoading(true);
+    const t = setTimeout(() => {
+      usersApi.search(q)
+        .then(r => setFavSearchResults(r.data.users.filter(u => u.id !== user?.id).slice(0, 12)))
+        .catch(() => setFavSearchResults([]))
+        .finally(() => setFavSearchLoading(false));
+    }, 320);
+    return () => clearTimeout(t);
+  }, [favSearch, user?.id]); // eslint-disable-line
 
   useEffect(() => {
     if (user && !editMode) {
@@ -394,14 +434,20 @@ export function ProfilePage() {
         </div>
 
         {/* ── TABS ────────────────────────────────────────────────────────── */}
-        <div className="flex gap-2 mb-5">
-          {([['stats', '📊 Stats'], ['achievements', '🎖️ Achievements'], ['history', '📜 History']] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setActiveTab(key)}
-              className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex-1"
+        <div className="grid grid-cols-4 gap-1.5 mb-5">
+          {([
+            ['stats', '📊', 'Stats'],
+            ['achievements', '🎖️', 'Medals'],
+            ['history', '📜', 'History'],
+            ['favorites', '⭐', `Favs${favorites.length > 0 ? ` (${favorites.length})` : ''}`],
+          ] as const).map(([key, icon, label]) => (
+            <button key={key} onClick={() => setActiveTab(key as any)}
+              className="py-2 rounded-xl text-[11px] font-bold transition-all flex flex-col items-center gap-0.5"
               style={activeTab === key
                 ? { background: `${rc.color}22`, color: rc.color, border: `1px solid ${rc.color}55` }
                 : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              {label}
+              <span className="text-base leading-none">{icon}</span>
+              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -667,8 +713,198 @@ export function ProfilePage() {
             </motion.div>
           )}
 
+          {/* ── FAVORITES TAB ───────────────────────────────────────────── */}
+          {activeTab === 'favorites' && (
+            <motion.div key="favorites" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+
+              {/* ── Search bar ── */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                  {favSearchLoading
+                    ? <span className="text-sm animate-spin" style={{ color: 'rgba(250,204,21,0.6)' }}>⟳</span>
+                    : <span className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>🔍</span>
+                  }
+                </div>
+                <input
+                  type="text"
+                  value={favSearch}
+                  onChange={e => setFavSearch(e.target.value)}
+                  placeholder="Search players to add…"
+                  className="w-full pl-9 pr-4 py-3 rounded-2xl text-sm font-medium outline-none transition-all"
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: favSearch ? '1px solid rgba(250,204,21,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                    color: 'rgba(255,255,255,0.85)',
+                    caretColor: '#facc15',
+                  }}
+                />
+                {favSearch && (
+                  <button onClick={() => { setFavSearch(''); setFavSearchResults([]); }}
+                    className="absolute inset-y-0 right-3 flex items-center text-xs"
+                    style={{ color: 'rgba(255,255,255,0.35)' }}>✕</button>
+                )}
+              </div>
+
+              {/* ── Search results ── */}
+              <AnimatePresence>
+                {favSearch.trim() && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                    className="rounded-2xl overflow-hidden"
+                    style={{ background: 'rgba(10,8,28,0.98)', border: '1px solid rgba(250,204,21,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+                  >
+                    {favSearchResults.length === 0 && !favSearchLoading ? (
+                      <div className="py-8 flex flex-col items-center gap-2">
+                        <span style={{ fontSize: 28 }}>🔍</span>
+                        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>No players found</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                        {favSearchResults.map(u => {
+                          const alreadyFav = favorites.some(f => f.userId === u.id);
+                          const isAdding = favAdding.has(u.id);
+                          return (
+                            <div key={u.id} className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
+                              onClick={() => setViewingPlayer({ userId: u.id, username: u.username, avatar: u.avatar, isOnline: false, lastSeenAt: null })}>
+                              <Avatar avatar={u.avatar} size="sm" />
+                              <span className="flex-1 text-sm font-semibold truncate" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                                {u.username}
+                              </span>
+                              {alreadyFav ? (
+                                <span className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
+                                  style={{ background: 'rgba(250,204,21,0.12)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }}>
+                                  ★ Added
+                                </span>
+                              ) : (
+                                <motion.button
+                                  whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+                                  onClick={e => { e.stopPropagation(); addFavoriteById(u); }}
+                                  disabled={isAdding}
+                                  className="flex-shrink-0 text-[10px] font-black px-2.5 py-1 rounded-xl transition-all"
+                                  style={{ background: 'rgba(250,204,21,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.35)' }}
+                                >
+                                  {isAdding ? '…' : '☆ Add'}
+                                </motion.button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* ── Saved favorites grid ── */}
+              {!favSearch.trim() && (
+                favorites.length === 0 ? (
+                  <div className="rounded-2xl py-12 flex flex-col items-center gap-3"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <span style={{ fontSize: 40 }}>⭐</span>
+                    <p className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>No favorites yet</p>
+                    <p className="text-xs text-center px-8" style={{ color: 'rgba(255,255,255,0.22)' }}>
+                      Search for players above or add opponents after a game
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                      Saved · {favorites.length}
+                    </p>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                      {favorites.map((fav, i) => {
+                        const online = fav.isOnline ?? false;
+                        const lastSeen = fav.lastSeenAt ?? null;
+                        const lastSeenLabel = (() => {
+                          if (online) return 'Online';
+                          if (!lastSeen) return null;
+                          const diff = Date.now() - new Date(lastSeen).getTime();
+                          const mins  = Math.floor(diff / 60000);
+                          const hours = Math.floor(diff / 3600000);
+                          const days  = Math.floor(diff / 86400000);
+                          if (mins  < 2)   return 'Just now';
+                          if (mins  < 60)  return `${mins}m ago`;
+                          if (hours < 24)  return `${hours}h ago`;
+                          if (days  < 7)   return `${days}d ago`;
+                          return new Date(lastSeen).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        })();
+                        return (
+                          <motion.div
+                            key={fav.userId}
+                            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
+                            className="relative rounded-2xl overflow-hidden flex flex-col items-center pt-5 pb-4 px-3 gap-2 cursor-pointer"
+                            onClick={() => setViewingPlayer({ userId: fav.userId, username: fav.username, avatar: fav.avatar, isOnline: online, lastSeenAt: lastSeen })}
+                            whileHover={{ y: -2, boxShadow: '0 8px 32px rgba(250,204,21,0.14)' }}
+                            style={{
+                              background: 'linear-gradient(160deg, rgba(15,12,35,0.97) 0%, rgba(10,8,28,0.99) 100%)',
+                              border: `1px solid ${online ? 'rgba(74,222,128,0.35)' : 'rgba(250,204,21,0.2)'}`,
+                              boxShadow: online ? '0 4px 20px rgba(74,222,128,0.08)' : '0 4px 20px rgba(250,204,21,0.06)',
+                            }}
+                          >
+                            {/* Top accent bar — green if online, gold otherwise */}
+                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: online ? 'linear-gradient(90deg, rgba(74,222,128,0.8), rgba(74,222,128,0.1))' : 'linear-gradient(90deg, rgba(250,204,21,0.7), rgba(250,204,21,0.1))' }} />
+
+                            {/* Avatar + online dot */}
+                            <div className="relative">
+                              <Avatar avatar={fav.avatar} size="lg" />
+                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
+                                style={{
+                                  background: online ? '#22c55e' : 'rgba(250,204,21,0.25)',
+                                  border: '2px solid rgba(8,7,20,0.99)',
+                                  boxShadow: online ? '0 0 8px rgba(34,197,94,0.8)' : 'none',
+                                  fontSize: online ? 0 : 9,
+                                  color: '#facc15',
+                                }}>
+                                {!online && '★'}
+                              </div>
+                            </div>
+
+                            {/* Name */}
+                            <p className="text-xs font-black text-center truncate w-full" style={{ color: 'rgba(255,255,255,0.88)' }}>
+                              {fav.username}
+                            </p>
+
+                            {/* Online / Last seen */}
+                            {lastSeenLabel && (
+                              <p className="text-[9px] font-bold" style={{ color: online ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                                {online && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1 align-middle" style={{ boxShadow: '0 0 4px #4ade80' }} />}
+                                {lastSeenLabel}
+                              </p>
+                            )}
+
+                            {/* Remove button — stop propagation so card click doesn't open modal */}
+                            <motion.button
+                              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+                              onClick={e => { e.stopPropagation(); removeFavorite(fav.userId); }}
+                              disabled={favRemoving.has(fav.userId)}
+                              className="w-full rounded-xl py-1.5 text-[10px] font-black transition-all mt-0.5"
+                              style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                            >
+                              {favRemoving.has(fav.userId) ? '…' : '✕ Remove'}
+                            </motion.button>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )
+              )}
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </motion.div>
+
+      {viewingPlayer && (
+        <PlayerProfileModal
+          userId={viewingPlayer.userId}
+          username={viewingPlayer.username}
+          avatar={viewingPlayer.avatar}
+          isOnline={viewingPlayer.isOnline}
+          lastSeenAt={viewingPlayer.lastSeenAt}
+          onClose={() => setViewingPlayer(null)}
+        />
+      )}
     </Layout>
   );
 }

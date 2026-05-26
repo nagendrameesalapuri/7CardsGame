@@ -129,6 +129,20 @@ export class ScoreEngine {
   static checkMatchOver(state: GameState): MatchResult | null {
     const active = state.players.filter(p => !p.isEliminated);
 
+    const playerMap = new Map(state.players.map(p => [p.id, p]));
+
+    const enrichScore = (playerId: string, username: string, totalScore: number) => {
+      const p = playerMap.get(playerId);
+      return {
+        playerId,
+        userId: p?.userId ?? playerId,
+        username,
+        avatar: p?.avatar ?? 'avatar_1',
+        isBot: p?.isBot ?? false,
+        totalScore,
+      };
+    };
+
     // Early end — only one active player
     if (active.length <= 1) {
       const winner = active[0] ?? state.players[0];
@@ -136,11 +150,7 @@ export class ScoreEngine {
         winnerId: winner.id,
         winnerIds: [winner.id],
         winnerUsername: winner.username,
-        finalScores: state.players.map(p => ({
-          playerId: p.id,
-          username: p.username,
-          totalScore: p.totalScore,
-        })),
+        finalScores: state.players.map(p => enrichScore(p.id, p.username, p.totalScore)),
       };
     }
 
@@ -164,11 +174,7 @@ export class ScoreEngine {
         winnerId: primary.id,
         winnerIds: winners.map(p => p.id),
         winnerUsername: winners.map(p => p.username).join(' & '),
-        finalScores: state.players.map(p => ({
-          playerId: p.id,
-          username: p.username,
-          totalScore: p.totalScore,
-        })),
+        finalScores: state.players.map(p => enrichScore(p.id, p.username, p.totalScore)),
       };
     }
 
@@ -180,11 +186,7 @@ export class ScoreEngine {
       winnerId: primary.playerId,
       winnerIds: matchWinners.map(r => r.playerId),
       winnerUsername: matchWinners.map(r => r.username).join(' & '),
-      finalScores: results.map(r => ({
-        playerId: r.playerId,
-        username: r.username,
-        totalScore: r.totalScore,
-      })),
+      finalScores: results.map(r => enrichScore(r.playerId, r.username, r.totalScore)),
     };
   }
 }

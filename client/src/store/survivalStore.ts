@@ -361,7 +361,11 @@ export const useSurvivalStore = create<SurvivalStore>((set, get) => ({
 
     unsubs.push(
       on("survival:team_error", (msg: string) => {
-        set({ teamError: msg });
+        const isDeadSession =
+          msg.toLowerCase().includes("no active") ||
+          msg.toLowerCase().includes("has ended") ||
+          msg.toLowerCase().includes("no longer active");
+        set({ teamError: msg, ...(isDeadSession ? { teamState: null } : {}) });
         notify.error(msg, { duration: 5000 });
       }),
     );

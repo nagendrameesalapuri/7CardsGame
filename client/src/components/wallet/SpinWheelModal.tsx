@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { walletApi } from '../../services/api';
 import { notify } from '../../services/notify';
 
-const DAILY_LIMIT = 3;
+const DEFAULT_dailyLimit = 3;
 
 const SEGMENTS = [
   { label: 'Try Again', icon: '😔', color: '#111827', stroke: '#374151', textColor: '#6b7280' },
@@ -243,6 +243,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
   const [rotation, setRotation] = useState(0);
   const [spinsLeft, setSpinsLeft] = useState<number | null>(null);
   const [bonusSpins, setBonusSpins] = useState(0);
+  const [dailyLimit, setDailyLimit] = useState(DEFAULT_dailyLimit);
   const [spinHistory, setSpinHistory] = useState<SpinResult[]>([]);
   const [lastResult, setLastResult] = useState<SpinResult | null>(null);
   const [showParticles, setShowParticles] = useState(false);
@@ -254,6 +255,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
       const bonus = (r.data as any).bonusSpins ?? 0;
       setSpinsLeft(r.data.spinsLeft);
       setBonusSpins(bonus);
+      setDailyLimit((r.data as any).dailyLimit ?? DEFAULT_dailyLimit);
       if (r.data.spinsLeft === 0 && bonus === 0) setShowSummary(true);
     }).catch(() => {});
   }, []);
@@ -295,7 +297,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
           // Toast with total winnings
           const totalCash = newHistory.filter(r => r.type === 'cash').reduce((s, r) => s + r.amount, 0);
           const totalXp   = newHistory.filter(r => r.type === 'xp').reduce((s, r) => s + r.amount, 0);
-          let msg = `All ${DAILY_LIMIT} spins used! `;
+          let msg = `All ${dailyLimit} spins used! `;
           if (totalCash > 0) msg += `Won ₹${totalCash}`;
           if (totalXp > 0)   msg += `${totalCash > 0 ? ' + ' : ''}${totalXp} XP`;
           if (totalCash === 0 && totalXp === 0) msg += 'Better luck tomorrow!';
@@ -309,7 +311,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
     }
   };
 
-  const spinsUsed  = spinsLeft !== null ? DAILY_LIMIT - spinsLeft : 0;
+  const spinsUsed  = spinsLeft !== null ? dailyLimit - spinsLeft : 0;
   const totalCash  = spinHistory.filter(r => r.type === 'cash').reduce((s, r) => s + r.amount, 0);
   const totalXp    = spinHistory.filter(r => r.type === 'xp').reduce((s, r) => s + r.amount, 0);
   const totalSpent = spinHistory.filter(r => !(r as any).isFree).length * 5;
@@ -434,7 +436,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
                   <span className="spin-icon-float">🎰</span> Money Spin
                 </h2>
                 <p style={{ color: '#8b5cf6', fontSize: 11, margin: '3px 0 0', fontWeight: 600, letterSpacing: '0.3px' }}>
-                  ₹5 per spin · Win up to ₹100 · {DAILY_LIMIT} spins daily
+                  ₹5 per spin · Win up to ₹100 · {dailyLimit} spins daily
                 </p>
               </div>
               <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>✕</button>
@@ -442,7 +444,7 @@ export function SpinWheelModal({ onClose, onBalanceUpdate }: Props) {
 
             {/* Spin dots tracker */}
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, paddingBottom: hasBonusSpin ? 6 : 10 }}>
-              {Array.from({ length: DAILY_LIMIT }).map((_, i) => {
+              {Array.from({ length: dailyLimit }).map((_, i) => {
                 const used = i < spinsUsed;
                 return (
                   <div key={i} style={{

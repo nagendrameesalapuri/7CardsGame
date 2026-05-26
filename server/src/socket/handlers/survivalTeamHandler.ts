@@ -3,6 +3,9 @@ import { SurvivalTeam } from '../../models/SurvivalTeam';
 import { User } from '../../models/User';
 import { Room } from '../../models/Room';
 import { Transaction } from '../../models/Transaction';
+import { Game } from '../../models/Game';
+import { getOnlineUserIds } from '../index';
+import { sendBulkNotification } from '../../services/fcmService';
 import {
   TIER_CONFIG,
   TEAM_SURVIVAL_STAGES,
@@ -970,6 +973,13 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         status: 'playing',
       });
       if (!team?.currentRoomCode) {
+        // No active room — tournament is dead, clear client state
+        if (team) {
+          team.status = 'abandoned';
+          team.completedAt = new Date();
+          await team.save();
+          io.to(`team:${team.teamCode}`).emit('survival:team_updated', null);
+        }
         return socket.emit('survival:team_error', 'No active team match found. The tournament may have ended.');
       }
 
@@ -996,8 +1006,19 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
           botNames: stageConfig.botNames,
         });
       } else {
-        // Non-host trying to rejoin an unstarted stage — inform them
-        socket.emit('survival:team_error', 'Waiting for the host to start the next stage.');
+        // Non-host: check if game is truly gone (server restart / crash)
+        const gameRecord = await Game.findOne({ roomId: team.currentRoomCode });
+        if (!gameRecord || ['finished', 'abandoned'].includes(gameRecord.status)) {
+          // Game is dead — abandon the team and clear client state
+          team.status = 'abandoned';
+          team.completedAt = new Date();
+          await team.save();
+          io.to(`team:${team.teamCode}`).emit('survival:team_updated', null);
+          socket.emit('survival:team_error', 'The team match has ended. The tournament session is no longer active.');
+        } else {
+          // Game exists but not yet started for this stage — wait for host
+          socket.emit('survival:team_error', 'Waiting for the host to start the next stage.');
+        }
       }
     } catch (err) {
       console.error('[TeamSurvival] Rejoin error:', err);
@@ -1032,6 +1053,60 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
   });
 
   // ── Status / reconnect ─────────────────────────────────────────────────────
+  // ── Invite friends to team ────────────────────────────────────────────────
+  socket.on('survival:team_invite_friends', async ({ targetUserIds }: { targetUserIds: string[] }) => {
+    try {
+      if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) return;
+      const team = await SurvivalTeam.findOne({
+        'members.userId': userId,
+        status: 'forming',
+      }).lean();
+      if (!team) return;
+
+      // Only host can invite
+      if ((team as any).hostId !== userId) return;
+
+      const tierCfg = await getEffectiveTierConfig((team as any).tier);
+      const humanCount = Math.max(1, (team as any).maxSize);
+      // Fee the invitee would pay (split mode) or 0 (host_pays)
+      const inviteeFee = (team as any).entryFeeMode === 'split'
+        ? Math.ceil(tierCfg.entryPoints / humanCount) / 100
+        : 0;
+
+      const tierLabel = (team as any).tier.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+      const onlineIds = getOnlineUserIds();
+      const validIds = targetUserIds.filter(id => id && id !== userId).slice(0, 10);
+      const offlineIds: string[] = [];
+
+      for (const targetId of validIds) {
+        if (onlineIds.has(targetId)) {
+          io.to(`user:${targetId}`).emit('survival:team_invite_received', {
+            teamCode: (team as any).teamCode,
+            teamName: `${tierLabel} · Team Battle`,
+            inviterUsername: username,
+            inviterAvatar: avatar,
+            modeName: 'Team Battle',
+            entryFee: inviteeFee,
+            tier: (team as any).tier,
+          });
+        } else {
+          offlineIds.push(targetId);
+        }
+      }
+
+      if (offlineIds.length > 0) {
+        sendBulkNotification(offlineIds, {
+          title: `⚔️ ${username} invited you to Team Battle!`,
+          message: `Join "${tierLabel} · Team Battle" · Code: ${(team as any).teamCode}`,
+          category: 'multiplayer',
+          type: 'info',
+          actionUrl: `/survival`,
+          skipThrottle: true,
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  });
+
   socket.on('survival:team_status', async () => {
     try {
       const team = await SurvivalTeam.findOne({
@@ -1039,6 +1114,21 @@ export function registerSurvivalTeamHandlers(io: Server, socket: Socket) {
         status: { $in: ['forming', 'playing'] },
       });
       if (!team) return socket.emit('survival:team_updated', null);
+
+      // Auto-abandon stale playing teams: if in 'playing' status but no active
+      // game exists and last update was >6 hours ago, the tournament is dead.
+      if (team.status === 'playing') {
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+        const isStale = (team as any).updatedAt < sixHoursAgo;
+        const hasLiveGame = team.currentRoomCode ? !!getActiveGame(team.currentRoomCode) : false;
+        if (isStale && !hasLiveGame) {
+          team.status = 'abandoned';
+          team.completedAt = new Date();
+          await team.save();
+          return socket.emit('survival:team_updated', null);
+        }
+      }
+
       await socket.join(`team:${team.teamCode}`);
       const tierCfg = await getEffectiveTierConfig(team.tier);
       socket.emit('survival:team_updated', buildTeamPayload(team, tierCfg.entryPoints));

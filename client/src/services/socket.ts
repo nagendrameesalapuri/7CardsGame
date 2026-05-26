@@ -142,6 +142,7 @@ export const socketRoom = {
   ready: () => getSocket().emit('room:ready'),
   start: () => getSocket().emit('room:start'),
   setBots: (count: number) => getSocket().emit('room:set_bots', count),
+  inviteFriends: (targetUserIds: string[]) => getSocket().emit('room:invite_friends', { targetUserIds }),
 };
 
 // ── Game events ───────────────────────────────────────────────────────────────
@@ -190,8 +191,9 @@ export const socketTeam = {
   status:    ()                 => getSocket().emit('survival:team_status'),
   addBot:    (personality: string) => getSocket().emit('survival:team_add_bot', { personality }),
   removeBot: (botUserId: string) => getSocket().emit('survival:team_remove_bot', { botUserId }),
-  quit:      ()                 => getSocket().emit('survival:team_quit'),
-  rejoin:    ()                 => getSocket().emit('survival:team_rejoin'),
+  quit:         ()                    => getSocket().emit('survival:team_quit'),
+  rejoin:       ()                    => getSocket().emit('survival:team_rejoin'),
+  inviteFriends: (targetUserIds: string[]) => getSocket().emit('survival:team_invite_friends', { targetUserIds }),
 };
 
 // ── Event listener helpers (typed) ───────────────────────────────────────────
@@ -203,6 +205,7 @@ type EventMap = {
   'room:error': string;
   'room:kicked': { message: string };
   'room:force_ended': { message: string };
+  'room:invite_received': { roomCode: string; roomName: string; inviterUsername: string; inviterAvatar: string; modeName: string; entryFee: number };
   'game:state': ClientGameState;
   'game:started': ClientGameState;
   'game:action': GameAction;
@@ -247,7 +250,8 @@ type EventMap = {
   'survival:team_stage_started': { stage: number; stageName: string; stageDesc?: string; roomCode: string; botNames: string[] };
   'survival:team_disbanded':    { reason: string };
   'survival:team_quit_result':  { refunded: boolean; refundAmount: number };
-  'survival:team_error':        string;
+  'survival:team_error':          string;
+  'survival:team_invite_received': { teamCode: string; teamName: string; inviterUsername: string; inviterAvatar: string; modeName: string; entryFee: number; tier: string };
   'progression:update':       { xpGained: number; multiplier: number; newXp: number; newLevel: number; newRank: string; leveled: boolean; rankedUp: boolean; winStreak: number; xpProgress: number; xpNeeded: number; newAchievements?: any[] };
   'ai:points_earned':         { points: number; total: number; modeId: string; modeLabel: string };
   // Voice chat (WebRTC signaling)

@@ -1,5 +1,12 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IFavorite {
+  userId: mongoose.Types.ObjectId;
+  username: string;
+  avatar: string;
+  addedAt: Date;
+}
+
 export interface IUser extends Document {
   googleId?: string;
   username: string;
@@ -19,6 +26,7 @@ export interface IUser extends Document {
   spinDailyCount: number;
   pointsSpinLastDate?: string;
   pointsSpinDailyCount: number;
+  favorites: IFavorite[];
   stats: {
     gamesPlayed: number;
     gamesWon: number;
@@ -62,6 +70,12 @@ const UserSchema = new Schema<IUser>(
       showAttempts: { type: Number, default: 0 },
       showSuccesses: { type: Number, default: 0 },
     },
+    favorites: [{
+      userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      username: { type: String, required: true },
+      avatar: { type: String, default: 'avatar_1' },
+      addedAt: { type: Date, default: Date.now },
+    }],
     lastSeenAt: { type: Date },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

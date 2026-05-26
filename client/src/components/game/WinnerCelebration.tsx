@@ -2,6 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MatchResult } from '../../types';
 import { useAuthStore } from '../../store/authStore';
+import { usersApi } from '../../services/api';
+import { Avatar } from '../ui/Avatar';
 
 // ── Motivational quotes for non-winners ──────────────────────────────────────
 const LOSER_QUOTES = [
@@ -197,6 +199,36 @@ export function WinnerCelebration({ result, onClose }: { result: MatchResult; on
 
   const [showConfetti, setShowConfetti] = useState(true);
   const [quote]   = useState(() => LOSER_QUOTES[Math.floor(Math.random() * LOSER_QUOTES.length)]);
+  const [favSet, setFavSet] = useState<Set<string>>(new Set());
+  const [favLoading, setFavLoading] = useState<Set<string>>(new Set());
+
+  // Human opponents (not self, not bots)
+  const humanOpponents = useMemo(() =>
+    result.finalScores.filter(s => !s.isBot && s.userId !== user?.id),
+    [result.finalScores, user?.id]
+  );
+
+  useEffect(() => {
+    if (!user || humanOpponents.length === 0) return;
+    usersApi.getFavorites()
+      .then(r => setFavSet(new Set(r.data.favorites.map(f => f.userId))))
+      .catch(() => {});
+  }, [user?.id]); // eslint-disable-line
+
+  const toggleFavorite = async (s: typeof result.finalScores[0]) => {
+    if (!user || favLoading.has(s.userId)) return;
+    setFavLoading(prev => new Set(prev).add(s.userId));
+    try {
+      if (favSet.has(s.userId)) {
+        await usersApi.removeFavorite(s.userId);
+        setFavSet(prev => { const n = new Set(prev); n.delete(s.userId); return n; });
+      } else {
+        await usersApi.addFavorite(s.userId);
+        setFavSet(prev => new Set(prev).add(s.userId));
+      }
+    } catch {}
+    setFavLoading(prev => { const n = new Set(prev); n.delete(s.userId); return n; });
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setShowConfetti(false), 7000);
@@ -567,6 +599,53 @@ export function WinnerCelebration({ result, onClose }: { result: MatchResult; on
               <div>
                 <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: 'rgba(168,85,247,0.7)' }}>Arena Wisdom</p>
                 <p className="text-sm font-semibold leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>{quote}</p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── ADD TO FAVORITES ── */}
+          {user && humanOpponents.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8 }}
+              className="mx-4 mb-4 rounded-2xl overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.06))',
+                border: '1px solid rgba(99,102,241,0.2)',
+              }}
+            >
+              <div className="px-4 pt-3 pb-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(165,180,252,0.5)' }}>
+                  ⭐ Add Opponents to Favorites
+                </p>
+              </div>
+              <div className="px-3 pb-3 flex flex-col gap-2">
+                {humanOpponents.map(s => {
+                  const isFav = favSet.has(s.userId);
+                  const isLoading = favLoading.has(s.userId);
+                  return (
+                    <div key={s.userId} className="flex items-center gap-3">
+                      <Avatar avatar={s.avatar} size="sm" />
+                      <span className="flex-1 text-sm font-semibold truncate" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                        {s.username}
+                      </span>
+                      <motion.button
+                        whileHover={{ scale: 1.06 }}
+                        whileTap={{ scale: 0.94 }}
+                        onClick={() => toggleFavorite(s)}
+                        disabled={isLoading}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all"
+                        style={isFav
+                          ? { background: 'rgba(250,204,21,0.18)', color: '#facc15', border: '1px solid rgba(250,204,21,0.4)' }
+                          : { background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }
+                        }
+                      >
+                        {isLoading ? '…' : isFav ? '★ Favorited' : '☆ Favorite'}
+                      </motion.button>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           )}

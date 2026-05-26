@@ -80,6 +80,9 @@ export const usersApi = {
     api.get<{ users: Array<{ id: string; username: string; avatar: string }> }>(
       `/users/search?q=${encodeURIComponent(q)}&limit=30`
     ),
+  getFavorites: () => api.get<{ favorites: Array<{ userId: string; username: string; avatar: string; addedAt: string; lastSeenAt: string | null; isOnline: boolean }> }>("/users/favorites"),
+  addFavorite: (targetId: string) => api.post(`/users/favorites/${targetId}`, {}),
+  removeFavorite: (targetId: string) => api.delete(`/users/favorites/${targetId}`),
 };
 
 export const gamesApi = {

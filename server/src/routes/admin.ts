@@ -444,6 +444,7 @@ export default function createAdminRouter(io: Server) {
           isBanned: (u as any).isBanned ?? false,
           isAdmin: (u as any).isAdmin ?? false,
           aiPoints: (u as any).aiPoints ?? 0,
+          walletBalance: (u as any).walletBalance ?? 0,
           isOnline: onlineIds.has(u._id.toString()),
           stats: u.stats,
           createdAt: u.createdAt,
@@ -1852,31 +1853,66 @@ export default function createAdminRouter(io: Server) {
 
   router.get('/spin-analytics/daily', requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const agg = await SpinLog.aggregate([
+      // Per-player per-day aggregate from SpinLog (permanent records, never reset)
+      const playerAgg = await SpinLog.aggregate([
         {
           $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            _id: {
+              date:   { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              userId: '$userId',
+            },
             moneyCount:   { $sum: { $cond: [{ $eq: ['$spinType', 'money']  }, 1, 0] } },
             pointsCount:  { $sum: { $cond: [{ $eq: ['$spinType', 'points'] }, 1, 0] } },
             freeCount:    { $sum: { $cond: ['$isFree', 1, 0] } },
-            moneySpent:   { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$isFree', false] }] }, '$costRupees', 0] } },
-            pointsSpent:  { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'points'] }, { $eq: ['$isFree', false] }] }, '$costPoints', 0] } },
-            moneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$prizeType', 'cash'] }] }, '$prizeAmount', 0] } },
-            uniqueUsers:  { $addToSet: '$userId' },
+            moneySpent:   { $sum: { $cond: [{ $and: [{ $eq: ['$spinType','money']  }, { $not: '$isFree' }] }, '$costRupees',  0] } },
+            pointsSpent:  { $sum: { $cond: [{ $and: [{ $eq: ['$spinType','points'] }, { $not: '$isFree' }] }, '$costPoints', 0] } },
+            moneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType','money']  }, { $eq: ['$prizeType','cash'] }] }, '$prizeAmount', 0] } },
+            pointsWon:    { $sum: { $cond: [{ $eq: ['$spinType','points'] }, '$prizeAmount', 0] } },
+            lastSpin:     { $max: '$createdAt' },
           },
         },
-        { $sort: { _id: -1 } },
+        { $sort: { '_id.date': -1, '_id.userId': 1 } },
       ]);
 
-      const rows = agg.map((r: any) => ({
-        date:        r._id,
-        moneyCount:  r.moneyCount,
-        pointsCount: r.pointsCount,
-        freeCount:   r.freeCount,
-        moneySpent:  Math.round(r.moneySpent * 100) / 100,
-        pointsSpent: r.pointsSpent,
-        moneyWon:    Math.round(r.moneyWon * 100) / 100,
-        uniqueUsers: r.uniqueUsers.length,
+      // Resolve usernames in bulk
+      const uids = [...new Set(playerAgg.map((r:any) => r._id.userId))];
+      const users = uids.length ? await User.find({ _id: { $in: uids } }).select('username avatar').lean() as any[] : [];
+      const uMap  = Object.fromEntries(users.map((u:any) => [String(u._id), u]));
+
+      // Group by date
+      const dayMap = new Map<string, { date:string; moneyCount:number; pointsCount:number; moneySpent:number; pointsSpent:number; moneyWon:number; pointsWon:number; players:any[] }>();
+      for (const r of playerAgg) {
+        const date   = r._id.date as string;
+        const userId = String(r._id.userId);
+        const u      = uMap[userId] ?? {};
+        if (!dayMap.has(date)) dayMap.set(date, { date, moneyCount:0, pointsCount:0, moneySpent:0, pointsSpent:0, moneyWon:0, pointsWon:0, players:[] });
+        const day = dayMap.get(date)!;
+        day.moneyCount   += r.moneyCount;
+        day.pointsCount  += r.pointsCount;
+        day.moneySpent   += r.moneySpent;
+        day.pointsSpent  += r.pointsSpent;
+        day.moneyWon     += r.moneyWon;
+        day.pointsWon    += r.pointsWon;
+        day.players.push({
+          userId,
+          username:    u.username ?? userId.slice(-6),
+          avatar:      u.avatar ?? 'avatar_1',
+          moneyCount:  r.moneyCount,
+          pointsCount: r.pointsCount,
+          freeCount:   r.freeCount,
+          moneySpent:  Math.round(r.moneySpent  * 100) / 100,
+          pointsSpent: r.pointsSpent,
+          moneyWon:    Math.round(r.moneyWon    * 100) / 100,
+          pointsWon:   r.pointsWon,
+          lastSpin:    r.lastSpin,
+        });
+      }
+
+      const rows = [...dayMap.values()].map(d => ({
+        ...d,
+        moneySpent:  Math.round(d.moneySpent  * 100) / 100,
+        moneyWon:    Math.round(d.moneyWon    * 100) / 100,
+        uniqueUsers: d.players.length,
       }));
 
       res.json({ rows });
@@ -2023,11 +2059,63 @@ export default function createAdminRouter(io: Server) {
           txnMap.get(k)!.push(t);
         }
 
+        // Fetch all survival AI games for these users in bulk (to get room codes + rounds per stage)
+        const soloUserIds = [...new Set(runs.map((r:any)=>r.userId))];
+        const minDate = runs.reduce((min:Date,r:any)=> r.createdAt < min ? r.createdAt : min, runs[0]?.createdAt ?? new Date());
+        const soloStageGames = soloUserIds.length ? await Game.find({
+          'players.userId': { $in: soloUserIds },
+          'players.isBot': true,
+          startedAt: { $gte: minDate },
+        }).select('roomId players rounds startedAt endedAt winnerId winnerUsername').lean() as any[] : [];
+        // Group by userId for fast lookup
+        const soloGamesByUser = new Map<string, any[]>();
+        for (const g of soloStageGames) {
+          const hPlayer = g.players.find((p:any)=>!p.isBot);
+          if (!hPlayer) continue;
+          const uid = String(hPlayer.userId);
+          if (!soloGamesByUser.has(uid)) soloGamesByUser.set(uid,[]);
+          soloGamesByUser.get(uid)!.push(g);
+        }
+
         const stMap: Record<string,string> = { won:'finished', lost:'finished', abandoned:'abandoned', active:'playing' };
         for (const r of runs) {
           const u    = uMap[r.userId]??{};
           const tid  = String(r._id);
           const summ = txnSummary(txnMap.get(tid)??[]);
+
+          // Match stage games: games played by this user between tournamentStart and tournamentEnd, sorted by startedAt
+          const userGames = (soloGamesByUser.get(r.userId)??[])
+            .filter((g:any) => g.startedAt >= r.createdAt && (!r.completedAt || g.startedAt <= r.completedAt))
+            .sort((a:any,b:any)=> new Date(a.startedAt).getTime()-new Date(b.startedAt).getTime());
+
+          const enrichedStageResults = (r.stageResults??[]).map((s:any, idx:number) => {
+            const stageGame = userGames[idx];
+            if (!stageGame) return { ...s };
+            const allP: any[] = stageGame.players ?? [];
+            const pr: any[] = [];
+            return {
+              ...s,
+              roomCode: stageGame.roomId,
+              roomStartedAt: stageGame.startedAt,
+              roomEndedAt:   stageGame.endedAt,
+              rounds: (stageGame.rounds??[]).map((round:any) => {
+                const roundPR: any[] = round.playerResults ?? pr;
+                const rWinnerPR  = roundPR.find((x:any) => x.playerId === round.winnerId);
+                const rShowPR    = roundPR.find((x:any) => x.playerId === round.showPlayerId);
+                const isBotByNameStage = (uname: string) => allP.some((p:any) => p.isBot && p.username === uname);
+                return {
+                  roundNumber: round.roundNumber,
+                  jokerRank:   round.jokerRank,
+                  showPlayerWon:     round.showPlayerWon,
+                  winnerUsername:    rWinnerPR?.username ?? null,
+                  winnerIsBot:       rWinnerPR ? isBotByNameStage(rWinnerPR.username) : false,
+                  showCallerUsername: rShowPR?.username ?? null,
+                  showCallerIsBot:    rShowPR ? isBotByNameStage(rShowPR.username) : false,
+                };
+              }),
+            };
+          });
+
           items.push({
             id: tid, type:'survival_solo', roomCode:`ST-${r.tier?.slice(0,3).toUpperCase()}-${tid.slice(-5)}`,
             status: stMap[r.status]??'finished', tournamentResult:r.status, tier:r.tier,
@@ -2036,7 +2124,7 @@ export default function createAdminRouter(io: Server) {
             entryFee:0, entryPoints:r.entryPoints??0,
             pot:r.totalPointsEarned??0, ...summ, hasRefundIssue:false,
             roundCount:r.roundsPlayed??0, rounds:[],
-            stageResults: r.stageResults??[],
+            stageResults: enrichedStageResults,
             startedAt:r.createdAt, endedAt:r.completedAt??null,
           });
         }
@@ -2063,21 +2151,70 @@ export default function createAdminRouter(io: Server) {
           txnMap.get(k)!.push(t);
         }
 
+        // Fetch stage games for team arena in bulk
+        const teamMinDate = teams.reduce((min:Date,t:any)=> t.createdAt < min ? t.createdAt : min, teams[0]?.createdAt ?? new Date());
+        const allHumanMemberIds = teams.flatMap((t:any)=>(t.members??[]).filter((m:any)=>!m.isBot).map((m:any)=>m.userId));
+        const teamStageGames = allHumanMemberIds.length ? await Game.find({
+          'players.userId': { $in: allHumanMemberIds },
+          'players.isBot': true,
+          startedAt: { $gte: teamMinDate },
+        }).select('roomId players rounds startedAt endedAt winnerId winnerUsername').lean() as any[] : [];
+
         const stMap: Record<string,string> = { completed:'finished', abandoned:'abandoned', playing:'playing', forming:'playing' };
         for (const t of teams) {
           const tid  = String(t._id);
           const members = t.members??[];
+          const humanMemberIds = members.filter((m:any)=>!m.isBot).map((m:any)=>m.userId);
           const summ = txnSummary(txnMap.get(tid)??[]);
+
+          // Match team stage games: games where any human member played, within tournament time range
+          const teamGames = teamStageGames
+            .filter((g:any) => {
+              const gPlayers: any[] = g.players ?? [];
+              return gPlayers.some((p:any) => !p.isBot && humanMemberIds.includes(p.userId)) &&
+                g.startedAt >= t.createdAt && (!t.completedAt || g.startedAt <= t.completedAt);
+            })
+            .sort((a:any,b:any)=> new Date(a.startedAt).getTime()-new Date(b.startedAt).getTime());
+
+          const enrichedTeamStageResults = (t.stageResults??[]).map((s:any, idx:number) => {
+            const stageGame = teamGames[idx];
+            if (!stageGame) return { ...s };
+            const allP: any[] = stageGame.players ?? [];
+            const isBotByName2 = (uname: string) => allP.some((p:any) => p.isBot && p.username === uname);
+            return {
+              ...s,
+              roomCode: stageGame.roomId,
+              roomStartedAt: stageGame.startedAt,
+              roomEndedAt:   stageGame.endedAt,
+              rounds: (stageGame.rounds??[]).map((round:any) => {
+                const roundPR: any[] = round.playerResults ?? [];
+                const rWinnerPR  = roundPR.find((x:any) => x.playerId === round.winnerId);
+                const rShowPR    = roundPR.find((x:any) => x.playerId === round.showPlayerId);
+                return {
+                  roundNumber: round.roundNumber,
+                  jokerRank:   round.jokerRank,
+                  showPlayerWon:     round.showPlayerWon,
+                  winnerUsername:    rWinnerPR?.username ?? null,
+                  winnerIsBot:       rWinnerPR ? isBotByName2(rWinnerPR.username) : false,
+                  showCallerUsername: rShowPR?.username ?? null,
+                  showCallerIsBot:    rShowPR ? isBotByName2(rShowPR.username) : false,
+                };
+              }),
+            };
+          });
+
           items.push({
             id: tid, type:'survival_team', roomCode:t.teamCode??tid.slice(-6),
             status: stMap[t.status]??'playing', teamStatus:t.status, tier:t.tier,
+            entryFeeMode: t.entryFeeMode??'split', hostId: t.hostId,
             players: members.filter((m:any)=>!m.isBot).map((m:any)=>({ userId:m.userId, username:m.username??'?', avatar:m.avatar??'avatar_1', isBot:false, isWinner:t.status==='completed', score:t.totalPointsEarned??0 })),
+            allMembers: members.map((m:any)=>({ userId:m.userId, username:m.username??'?', avatar:m.avatar??'avatar_1', isBot:m.isBot??false, personality:m.personality??null })),
             winner: t.status==='completed' ? { userId:t.hostId, username:members[0]?.username??'?' } : null,
             entryFee:0, entryPoints:t.entryPoints??0,
             pot:t.totalPointsEarned??0, ...summ,
             hasRefundIssue: summ.totalFees>0 && summ.totalPaid===0 && !['playing','forming'].includes(t.status),
             roundCount:t.roundsPlayed??0, rounds:[],
-            stageResults:t.stageResults??[],
+            stageResults: enrichedTeamStageResults,
             startedAt:t.createdAt, endedAt:t.completedAt??null,
           });
         }

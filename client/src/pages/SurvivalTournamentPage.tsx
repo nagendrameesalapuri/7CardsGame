@@ -5,7 +5,8 @@ import { useAuthStore } from '../store/authStore';
 import { useSurvivalStore } from '../store/survivalStore';
 import { useGameStore } from '../store/gameStore';
 import { socketSurvival, socketTeam, socketGame, on } from '../services/socket';
-import { survivalApi, walletApi, configApi } from '../services/api';
+import { survivalApi, walletApi, configApi, usersApi } from '../services/api';
+import { Avatar } from '../components/ui/Avatar';
 import { StageIntro } from '../components/survival/StageIntro';
 import { Layout } from '../components/layout/Layout';
 
@@ -1410,6 +1411,13 @@ function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
   const [pickingSlot, setPickingSlot] = useState<number | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
+  // Invite favorites state
+  type Fav = { userId: string; username: string; avatar: string; isOnline: boolean; lastSeenAt: string | null };
+  const [showInvite, setShowInvite] = useState(false);
+  const [favorites, setFavorites] = useState<Fav[]>([]);
+  const [inviteSent, setInviteSent] = useState<Set<string>>(new Set());
+  const [loadingFavs, setLoadingFavs] = useState(false);
+
   const isHost = teamState?.hostId === user?.id;
   const myEntryRupees = teamState
     ? (teamState.entryFeeMode === 'split'
@@ -1456,6 +1464,21 @@ function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
     }
   };
 
+  const openInvite = () => {
+    setShowInvite(true);
+    setLoadingFavs(true);
+    usersApi.getFavorites()
+      .then(r => setFavorites(r.data.favorites.sort((a, b) => Number(b.isOnline) - Number(a.isOnline))))
+      .catch(() => {})
+      .finally(() => setLoadingFavs(false));
+  };
+
+  const sendInvite = (fav: Fav) => {
+    if (!teamState || inviteSent.has(fav.userId)) return;
+    socketTeam.inviteFriends([fav.userId]);
+    setInviteSent(prev => new Set([...prev, fav.userId]));
+  };
+
   // In the lobby state (team created/joined)
   if (teamState && (teamState.status === 'forming' || teamState.status === 'playing')) {
     const memberCount = teamState.members.length;
@@ -1467,7 +1490,7 @@ function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
         style={{ background: 'rgba(0,0,0,0.85)' }}>
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-          className="rounded-2xl p-6 w-full max-w-sm space-y-5"
+          className="rounded-2xl p-6 w-full max-w-sm space-y-5 relative overflow-hidden"
           style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)', border: `1px solid ${tierColor}40` }}>
 
           {/* Header */}
@@ -1572,11 +1595,18 @@ function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
                       <span className="text-lg opacity-30">⏳</span>
                       <p className="flex-1 text-sm text-dark-muted/50 italic">Waiting for player…</p>
                       {isHost && (
-                        <button onClick={() => setPickingSlot(i)}
-                          className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all"
-                          style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}>
-                          + Bot
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button onClick={openInvite}
+                            className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all"
+                            style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
+                            ⭐ Invite
+                          </button>
+                          <button onClick={() => setPickingSlot(i)}
+                            className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all"
+                            style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}>
+                            + Bot
+                          </button>
+                        </div>
                       )}
                     </>
                   )}
@@ -1640,6 +1670,77 @@ function TeamFlowModal({ tier, tierLabel, tierColor, entryPoints, onClose }: {
               </div>
             )}
           </div>
+
+          {/* Invite Favorites Modal */}
+          <AnimatePresence>
+            {showInvite && (
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="absolute inset-0 rounded-2xl flex flex-col z-10"
+                style={{ background: 'linear-gradient(160deg,#0d1117,#0a0d1f)' }}>
+                <div className="flex items-center justify-between px-4 pt-4 pb-3"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div>
+                    <p className="text-xs font-black text-white">Invite Favorites</p>
+                    <p className="text-[10px]" style={{ color: `${tierColor}80` }}>Team Battle · {tierLabel}</p>
+                  </div>
+                  <button onClick={() => { setShowInvite(false); setInviteSent(new Set()); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-all hover:bg-white/10"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}>✕</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {loadingFavs ? (
+                    <p className="text-center text-dark-muted text-xs py-6">Loading favorites…</p>
+                  ) : favorites.length === 0 ? (
+                    <div className="text-center py-8 space-y-1">
+                      <p className="text-2xl">⭐</p>
+                      <p className="text-sm text-dark-muted">No favorites yet</p>
+                      <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.25)' }}>Add players after a game</p>
+                    </div>
+                  ) : (
+                    favorites.map(fav => {
+                      const sent = inviteSent.has(fav.userId);
+                      const alreadyIn = teamState?.members.some(m => m.userId === fav.userId) ?? false;
+                      return (
+                        <div key={fav.userId} className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div className="relative flex-shrink-0">
+                            <Avatar avatar={fav.avatar} size="sm" />
+                            {fav.isOnline && (
+                              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400"
+                                style={{ border: '1.5px solid #0d1117' }} />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{fav.username}</p>
+                            <p className="text-[9px]" style={{ color: fav.isOnline ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                              {fav.isOnline ? 'Online' : fav.lastSeenAt ? `Last seen ${new Date(fav.lastSeenAt).toLocaleDateString()}` : 'Offline'}
+                            </p>
+                          </div>
+                          {alreadyIn ? (
+                            <span className="text-[10px] px-2 py-1 rounded-lg font-bold"
+                              style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
+                              Joined ✓
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => sendInvite(fav)}
+                              disabled={sent || !fav.isOnline}
+                              className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all disabled:opacity-40"
+                              style={sent
+                                ? { background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }
+                                : { background: `${tierColor}22`, color: tierColor, border: `1px solid ${tierColor}40` }}>
+                              {sent ? 'Sent ✓' : fav.isOnline ? 'Invite' : 'Offline'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </motion.div>
     );

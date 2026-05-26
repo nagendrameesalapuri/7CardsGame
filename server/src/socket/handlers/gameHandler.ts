@@ -1029,7 +1029,10 @@ async function handleMatchEnd(io: Server, state: GameState) {
     winnerUsername: state.players[0].username,
     finalScores: state.players.map((p) => ({
       playerId: p.id,
+      userId: p.userId,
       username: p.username,
+      avatar: p.avatar,
+      isBot: p.isBot,
       totalScore: p.totalScore,
     })),
   };

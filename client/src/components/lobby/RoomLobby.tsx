@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
 import { Avatar } from '../ui/Avatar';
 import { notify } from '../../services/notify';
+import { usersApi } from '../../services/api';
+import { socketRoom } from '../../services/socket';
 
 const PERSONALITY_THEME: Record<string, { color: string; glow: string; from: string; to: string; emoji: string; modeName: string }> = {
   safe:       { color: '#22c55e', glow: 'rgba(34,197,94,0.25)',   from: 'rgba(3,18,10,0.98)',  to: 'rgba(5,28,16,0.95)', emoji: '🛡',  modeName: 'Casual Duel'    },
@@ -36,11 +38,31 @@ function Orb({ x, y, size, color, delay }: { x: string; y: string; size: number;
 export function RoomLobby() {
   const { room, toggleReady, startGame, leaveRoom, subscribeToEvents, setBots } = useGameStore();
   const { user } = useAuthStore();
+  const [showInvite, setShowInvite] = useState(false);
+  const [favorites, setFavorites] = useState<Array<{ userId: string; username: string; avatar: string; isOnline: boolean }>>([]);
+  const [inviteSent, setInviteSent] = useState<Set<string>>(new Set());
+  const [loadingFavs, setLoadingFavs] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeToEvents();
     return unsub;
   }, [subscribeToEvents]);
+
+  const openInvite = useCallback(async () => {
+    setShowInvite(true);
+    setLoadingFavs(true);
+    try {
+      const r = await usersApi.getFavorites();
+      setFavorites(r.data.favorites.map(f => ({ userId: f.userId, username: f.username, avatar: f.avatar, isOnline: f.isOnline ?? false })));
+    } catch {}
+    setLoadingFavs(false);
+  }, []);
+
+  const sendInvite = (targetUserId: string) => {
+    socketRoom.inviteFriends([targetUserId]);
+    setInviteSent(prev => new Set(prev).add(targetUserId));
+    notify.success('Invite sent!');
+  };
 
   if (!room) return null;
 
@@ -61,6 +83,7 @@ export function RoomLobby() {
   };
 
   const slotsLeft = room.config.maxPlayers - totalSlots;
+  const alreadyInRoom = new Set(room.players.map(p => p.userId));
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
@@ -265,8 +288,20 @@ export function RoomLobby() {
                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-dark-muted text-base flex-shrink-0"
                   style={{ background: 'rgba(255,255,255,0.04)' }}>?</div>
                 <span className="text-dark-muted text-xs italic">Waiting for player…</span>
-                <motion.span className="ml-auto text-dark-muted text-sm"
-                  animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 2 }}>○</motion.span>
+                {i === 0 && slotsLeft > 0 && (
+                  <motion.button
+                    whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+                    onClick={openInvite}
+                    className="ml-auto flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0"
+                    style={{ background: `${theme.color}18`, color: theme.color, border: `1px solid ${theme.color}35` }}
+                  >
+                    ⭐ Invite
+                  </motion.button>
+                )}
+                {i !== 0 && (
+                  <motion.span className="ml-auto text-dark-muted text-sm"
+                    animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 2 }}>○</motion.span>
+                )}
               </div>
             ))}
           </div>
@@ -309,6 +344,118 @@ export function RoomLobby() {
           )}
         </div>
       </motion.div>
+
+      {/* ── Invite Favorites Modal ── */}
+      <AnimatePresence>
+        {showInvite && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowInvite(false)}
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{ zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.88, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 20 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full rounded-3xl overflow-hidden"
+              style={{
+                maxWidth: 380,
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                background: 'linear-gradient(160deg, rgba(12,10,28,0.99) 0%, rgba(8,6,20,1) 100%)',
+                border: `1px solid ${theme.color}35`,
+                boxShadow: `0 0 60px ${theme.glow}, 0 24px 64px rgba(0,0,0,0.8)`,
+              }}
+            >
+              <div style={{ height: 2, background: `linear-gradient(90deg, ${theme.color}, ${theme.color}20)` }} />
+              <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-white text-base">Invite Favorites</h3>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    Online favorites get an instant invite
+                  </p>
+                </div>
+                <button onClick={() => setShowInvite(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>✕</button>
+              </div>
+
+              <div className="px-5 pb-5">
+                {loadingFavs ? (
+                  <div className="py-10 flex flex-col items-center gap-3">
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      className="w-7 h-7 rounded-full border-2"
+                      style={{ borderColor: `${theme.color}30`, borderTopColor: theme.color }} />
+                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading favorites…</p>
+                  </div>
+                ) : favorites.length === 0 ? (
+                  <div className="py-10 flex flex-col items-center gap-2">
+                    <span style={{ fontSize: 36 }}>⭐</span>
+                    <p className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>No favorites yet</p>
+                    <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.22)' }}>
+                      Add players to favorites from your profile
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 mt-3">
+                    {/* Online first */}
+                    {[...favorites].sort((a, b) => Number(b.isOnline) - Number(a.isOnline)).map(fav => {
+                      const alreadyJoined = alreadyInRoom.has(fav.userId);
+                      const sent = inviteSent.has(fav.userId);
+                      return (
+                        <div key={fav.userId}
+                          className="flex items-center gap-3 rounded-2xl px-3 py-2.5"
+                          style={{
+                            background: fav.isOnline ? `${theme.color}0a` : 'rgba(255,255,255,0.03)',
+                            border: fav.isOnline ? `1px solid ${theme.color}25` : '1px solid rgba(255,255,255,0.07)',
+                          }}>
+                          <div className="relative flex-shrink-0">
+                            <Avatar avatar={fav.avatar} size="sm" />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full"
+                              style={{
+                                background: fav.isOnline ? '#22c55e' : '#374151',
+                                border: '2px solid rgba(8,6,20,1)',
+                                boxShadow: fav.isOnline ? '0 0 5px rgba(34,197,94,0.8)' : 'none',
+                              }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-white truncate">{fav.username}</p>
+                            <p className="text-[9px] font-semibold"
+                              style={{ color: fav.isOnline ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                              {fav.isOnline ? '● Online' : '○ Offline'}
+                            </p>
+                          </div>
+                          {alreadyJoined ? (
+                            <span className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
+                              style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }}>
+                              ✓ In Room
+                            </span>
+                          ) : sent ? (
+                            <span className="text-[10px] font-black px-2.5 py-1 rounded-xl flex-shrink-0"
+                              style={{ background: `${theme.color}15`, color: theme.color, border: `1px solid ${theme.color}30` }}>
+                              ✓ Sent
+                            </span>
+                          ) : (
+                            <motion.button
+                              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+                              onClick={() => sendInvite(fav.userId)}
+                              className="text-[10px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 transition-all"
+                              style={{ background: `${theme.color}20`, color: theme.color, border: `1px solid ${theme.color}40` }}
+                            >
+                              {fav.isOnline ? '🎮 Invite' : '📨 Notify'}
+                            </motion.button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { walletApi } from '../../services/api';
 import { notify } from '../../services/notify';
 
-const DAILY_LIMIT = 10;
+const DEFAULT_dailyLimit = 10;
 const SPIN_COST   = 100;
 const HIST_KEY    = 'pts_spin_history_v2';
 
@@ -168,6 +168,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
   const [spinning,    setSpinning]    = useState(false);
   const [rotation,    setRotation]    = useState(0);
   const [spinsLeft,   setSpinsLeft]   = useState<number | null>(null);
+  const [dailyLimit,  setDailyLimit]  = useState(DEFAULT_dailyLimit);
   const [aiPoints,    setAiPoints]    = useState<number | null>(null);
   const [sessionHistory, setSessionHistory] = useState<SpinResult[]>([]);
   const [lastResult,  setLastResult]  = useState<SpinResult | null>(null);
@@ -187,6 +188,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
     ]).then(([statusRes, histRes]) => {
       setSpinsLeft(statusRes.data.spinsLeft);
       setAiPoints(statusRes.data.aiPoints);
+      setDailyLimit((statusRes.data as any).dailyLimit ?? DEFAULT_dailyLimit);
       if (statusRes.data.spinsLeft === 0 && statusRes.data.aiPoints < SPIN_COST) setShowSummary(true);
 
       // Merge server logs into history (server is source of truth for points spins)
@@ -243,7 +245,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
           const totalCash    = todayEntries.filter(e => e.type === 'cash').reduce((s, e) => s + e.amount, 0);
           const totalPtsBack = todayEntries.filter(e => e.type === 'points').reduce((s, e) => s + e.amount, 0);
           const totalSpent   = todayEntries.length * SPIN_COST;
-          let msg = `All ${DAILY_LIMIT} spins done! Spent ${totalSpent} pts.`;
+          let msg = `All ${dailyLimit} spins done! Spent ${totalSpent} pts.`;
           if (totalCash > 0)    msg += ` Won ₹${totalCash}`;
           if (totalPtsBack > 0) msg += `${totalCash > 0 ? ' +' : ' Won '} ${totalPtsBack} pts back`;
           notify.info(msg, { duration: 8000 });
@@ -259,7 +261,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
   const today          = todayStr();
   const todayHistory   = allHistory.filter(e => e.date === today);
   const spinsUsedToday = todayHistory.length;
-  const spinsLeftCalc  = spinsLeft !== null ? spinsLeft : Math.max(0, DAILY_LIMIT - spinsUsedToday);
+  const spinsLeftCalc  = spinsLeft !== null ? spinsLeft : Math.max(0, dailyLimit - spinsUsedToday);
 
   const todayCash     = todayHistory.filter(e => e.type === 'cash').reduce((s, e) => s + e.amount, 0);
   const todayPtsBack  = todayHistory.filter(e => e.type === 'points').reduce((s, e) => s + e.amount, 0);
@@ -311,7 +313,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
                 {/* Stats bar */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
                   {[
-                    { label: 'Spins', value: `${summaryHistory.length}/${DAILY_LIMIT}`, color: '#6ee7b7' },
+                    { label: 'Spins', value: `${summaryHistory.length}/${dailyLimit}`, color: '#6ee7b7' },
                     { label: 'Cash Won', value: todayCash > 0 ? `+₹${todayCash}` : '₹0', color: todayCash > 0 ? '#4ade80' : '#6b7280' },
                     { label: 'Net Pts', value: `${todayNetPts > 0 ? '+' : ''}${todayNetPts}`, color: todayNetPts > 0 ? '#a5b4fc' : '#f87171' },
                   ].map(s => (
@@ -402,7 +404,7 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
               <div>
                 <h2 style={{ color: '#fff', fontWeight: 900, fontSize: 19, margin: 0 }}>⭐ Points Spin</h2>
                 <p style={{ color: '#22c55e', fontSize: 11, margin: '2px 0 0', fontWeight: 600, letterSpacing: '0.3px' }}>
-                  {SPIN_COST} AI pts / spin · Win real ₹ · {DAILY_LIMIT}/day
+                  {SPIN_COST} AI pts / spin · Win real ₹ · {dailyLimit}/day
                 </p>
               </div>
               <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>✕</button>
@@ -437,15 +439,15 @@ export function PointsSpinModal({ onClose, onBalanceUpdate }: Props) {
                   <div style={{ padding: '8px 12px', borderRadius: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)' }}>
                     <p style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Spins Left</p>
                     <p style={{ color: isLoading ? '#6b7280' : spinsLeftCalc === 0 ? '#f87171' : '#fde047', fontSize: 16, fontWeight: 900, margin: 0 }}>
-                      {isLoading ? '…' : `${spinsLeftCalc} / ${DAILY_LIMIT}`}
+                      {isLoading ? '…' : `${spinsLeftCalc} / ${dailyLimit}`}
                     </p>
                   </div>
                 </div>
 
                 {/* Progress dots */}
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, padding: '0 16px 8px', flexShrink: 0 }}>
-                  {Array.from({ length: DAILY_LIMIT }).map((_, i) => {
-                    const used = i < spinsUsedToday || (spinsLeft !== null && i < (DAILY_LIMIT - spinsLeft));
+                  {Array.from({ length: dailyLimit }).map((_, i) => {
+                    const used = i < spinsUsedToday || (spinsLeft !== null && i < (dailyLimit - spinsLeft));
                     return (
                       <div key={i} style={{
                         width: used ? 18 : 7, height: 7, borderRadius: 4,

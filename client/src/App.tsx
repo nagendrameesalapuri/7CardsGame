@@ -21,6 +21,7 @@ import { SurvivalTournamentPage } from './pages/SurvivalTournamentPage';
 import { ProgressionPage } from './pages/ProgressionPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { AdminPortalPage } from './pages/AdminPortalPage';
+import { RoomInviteToast } from './components/ui/RoomInviteToast';
 
 // Handle Google OAuth callback token — runs inside BrowserRouter so useNavigate works
 function AuthCallback() {
@@ -775,6 +776,7 @@ export function App() {
         </Routes>
 
         <Toaster position="top-center" containerStyle={{ zIndex: 9999 }} toastOptions={{ style: { background: 'transparent', boxShadow: 'none', padding: 0 } }} />
+        <RoomInviteToast />
       </BrowserRouter>
     </ThemeProvider>
   );
