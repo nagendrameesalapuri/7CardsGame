@@ -15,7 +15,7 @@ import {
   kickPlayerFromGame,
   getActiveGame,
 } from "../socket/handlers/gameHandler";
-import { refundAbandonedGame, getHoldExploitStats, _resetHoldExploitTracker } from "../socket/handlers/roomHandler";
+import { refundAbandonedGame, releaseAllHolds, getHoldExploitStats, _resetHoldExploitTracker } from "../socket/handlers/roomHandler";
 import { getSpectatorCounts } from "../socket/handlers/spectatorHandler";
 import { getOnlineUserIds } from "../socket/index";
 import { WithdrawalRequest } from "../models/WithdrawalRequest";
@@ -347,17 +347,20 @@ export default function createAdminRouter(io: Server) {
     try {
       const { code } = req.params;
 
-      // Refund entry fees if this was a cash game in progress
       const room = await Room.findOne({ code: code.toUpperCase() });
       if (room) {
+        // Release pre-game holds (waiting room, entry_hold transactions)
+        await releaseAllHolds(room, "Admin force-ended room");
+        // Refund locked entries if game was already live
         await refundAbandonedGame(room);
+        // Soft-delete: keep the record so Room Tracker can display it
+        room.status    = 'finished' as any;
+        room.matchState = 'cancelled' as any;
+        await room.save();
       }
 
       // Force-end in-memory game
       const ended = forceEndGame(io, code);
-
-      // Clean up DB room
-      await Room.deleteOne({ code: code.toUpperCase() });
 
       // Notify everyone in that room
       io.to(code).emit("game:abandoned", {
@@ -2034,6 +2037,64 @@ export default function createAdminRouter(io: Server) {
             }),
             startedAt: g.startedAt, endedAt: g.endedAt??null,
           });
+        }
+      }
+
+      // ── ROOMS that never became a Game (waiting / cancelled / abandoned) ───────
+      // These are rooms where a code was generated but the game never started.
+      if (['all','multiplayer_free','multiplayer_wager'].includes(type)) {
+        // matchState 'live'/'completed' means a Game was created — skip those (already in games query)
+        const rMatch: any = {
+          createdAt: { $gte: since },
+          matchState: { $in: ['forming', 'ready', 'cancelled', 'abandoned'] },
+        };
+        if (type === 'multiplayer_free')  rMatch['config.entryFee'] = { $lte: 0 };
+        if (type === 'multiplayer_wager') rMatch['config.entryFee'] = { $gt: 0 };
+        // Exclude bot-only rooms (vs-AI waiting rooms)
+        rMatch['players.isBot'] = { $ne: true };
+
+        if (stFil === 'finished')  rMatch.matchState = { $in: ['cancelled', 'abandoned'] };
+        if (stFil === 'playing')   rMatch.matchState = { $in: ['forming', 'ready'] };
+        if (stFil === 'abandoned') rMatch.matchState = { $in: ['cancelled', 'abandoned'] };
+        if (search) rMatch.$or = [
+          { code:                 { $regex: search, $options: 'i' } },
+          { 'players.username':   { $regex: search, $options: 'i' } },
+        ];
+
+        const rooms = await Room.find(rMatch).sort({ createdAt: -1 }).limit(200).lean() as any[];
+        if (rooms.length > 0) {
+          const roomCodes = rooms.map((r: any) => r.code);
+          const rTxns = await Transaction.find({ 'metadata.roomCode': { $in: roomCodes } }).lean() as any[];
+          const rTxnMap = new Map<string, any[]>();
+          for (const t of rTxns) {
+            const rc = String(t.metadata?.roomCode ?? '');
+            if (!rTxnMap.has(rc)) rTxnMap.set(rc, []);
+            rTxnMap.get(rc)!.push(t);
+          }
+          for (const r of rooms) {
+            const fee  = (r.config as any)?.entryFee ?? 0;
+            const rType = fee > 0 ? 'multiplayer_wager' : 'multiplayer_free';
+            const rt   = rTxnMap.get(r.code) ?? [];
+            const summ = txnSummary(rt);
+            const ms   = r.matchState as string;
+            const trackerStatus = ms === 'cancelled' || ms === 'abandoned' ? 'abandoned' : 'waiting';
+            items.push({
+              id: String(r._id), type: rType, roomCode: r.code,
+              roomName: r.name,
+              status: trackerStatus,
+              players: (r.players ?? []).map((p: any) => ({
+                userId: p.userId, username: p.username, avatar: p.avatar ?? 'avatar_1',
+                isBot: p.isBot, isWinner: false, score: 0,
+              })),
+              winner: null,
+              entryFee: fee, entryPoints: 0,
+              pot: fee * (r.players ?? []).filter((p: any) => !p.isBot).length,
+              ...summ,
+              hasRefundIssue: fee > 0 && summ.totalRefunded === 0 && (r.heldPlayerIds?.length ?? 0) > 0,
+              roundCount: 0, rounds: [],
+              startedAt: r.createdAt, endedAt: null,
+            });
+          }
         }
       }
 
