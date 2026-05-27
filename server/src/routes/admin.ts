@@ -2462,14 +2462,17 @@ export default function createAdminRouter(io: Server) {
         .sort({ createdAt: -1 })
         .lean();
 
-      // All users who have ever referred someone (referralCount > 0)
-      const referrers = await User.find({ referralCount: { $gt: 0 } })
-        .select("_id username avatar referralCode referralCount")
-        .lean();
-
       // All users who were referred (have referredBy set)
       const referred = await User.find({ referredBy: { $ne: null, $exists: true } })
         .select("_id username avatar referredBy referralRewardPaid createdAt")
+        .lean();
+
+      // Collect all referral codes used so we can look up referrers regardless of referralCount
+      const usedCodes = [...new Set(referred.map((u: any) => u.referredBy).filter(Boolean))];
+
+      // Fetch all users who own those codes (includes pending referrers whose referred user hasn't deposited yet)
+      const referrers = await User.find({ referralCode: { $in: usedCodes } })
+        .select("_id username avatar referralCode referralCount")
         .lean();
 
       // Build referrer map for quick lookup: referralCode → referrer info
