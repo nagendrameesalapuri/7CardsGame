@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type TransactionType =
   | 'deposit' | 'withdrawal' | 'winning' | 'entry_fee' | 'refund' | 'bonus'
+  | 'referral_bonus'      // Referral reward — paid to referrer + referred user on first deposit
   // New hold-system types
   | 'entry_hold'          // Entry fee placed on hold (no wallet deduction yet)
   | 'entry_released'      // Hold cancelled before game went LIVE (no balance change)
@@ -47,6 +48,7 @@ const TransactionSchema = new Schema<ITransaction>(
       type: String,
       enum: [
         'deposit', 'withdrawal', 'winning', 'entry_fee', 'refund', 'bonus',
+        'referral_bonus',
         'entry_hold', 'entry_released', 'entry_locked', 'match_settlement',
         'abandoned_resolution', 'system_rollback',
       ],

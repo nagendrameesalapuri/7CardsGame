@@ -26,6 +26,10 @@ export interface IUser extends Document {
   spinDailyCount: number;
   pointsSpinLastDate?: string;
   pointsSpinDailyCount: number;
+  referralCode?: string;
+  referredBy?: string;
+  referralRewardPaid: boolean;
+  referralCount: number;
   favorites: IFavorite[];
   stats: {
     gamesPlayed: number;
@@ -61,6 +65,10 @@ const UserSchema = new Schema<IUser>(
     spinDailyCount:       { type: Number, default: 0 },
     pointsSpinLastDate:   { type: String },
     pointsSpinDailyCount: { type: Number, default: 0 },
+    referralCode:         { type: String, sparse: true, unique: true, uppercase: true },
+    referredBy:           { type: String, default: null },
+    referralRewardPaid:   { type: Boolean, default: false },
+    referralCount:        { type: Number, default: 0 },
     stats: {
       gamesPlayed: { type: Number, default: 0 },
       gamesWon: { type: Number, default: 0 },

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { roomsApi, configApi, walletApi } from '../services/api';
+import { roomsApi, configApi, walletApi, referralApi } from '../services/api';
 import { notify } from '../services/notify';
 import { on } from '../services/socket';
 import { Layout } from '../components/layout/Layout';
@@ -82,6 +82,8 @@ export function LobbyPage() {
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralCopied, setReferralCopied] = useState(false);
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
     featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '' },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
@@ -161,6 +163,9 @@ export function LobbyPage() {
         if (!(r.data as any).launchBonusClaimed) {
           setShowLaunchBonus(true);
         }
+      }).catch(() => {});
+      referralApi.get().then(r => {
+        setReferralCode(r.data.referralCode);
       }).catch(() => {});
     }
 
@@ -558,6 +563,104 @@ export function LobbyPage() {
                       </span>
                     </div>
                   </motion.button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Refer & Earn */}
+            {!user?.isGuest && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
+                className="relative overflow-hidden rounded-2xl cursor-pointer"
+                onClick={() => navigate('/profile')}
+                style={{
+                  background: 'linear-gradient(135deg,rgba(6,22,14,0.98),rgba(4,14,10,0.97))',
+                  border: '1px solid rgba(52,211,153,0.28)',
+                  boxShadow: '0 4px 32px rgba(52,211,153,0.06)',
+                }}>
+                {/* Glow blobs */}
+                <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(52,211,153,0.14),transparent 70%)', filter: 'blur(24px)' }} />
+                <div className="absolute -bottom-6 -left-6 w-28 h-28 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(251,191,36,0.08),transparent 70%)', filter: 'blur(20px)' }} />
+                <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(52,211,153,0.5),transparent)' }} />
+
+                <div className="relative px-4 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                      style={{ background: 'linear-gradient(135deg,rgba(52,211,153,0.2),rgba(16,185,129,0.1))', border: '1px solid rgba(52,211,153,0.35)' }}>
+                      🎁
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-base font-black text-white">Refer &amp; Earn</p>
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                          style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399', border: '1px solid rgba(52,211,153,0.3)' }}>
+                          ₹50 BONUS
+                        </span>
+                      </div>
+                      <p className="text-xs text-dark-muted">Invite friends · Both of you win cash</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative px-4 py-3 flex flex-col gap-2">
+                  {/* Reward pills */}
+                  <div className="flex gap-2">
+                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
+                      style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                      <span className="text-base">🎁</span>
+                      <div>
+                        <p className="text-xs font-black" style={{ color: '#34d399' }}>You get ₹50</p>
+                        <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>per friend who deposits</p>
+                      </div>
+                    </div>
+                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
+                      style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                      <span className="text-base">🌟</span>
+                      <div>
+                        <p className="text-xs font-black" style={{ color: '#fbbf24' }}>Friend gets ₹30</p>
+                        <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>on their first deposit</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Code row */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>Code:</span>
+                      <span className="font-mono font-black text-base tracking-[0.2em]" style={{ color: '#34d399' }}>
+                        {referralCode ?? '······'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const text = referralCode ? `${window.location.origin}/?ref=${referralCode}` : '';
+                        if (!text) return;
+                        if (navigator.clipboard?.writeText) {
+                          navigator.clipboard.writeText(text).catch(() => {});
+                        } else {
+                          const el = document.createElement('textarea');
+                          el.value = text; el.style.position = 'fixed'; el.style.opacity = '0';
+                          document.body.appendChild(el); el.select();
+                          document.execCommand('copy'); document.body.removeChild(el);
+                        }
+                        setReferralCopied(true);
+                        setTimeout(() => setReferralCopied(false), 2000);
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-black transition-all flex-shrink-0"
+                      style={{
+                        background: referralCopied ? 'rgba(52,211,153,0.28)' : 'rgba(52,211,153,0.14)',
+                        color: '#34d399',
+                        border: '1px solid rgba(52,211,153,0.35)',
+                      }}>
+                      {referralCopied ? '✓ Copied!' : '⎘ Copy Link'}
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    Tap card to see full details → Profile › Refer tab
+                  </p>
                 </div>
               </motion.div>
             )}

@@ -51,7 +51,8 @@ type Section =
   | "gamereview"
   | "holdsystem"
   | "spinanalytics"
-  | "roomtracker";
+  | "roomtracker"
+  | "referrals";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -457,6 +458,8 @@ function UsersSection() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editPointsUser, setEditPointsUser] = useState<{ id: string; username: string; aiPoints: number } | null>(null);
   const [pointsDelta, setPointsDelta] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Debounce search — only fire query 400 ms after user stops typing
   useEffect(() => {
@@ -495,15 +498,80 @@ function UsersSection() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const pageIds = users.map(u => String(u.id));
+    const allSelected = pageIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) pageIds.forEach(id => next.delete(id));
+      else pageIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Permanently delete ${selectedIds.size} selected user${selectedIds.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      const { data } = await admin.deleteBulkUsers([...selectedIds]);
+      setSelectedIds(new Set());
+      fetchUsers();
+      alert(`Deleted ${data.deleted} user${data.deleted !== 1 ? 's' : ''}`);
+    } catch {
+      alert('Failed to delete selected users');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-lg font-bold text-white">User Management</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {!loading && (
             <span className="text-xs text-dark-muted">
               {total} user{total !== 1 ? "s" : ""}
             </span>
+          )}
+          {/* Select All toggle */}
+          {!loading && users.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className="text-[11px] px-3 py-1.5 rounded-lg font-semibold"
+              style={{
+                background: users.every(u => selectedIds.has(String(u.id))) ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.1)",
+                color: "#818cf8",
+                border: "1px solid rgba(99,102,241,0.35)",
+              }}
+            >
+              {users.every(u => selectedIds.has(String(u.id))) ? "✓ Deselect All" : "Select All"}
+            </button>
+          )}
+          {/* Delete selected */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              disabled={bulkDeleting}
+              className="text-[11px] px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
+              style={{
+                background: "rgba(255,59,92,0.2)",
+                color: "#ff6b8a",
+                border: "1px solid rgba(255,59,92,0.5)",
+                opacity: bulkDeleting ? 0.6 : 1,
+              }}
+            >
+              🗑 Delete Selected ({selectedIds.size})
+            </button>
           )}
           <button
             onClick={async () => {
@@ -575,16 +643,19 @@ function UsersSection() {
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))" }}>
           {users.map((u) => {
             const winRate = u.stats.gamesPlayed > 0 ? Math.round((u.stats.gamesWon / u.stats.gamesPlayed) * 100) : 0;
-            const accentColor = u.isAdmin ? "#a855f7" : u.isBanned ? "#ff3b5c" : u.isOnline ? "#4ade80" : "#6366f1";
-            const glowColor   = u.isAdmin ? "rgba(168,85,247,0.18)" : u.isBanned ? "rgba(255,59,92,0.12)" : u.isOnline ? "rgba(74,222,128,0.1)" : "rgba(99,102,241,0.1)";
+            const isSelected = selectedIds.has(String(u.id));
+            const accentColor = isSelected ? "#f87171" : u.isAdmin ? "#a855f7" : u.isBanned ? "#ff3b5c" : u.isOnline ? "#4ade80" : "#6366f1";
+            const glowColor   = isSelected ? "rgba(248,113,113,0.18)" : u.isAdmin ? "rgba(168,85,247,0.18)" : u.isBanned ? "rgba(255,59,92,0.12)" : u.isOnline ? "rgba(74,222,128,0.1)" : "rgba(99,102,241,0.1)";
             return (
               <motion.div
                 key={String(u.id)}
                 layout
                 className="rounded-2xl flex flex-col overflow-hidden"
                 style={{
-                  background: "linear-gradient(160deg, rgba(15,12,35,0.95) 0%, rgba(10,8,28,0.98) 100%)",
-                  border: `1px solid ${accentColor}40`,
+                  background: isSelected
+                    ? "linear-gradient(160deg, rgba(40,15,15,0.97) 0%, rgba(28,8,8,0.99) 100%)"
+                    : "linear-gradient(160deg, rgba(15,12,35,0.95) 0%, rgba(10,8,28,0.98) 100%)",
+                  border: `1px solid ${accentColor}${isSelected ? '80' : '40'}`,
                   boxShadow: `0 4px 24px ${glowColor}, 0 1px 0 rgba(255,255,255,0.04) inset`,
                   opacity: u.isBanned ? 0.7 : 1,
                 }}
@@ -596,6 +667,17 @@ function UsersSection() {
                 <div className="p-4 flex flex-col gap-3">
                   {/* Header: avatar + name + online dot */}
                   <div className="flex items-center gap-3">
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => toggleSelect(String(u.id))}
+                      className="flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-all"
+                      style={{
+                        background: isSelected ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.05)",
+                        border: `2px solid ${isSelected ? "#f87171" : "rgba(255,255,255,0.15)"}`,
+                      }}
+                    >
+                      {isSelected && <span style={{ color: "#f87171", fontSize: 10, fontWeight: 900 }}>✓</span>}
+                    </button>
                     <div className="relative flex-shrink-0">
                       <Avatar avatar={u.avatar} size="sm" />
                       {u.isOnline && (
@@ -5405,6 +5487,7 @@ interface SpinUserStat {
   totalMoneyWon: number;
   totalMoneySpent: number;
   totalPointsSpent: number;
+  totalPointsWon: number;
   lastSpinAt?: string;
 }
 
@@ -5629,6 +5712,7 @@ function SpinAnalyticsSection() {
                     <th className="text-center px-3 py-2 text-dark-muted font-semibold">All-Time Pts</th>
                     <th className="text-center px-3 py-2 font-semibold" style={{ color: "#f87171" }}>₹ Spent</th>
                     <th className="text-center px-3 py-2 font-semibold" style={{ color: "#fb923c" }}>Pts Spent</th>
+                    <th className="text-center px-3 py-2 font-semibold" style={{ color: "#a78bfa" }}>Pts Won</th>
                     <th className="text-center px-3 py-2 text-dark-muted font-semibold">₹ Won</th>
                     <th className="text-center px-3 py-2 text-dark-muted font-semibold">Last Spin</th>
                     <th className="text-center px-3 py-2 text-dark-muted font-semibold">Reset</th>
@@ -5674,6 +5758,10 @@ function SpinAnalyticsSection() {
                       {/* Pts Spent */}
                       <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fb923c" }}>
                         {u.totalPointsSpent.toLocaleString("en-IN")}
+                      </td>
+                      {/* Pts Won */}
+                      <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#a78bfa" }}>
+                        {(u.totalPointsWon ?? 0).toLocaleString("en-IN")}
                       </td>
                       {/* ₹ Won */}
                       <td className="px-3 py-2.5 text-center font-bold" style={{ color: "#fbbf24" }}>
@@ -5945,6 +6033,191 @@ function fmtDate(d: string|Date|null) {
   return dt.toLocaleDateString("en-IN",{day:"2-digit",month:"short"}) + " " + dt.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
 }
 
+// ── Referrals Section ─────────────────────────────────────────────────────────
+function ReferralsSection() {
+  const [data, setData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState<"events" | "leaderboard">("events");
+
+  React.useEffect(() => {
+    admin.getReferrals()
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <p className="text-dark-muted animate-pulse text-sm">Loading referrals…</p>
+    </div>
+  );
+
+  const stats = data?.stats ?? {};
+  const events: any[] = data?.referralEvents ?? [];
+  const topReferrers: any[] = data?.topReferrers ?? [];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-black text-white">🤝 Referral Programme</h2>
+        <span className="text-xs px-3 py-1 rounded-full font-bold" style={{ background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.25)" }}>
+          ₹50 referrer · ₹30 referred
+        </span>
+      </div>
+
+      {/* ── Stats cards ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {[
+          { label: "Total Referrals",   value: stats.totalReferrals   ?? 0,                      icon: "👥", color: "#60a5fa" },
+          { label: "Rewards Paid",      value: stats.paidReferrals    ?? 0,                      icon: "✅", color: "#34d399" },
+          { label: "Pending Reward",    value: stats.pendingReferrals ?? 0,                      icon: "⏳", color: "#fbbf24" },
+          { label: "Total Paid Out",    value: `₹${stats.totalPaidOut ?? 0}`,                   icon: "💸", color: "#f87171" },
+          { label: "Referrer Bonuses",  value: `₹${stats.totalReferrerPayout ?? 0}`,            icon: "🎁", color: "#a78bfa" },
+          { label: "Referred Bonuses",  value: `₹${stats.totalReferredPayout ?? 0}`,            icon: "🌟", color: "#fb923c" },
+        ].map(s => (
+          <div key={s.label} className="rounded-2xl p-4" style={cardStyle}>
+            <p className="text-xl mb-1">{s.icon}</p>
+            <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-[10px] text-dark-muted mt-0.5 font-medium">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tab toggle ──────────────────────────────────────────────────── */}
+      <div className="flex gap-2 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.04)" }}>
+        {(["events", "leaderboard"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className="px-4 py-1.5 rounded-lg text-xs font-bold transition-all capitalize"
+            style={tab === t
+              ? { background: "rgba(52,211,153,0.18)", color: "#34d399", border: "1px solid rgba(52,211,153,0.35)" }
+              : { color: "rgba(255,255,255,0.35)" }}>
+            {t === "events" ? "📋 All Referrals" : "🏆 Top Referrers"}
+          </button>
+        ))}
+      </div>
+
+      {/* ── All Referrals table ─────────────────────────────────────────── */}
+      {tab === "events" && (
+        <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+          {events.length === 0 ? (
+            <p className="text-center text-dark-muted text-sm py-10">No referrals yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    {["Referred User", "Referred By", "Code", "Joined", "Reward", "Status"].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((ev, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      className="hover:bg-white/[0.015] transition-colors">
+                      {/* Referred user */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar avatar={ev.referredAvatar} size="sm" />
+                          <span className="font-semibold text-white text-xs">{ev.referredUsername}</span>
+                        </div>
+                      </td>
+                      {/* Referrer */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar avatar={ev.referrerAvatar} size="sm" />
+                          <span className="font-semibold text-xs" style={{ color: "#34d399" }}>{ev.referrerUsername}</span>
+                        </div>
+                      </td>
+                      {/* Code */}
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-lg" style={{ background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)" }}>
+                          {ev.referralCode}
+                        </span>
+                      </td>
+                      {/* Joined */}
+                      <td className="px-4 py-3 text-xs text-dark-muted whitespace-nowrap">
+                        {ev.joinedAt ? new Date(ev.joinedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      {/* Reward paid */}
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {ev.rewardPaid ? (
+                          <span style={{ color: "#fbbf24" }}>₹50 + ₹30</span>
+                        ) : (
+                          <span style={{ color: "rgba(255,255,255,0.3)" }}>Awaiting deposit</span>
+                        )}
+                      </td>
+                      {/* Status badge */}
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                          style={ev.rewardPaid
+                            ? { background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.25)" }
+                            : { background: "rgba(251,191,36,0.1)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>
+                          {ev.rewardPaid ? "✓ Paid" : "⏳ Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Top Referrers leaderboard ───────────────────────────────────── */}
+      {tab === "leaderboard" && (
+        <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+          {topReferrers.length === 0 ? (
+            <p className="text-center text-dark-muted text-sm py-10">No referrers yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    {["Rank", "Player", "Code", "Friends Joined", "Total Earned"].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {topReferrers.map((r, i) => (
+                    <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      className="hover:bg-white/[0.015] transition-colors">
+                      <td className="px-4 py-3">
+                        <span className="text-lg font-black" style={{ color: i === 0 ? "#fbbf24" : i === 1 ? "#9ca3af" : i === 2 ? "#b45309" : "rgba(255,255,255,0.3)" }}>
+                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar avatar={r.avatar} size="sm" />
+                          <span className="font-semibold text-white text-xs">{r.username}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-lg" style={{ background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)" }}>
+                          {r.referralCode}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-black" style={{ color: "#60a5fa" }}>{r.referralCount}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-black" style={{ color: "#fbbf24" }}>₹{r.totalEarned}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RoomTrackerSection() {
   const [items,    setItems]    = React.useState<any[]>([]);
   const [total,    setTotal]    = React.useState(0);
@@ -5960,6 +6233,23 @@ function RoomTrackerSection() {
   const [refunding,    setRefunding]    = React.useState<string | null>(null);
   const [refundingAll, setRefundingAll] = React.useState<string | null>(null);
   const [toast,    setToast]    = React.useState<{ ok: boolean; msg: string } | null>(null);
+  const [copiedCode, setCopiedCode] = React.useState<string | null>(null);
+
+  const copyCode = (e: React.MouseEvent, code: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const text = String(code);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const el = document.createElement('textarea');
+      el.value = text; el.style.position = 'fixed'; el.style.opacity = '0';
+      document.body.appendChild(el); el.select();
+      document.execCommand('copy'); document.body.removeChild(el);
+    }
+    setCopiedCode(text);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
 
   const showToast = (ok: boolean, msg: string) => { setToast({ ok, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -6124,13 +6414,15 @@ function RoomTrackerSection() {
               const sc       = RT_STATUS_COLORS[item.status] ?? { bg:"rgba(255,255,255,0.04)", color:"#9ca3af" };
               const humanPlayers = (item.players ?? []).filter((p: any) => !p.isBot);
               const botPlayers   = (item.players ?? []).filter((p: any) => p.isBot);
-              const hasIssue = item.hasRefundIssue;
-              const unsettled = item.totalFees - item.totalPaid - item.totalRefunded;
               const isAI     = item.type === "ai_game";
               const isSolo   = item.type === "survival_solo";
               const isTeam   = item.type === "survival_team";
               const isWager  = item.type === "multiplayer_wager";
               const isFreeMP = item.type === "multiplayer_free";
+              // Survival prizes are intentionally partial (platform keeps the rake) — never "unsettled"
+              const isSurvival = isSolo || isTeam;
+              const hasIssue = !isSurvival && item.hasRefundIssue;
+              const unsettled = isSurvival ? 0 : item.totalFees - item.totalPaid - item.totalRefunded;
 
               return (
                 <React.Fragment key={item.id}>
@@ -6224,11 +6516,11 @@ function RoomTrackerSection() {
                               👑 {item.winner.username}
                             </span>
                           )}
-                          {(isAI || isWager || isFreeMP) && (item.players??[]).length > 0 && (
+                          {(isAI || isWager || isFreeMP) && (item.players??[]).filter((p:any)=>!p.isBot).length > 0 && (
                             <span style={{ color:"#6b7280" }}>
-                              Scores: {(item.players??[]).map((p:any)=>(
-                                <span key={p.userId} className="font-bold mx-0.5" style={{ color: p.isWinner?"#fbbf24":p.isBot?"#c084fc":"#9ca3af" }}>
-                                  {p.isBot?"🤖 ":""}{p.username} {p.score}
+                              Scores: {(item.players??[]).filter((p:any)=>!p.isBot).map((p:any)=>(
+                                <span key={p.userId} className="font-bold mx-0.5" style={{ color: p.isWinner?"#fbbf24":"#9ca3af" }}>
+                                  {p.username} {p.score}
                                 </span>
                               ))}
                             </span>
@@ -6357,32 +6649,6 @@ function RoomTrackerSection() {
                           )}
                         </div>
 
-                        {/* ── Final Scores (AI / MP games) ── */}
-                        {(isAI || isWager || isFreeMP) && (item.players??[]).length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {(item.players??[]).map((p:any) => (
-                              <div key={p.userId} className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px]"
-                                style={{
-                                  background: p.isWinner ? "rgba(251,191,36,0.1)" : p.isBot ? "rgba(192,132,252,0.07)" : "rgba(255,255,255,0.04)",
-                                  border: `1px solid ${p.isWinner ? "rgba(251,191,36,0.3)" : p.isBot ? "rgba(192,132,252,0.2)" : "rgba(255,255,255,0.07)"}`,
-                                }}>
-                                <Avatar avatar={p.avatar} size="xs" />
-                                <span className="font-bold" style={{ color: p.isWinner?"#fbbf24":p.isBot?"#c084fc":"#d1d5db" }}>
-                                  {p.isBot?"🤖 ":""}{p.username}
-                                </span>
-                                <span className="text-xs font-black ml-1" style={{ color: p.isWinner?"#fbbf24":"#9ca3af" }}>
-                                  {p.score} pts {p.isWinner?"👑":""}
-                                </span>
-                                {isWager && item.totalPaid > 0 && p.isWinner && !p.isBot && (
-                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md ml-1"
-                                    style={{ background:"rgba(0,255,136,0.15)", color:"#00ff88" }}>
-                                    +₹{item.totalPaid}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
 
                         {/* ── Financials ── */}
                         {(item.totalFees > 0 || item.totalPaid > 0 || item.entryPoints > 0 || item.pot > 0) && (
@@ -6438,6 +6704,37 @@ function RoomTrackerSection() {
                                   <p className="text-base font-black" style={{ color:"#fbbf24" }}>₹{unsettled}</p>
                                 </div>
                               )}
+                              {/* User Net P&L */}
+                              {(item.totalFees > 0 || isSurvival) && (() => {
+                                // User paid fees, received prize — their net outcome
+                                const userPnl = item.totalPaid + item.totalRefunded - item.totalFees;
+                                const uc = userPnl > 0 ? "#00ff88" : userPnl < 0 ? "#f87171" : "#9ca3af";
+                                const ub = userPnl > 0 ? "rgba(0,255,136,0.08)" : userPnl < 0 ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.04)";
+                                const ubr= userPnl > 0 ? "rgba(0,255,136,0.2)" : userPnl < 0 ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.08)";
+                                return (
+                                  <div className="rounded-xl p-3" style={{ background:ub, border:`1px solid ${ubr}` }}>
+                                    <p className="text-[9px] text-dark-muted uppercase font-bold tracking-wide mb-1">User P&L</p>
+                                    <p className="text-base font-black" style={{ color:uc }}>
+                                      {userPnl >= 0 ? "+" : ""}₹{userPnl.toFixed(2)}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
+                              {/* Platform P&L */}
+                              {(item.totalFees > 0 || isSurvival) && (() => {
+                                const pnl = item.totalFees - item.totalPaid - item.totalRefunded;
+                                const pnlColor = pnl > 0 ? "#00ff88" : pnl < 0 ? "#f87171" : "#9ca3af";
+                                const pnlBg    = pnl > 0 ? "rgba(0,255,136,0.08)" : pnl < 0 ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.04)";
+                                const pnlBorder= pnl > 0 ? "rgba(0,255,136,0.2)" : pnl < 0 ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.08)";
+                                return (
+                                  <div className="rounded-xl p-3" style={{ background:pnlBg, border:`1px solid ${pnlBorder}` }}>
+                                    <p className="text-[9px] text-dark-muted uppercase font-bold tracking-wide mb-1">Platform P&L</p>
+                                    <p className="text-base font-black" style={{ color:pnlColor }}>
+                                      {pnl >= 0 ? "+" : ""}₹{pnl.toFixed(2)}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
@@ -6469,7 +6766,7 @@ function RoomTrackerSection() {
                                   </div>
                                   {p.score > 0 && <span className="text-dark-muted text-[10px]">Score: <span className="text-white font-semibold">{p.score}</span></span>}
                                   {!p.isBot && perFee > 0 && <span className="text-[10px] font-semibold" style={{ color:"#f87171" }}>Paid ₹{perFee}</span>}
-                                  {!p.isBot && (item.entryFee > 0 || perFee > 0) && (
+                                  {!p.isBot && !isSurvival && (item.entryFee > 0 || perFee > 0) && (
                                     <button disabled={!!refunding}
                                       onClick={e => { e.stopPropagation(); doRefund(p.userId, perFee||item.entryFee, item.roomCode, p.username, item.id); }}
                                       className="text-[10px] px-2.5 py-1 rounded-lg font-bold disabled:opacity-40 whitespace-nowrap transition-all hover:scale-105"
@@ -6514,6 +6811,16 @@ function RoomTrackerSection() {
                                       {r.showCallerUsername && (
                                         <p className="text-dark-muted">Show: <span style={{ color: won?"#00ff88":"#f87171" }}>{r.showCallerIsBot?"🤖 ":""}{r.showCallerUsername}</span></p>
                                       )}
+                                      {(r.playerScores ?? []).length > 0 && (
+                                        <div className="mt-1 pt-1 border-t border-white/5 space-y-0.5">
+                                          {(r.playerScores as any[]).map((ps: any) => (
+                                            <p key={ps.username} className="text-[9px]" style={{ color: ps.isBot ? "#c084fc" : "#9ca3af" }}>
+                                              {ps.isBot ? "🤖 " : ""}{ps.username}: <span className="font-bold text-white">{ps.roundPoints}pts</span>
+                                              <span className="text-[8px] ml-1" style={{ color:"#4b5563" }}>(total {ps.totalScore})</span>
+                                            </p>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -6535,6 +6842,13 @@ function RoomTrackerSection() {
                               {(item.stageResults ?? []).map((s: any) => {
                                 const stageWon = s.teamWon ?? s.playerWon;
                                 const hasRounds = (s.rounds ?? []).length > 0;
+                                // Winner/loser display
+                                const stageWinnerName = stageWon
+                                  ? (item.players?.[0]?.username ?? 'Player')
+                                  : (s.botNames?.[0] ?? s.personality ?? 'Bot');
+                                const stageWinnerIsBot = !stageWon;
+                                // User pts P&L for this stage
+                                const stagePts = s.pointsEarned ?? 0;
                                 return (
                                   <div key={s.stage} className="rounded-2xl overflow-hidden"
                                     style={{
@@ -6545,19 +6859,37 @@ function RoomTrackerSection() {
                                     <div className="flex items-center gap-3 px-4 py-3 flex-wrap"
                                       style={{ background: stageWon?"rgba(0,255,136,0.06)":"rgba(248,113,113,0.06)", borderBottom:`1px solid ${stageWon?"rgba(0,255,136,0.1)":"rgba(248,113,113,0.1)"}` }}>
                                       <span className="text-sm font-black text-white">Stage {s.stage}</span>
+                                      {/* Game type */}
+                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                                        style={{ background: isSolo?"rgba(96,165,250,0.12)":"rgba(244,114,182,0.12)", color: isSolo?"#60a5fa":"#f472b6", border:`1px solid ${isSolo?"rgba(96,165,250,0.25)":"rgba(244,114,182,0.25)"}` }}>
+                                        {isSolo ? "🛡️ Solo Survival" : "👥 Team Arena"}
+                                      </span>
                                       <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
                                         style={{ background: stageWon?"rgba(0,255,136,0.2)":"rgba(248,113,113,0.2)", color: stageWon?"#00ff88":"#f87171" }}>
                                         {stageWon ? "✅ WON" : "❌ LOST"}
                                       </span>
+                                      {/* Winner */}
+                                      <span className="text-[10px] font-bold flex items-center gap-1"
+                                        style={{ color: stageWon?"#fbbf24":"#f87171" }}>
+                                        👑 {stageWinnerIsBot ? "🤖 " : ""}{stageWinnerName}
+                                      </span>
                                       {s.roomCode && (
-                                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg"
-                                          style={{ background:"rgba(255,255,255,0.06)", color:"#9ca3af", border:"1px solid rgba(255,255,255,0.1)" }}>
-                                          🔑 {s.roomCode}
-                                        </span>
+                                        <button
+                                          onClick={e => copyCode(e, s.roomCode)}
+                                          title="Copy room code"
+                                          className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all hover:opacity-70"
+                                          style={{
+                                            background: copiedCode === s.roomCode ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)",
+                                            color: copiedCode === s.roomCode ? "#4ade80" : "#9ca3af",
+                                            border: copiedCode === s.roomCode ? "1px solid rgba(74,222,128,0.3)" : "1px solid rgba(255,255,255,0.1)",
+                                          }}>
+                                          🔑 {copiedCode === s.roomCode ? "Copied!" : s.roomCode} <span style={{ fontSize:9 }}>⎘</span>
+                                        </button>
                                       )}
-                                      {s.pointsEarned > 0 && (
-                                        <span className="font-black text-[11px]" style={{ color:"#00ff88" }}>+{s.pointsEarned} pts</span>
-                                      )}
+                                      {/* User P&L for this stage */}
+                                      <span className="font-black text-[11px]" style={{ color: stagePts > 0 ? "#00ff88" : "#f87171" }}>
+                                        {stagePts > 0 ? `+${stagePts} pts` : stageWon ? "0 pts" : "−0 pts"}
+                                      </span>
                                       {s.roomStartedAt && (
                                         <span className="text-[10px] text-dark-muted ml-auto">{fmtDate(s.roomStartedAt)}</span>
                                       )}
@@ -6608,6 +6940,16 @@ function RoomTrackerSection() {
                                                   )}
                                                   {r.showCallerUsername && (
                                                     <p className="text-[9px] text-dark-muted">Show: <span style={{ color:rWon?"#00ff88":"#f87171" }}>{r.showCallerIsBot?"🤖 ":""}{r.showCallerUsername}</span></p>
+                                                  )}
+                                                  {(r.playerScores ?? []).length > 0 && (
+                                                    <div className="mt-1 pt-1 border-t border-white/5 space-y-0.5">
+                                                      {(r.playerScores as any[]).map((ps: any) => (
+                                                        <p key={ps.username} className="text-[9px]" style={{ color: ps.isBot ? "#c084fc" : "#9ca3af" }}>
+                                                          {ps.isBot ? "🤖 " : ""}{ps.username}: <span className="font-bold text-white">{ps.roundPoints}pts</span>
+                                                          <span className="text-[8px] ml-1" style={{ color:"#4b5563" }}>(total {ps.totalScore})</span>
+                                                        </p>
+                                                      ))}
+                                                    </div>
                                                   )}
                                                 </div>
                                               );
@@ -6780,6 +7122,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
       { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
+      { key: "referrals",     icon: "🤝", label: "Referrals" },
     ],
   },
   {
@@ -7017,6 +7360,7 @@ export function AdminPage() {
               {section === "holdsystem" && <HoldSystemSection />}
               {section === "spinanalytics" && <SpinAnalyticsSection />}
               {section === "roomtracker" && <RoomTrackerSection />}
+              {section === "referrals" && <ReferralsSection />}
             </motion.div>
           </AnimatePresence>
         </div>

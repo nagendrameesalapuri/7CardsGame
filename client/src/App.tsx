@@ -6,7 +6,7 @@ import { useAuthStore } from './store/authStore';
 import { soundService } from './services/sound';
 import { useNotificationStore } from './store/notificationStore';
 import { initFCM, getPermissionState, pingFCMToken, requestPermission, isConfigured } from './services/fcm';
-import { announcementsApi } from './services/api';
+import { announcementsApi, referralApi } from './services/api';
 
 import { HomePage } from './pages/HomePage';
 import { LobbyPage } from './pages/LobbyPage';
@@ -35,6 +35,12 @@ function AuthCallback() {
       if (token) {
         setToken(token);
         await loadMe();
+        // Auto-apply pending referral code saved before Google OAuth redirect
+        const pendingRef = localStorage.getItem('pendingReferralCode');
+        if (pendingRef) {
+          localStorage.removeItem('pendingReferralCode');
+          referralApi.apply(pendingRef).catch(() => {});
+        }
         navigate('/lobby', { replace: true });
       } else {
         navigate('/', { replace: true });

@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { User } from '../models/User';
 import { Game } from '../models/Game';
+import { Transaction } from '../models/Transaction';
+import { generateUniqueReferralCode } from '../utils/referral';
 import { getOnlineUserIds } from '../socket';
 
 const router = Router();
@@ -222,6 +224,82 @@ router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     res.json({ user });
   } catch {
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// ── GET /api/users/referral — own referral info ───────────────────────────────
+router.get('/referral', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot use referrals' });
+
+    let user = await User.findById(req.user!.id)
+      .select('referralCode referredBy referralRewardPaid referralCount')
+      .lean() as any;
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Backfill code for existing users who signed up before this feature
+    if (!user.referralCode) {
+      const code = await generateUniqueReferralCode();
+      await User.updateOne({ _id: req.user!.id }, { $set: { referralCode: code } });
+      user.referralCode = code;
+    }
+
+    const baseUrl = process.env.CLIENT_URL ?? 'https://arenaofsevens.com';
+    res.json({
+      referralCode:       user.referralCode,
+      referralLink:       `${baseUrl}/?ref=${user.referralCode}`,
+      referralCount:      user.referralCount  ?? 0,
+      referralRewardPaid: user.referralRewardPaid ?? false,
+      referredBy:         user.referredBy ?? null,
+    });
+  } catch (err) {
+    console.error('[Referral] get error:', err);
+    res.status(500).json({ error: 'Failed to load referral info' });
+  }
+});
+
+// ── POST /api/users/referral/apply — apply a referral code ───────────────────
+router.post('/referral/apply', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot use referral codes' });
+
+    const { code } = req.body as { code?: string };
+    if (!code || code.trim().length < 4) {
+      return res.status(400).json({ error: 'Enter a valid referral code' });
+    }
+    const normalizedCode = code.trim().toUpperCase();
+
+    const me = await User.findById(req.user!.id)
+      .select('referredBy referralCode')
+      .lean() as any;
+    if (!me) return res.status(404).json({ error: 'User not found' });
+    if (me.referredBy) return res.status(400).json({ error: 'You have already applied a referral code' });
+    if (me.referralCode === normalizedCode) return res.status(400).json({ error: 'You cannot use your own referral code' });
+
+    // Verify the code belongs to a real user
+    const referrer = await User.findOne({ referralCode: normalizedCode }).select('_id username').lean();
+    if (!referrer) return res.status(404).json({ error: 'Invalid referral code — double-check and try again' });
+
+    // Only allow before first successful deposit (prevent gaming the system)
+    const hasDeposit = await Transaction.findOne({
+      userId: String(me._id),
+      type: 'deposit',
+      status: 'completed',
+    }).select('_id').lean();
+    if (hasDeposit) {
+      return res.status(400).json({ error: 'Referral codes can only be applied before your first deposit' });
+    }
+
+    await User.updateOne({ _id: req.user!.id }, { $set: { referredBy: normalizedCode } });
+
+    res.json({
+      success: true,
+      message: `Code applied! You'll both earn rewards when you make your first deposit.`,
+      referrerUsername: (referrer as any).username,
+    });
+  } catch (err) {
+    console.error('[Referral] apply error:', err);
+    res.status(500).json({ error: 'Failed to apply referral code' });
   }
 });
 

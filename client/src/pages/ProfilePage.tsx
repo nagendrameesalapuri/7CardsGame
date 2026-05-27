@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { usersApi, survivalApi, progressionApi, gamesApi } from '../services/api';
+import { usersApi, survivalApi, progressionApi, gamesApi, referralApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
 import { Avatar, AVATARS } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
@@ -161,7 +162,11 @@ export function ProfilePage() {
   const [mpStats, setMpStats] = useState<any>(null);
   const [allAchievements, setAllAchievements] = useState<any[]>([]);
   const [recentGames, setRecentGames] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'stats' | 'achievements' | 'history' | 'favorites'>('stats');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') as 'stats' | 'achievements' | 'history' | 'favorites' | 'referral' | null;
+  const [activeTab, setActiveTab] = useState<'stats' | 'achievements' | 'history' | 'favorites' | 'referral'>(
+    initialTab && ['stats', 'achievements', 'history', 'favorites', 'referral'].includes(initialTab) ? initialTab : 'stats'
+  );
   const [tournamentTab, setTournamentTab] = useState<'solo' | 'team'>('solo');
   const [mpTab, setMpTab] = useState<'free' | 'wager'>('free');
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
@@ -172,6 +177,11 @@ export function ProfilePage() {
   const [favSearchResults, setFavSearchResults] = useState<Array<{ id: string; username: string; avatar: string }>>([]);
   const [favSearchLoading, setFavSearchLoading] = useState(false);
   const [viewingPlayer, setViewingPlayer] = useState<{ userId: string; username: string; avatar: string; isOnline: boolean; lastSeenAt: string | null } | null>(null);
+  const [referral, setReferral] = useState<{ referralCode: string; referralLink: string; referralCount: number; referralRewardPaid: boolean; referredBy: string | null } | null>(null);
+  const [referralCopied, setReferralCopied] = useState(false);
+  const [applyCode, setApplyCode] = useState('');
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyMsg, setApplyMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => { if (!user) loadMe(); }, []); // eslint-disable-line
 
@@ -195,6 +205,7 @@ export function ProfilePage() {
       progressionApi.achievements().then(r => setAllAchievements(r.data.achievements)).catch(() => {});
       gamesApi.history().then(r => setRecentGames(r.data.games.slice(0, 8))).catch(() => {});
       usersApi.getFavorites().then(r => setFavorites(r.data.favorites)).catch(() => {});
+      referralApi.get().then(r => setReferral(r.data)).catch(() => {});
     }
   }, [user?.id]); // eslint-disable-line
 
@@ -434,17 +445,20 @@ export function ProfilePage() {
         </div>
 
         {/* ── TABS ────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-4 gap-1.5 mb-5">
+        <div className="grid grid-cols-5 gap-1.5 mb-5">
           {([
-            ['stats', '📊', 'Stats'],
+            ['stats',        '📊', 'Stats'],
             ['achievements', '🎖️', 'Medals'],
-            ['history', '📜', 'History'],
-            ['favorites', '⭐', `Favs${favorites.length > 0 ? ` (${favorites.length})` : ''}`],
+            ['history',      '📜', 'History'],
+            ['favorites',    '⭐', `Favs${favorites.length > 0 ? ` (${favorites.length})` : ''}`],
+            ['referral',     '🎁', 'Refer'],
           ] as const).map(([key, icon, label]) => (
             <button key={key} onClick={() => setActiveTab(key as any)}
               className="py-2 rounded-xl text-[11px] font-bold transition-all flex flex-col items-center gap-0.5"
               style={activeTab === key
-                ? { background: `${rc.color}22`, color: rc.color, border: `1px solid ${rc.color}55` }
+                ? key === 'referral'
+                  ? { background: 'rgba(52,211,153,0.18)', color: '#34d399', border: '1px solid rgba(52,211,153,0.45)' }
+                  : { background: `${rc.color}22`, color: rc.color, border: `1px solid ${rc.color}55` }
                 : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <span className="text-base leading-none">{icon}</span>
               <span>{label}</span>
@@ -604,6 +618,7 @@ export function ProfilePage() {
                   </AnimatePresence>
                 </SectionCard>
               )}
+
             </motion.div>
           )}
 
@@ -888,6 +903,232 @@ export function ProfilePage() {
                     </div>
                   </>
                 )
+              )}
+            </motion.div>
+          )}
+
+          {/* ── REFERRAL TAB ─────────────────────────────────────────────── */}
+          {activeTab === 'referral' && (
+            <motion.div key="referral" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+
+              {user.isGuest ? (
+                <div className="rounded-2xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p className="text-3xl mb-3">🔒</p>
+                  <p className="text-sm font-bold text-white mb-1">Sign in to access referrals</p>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Guest accounts cannot refer friends or earn rewards</p>
+                </div>
+              ) : referral === null ? (
+                <div className="text-center py-10 text-dark-muted animate-pulse text-sm">Loading…</div>
+              ) : (
+                <>
+                  {/* ── Hero banner ──────────────────────────────────────── */}
+                  <div className="relative rounded-2xl overflow-hidden p-5"
+                    style={{ background: 'linear-gradient(135deg,rgba(16,40,28,0.98) 0%,rgba(8,22,16,0.99) 100%)', border: '1px solid rgba(52,211,153,0.3)' }}>
+                    {/* Glow */}
+                    <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full pointer-events-none" style={{ background: '#34d399', opacity: 0.07, filter: 'blur(40px)' }} />
+                    <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(52,211,153,0.7),transparent)' }} />
+                    <div className="relative flex items-center gap-4">
+                      <div className="text-4xl">🎁</div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: 'rgba(52,211,153,0.6)' }}>Referral Programme</p>
+                        <p className="text-xl font-black text-white leading-tight">Invite Friends.<br />Both of you win.</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-2xl font-black" style={{ color: '#34d399' }}>₹50</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>you earn</p>
+                        <p className="text-lg font-black mt-1" style={{ color: '#fbbf24' }}>₹30</p>
+                        <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>friend gets</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Your code ────────────────────────────────────────── */}
+                  <div className="rounded-2xl p-4" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.35)' }}>Your Referral Code</p>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex-1 rounded-xl px-4 py-3 flex items-center justify-center"
+                        style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.3)' }}>
+                        <span className="font-mono font-black text-2xl tracking-[0.3em]" style={{ color: '#34d399' }}>
+                          {referral.referralCode}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const text = `${window.location.origin}/?ref=${referral.referralCode}`;
+                          if (navigator.clipboard?.writeText) {
+                            navigator.clipboard.writeText(text).catch(() => {});
+                          } else {
+                            const el = document.createElement('textarea');
+                            el.value = text; el.style.position = 'fixed'; el.style.opacity = '0';
+                            document.body.appendChild(el); el.select();
+                            document.execCommand('copy'); document.body.removeChild(el);
+                          }
+                          setReferralCopied(true);
+                          setTimeout(() => setReferralCopied(false), 2000);
+                        }}
+                        className="flex-shrink-0 px-4 py-3 rounded-xl text-xs font-black transition-all"
+                        style={{
+                          background: referralCopied ? 'rgba(52,211,153,0.3)' : 'rgba(52,211,153,0.14)',
+                          color: '#34d399',
+                          border: '1px solid rgba(52,211,153,0.4)',
+                          minWidth: 90,
+                        }}>
+                        {referralCopied ? '✓ Copied!' : '⎘ Copy Link'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      Share your link: <span className="font-mono" style={{ color: 'rgba(52,211,153,0.6)' }}>{window.location.origin}/?ref={referral.referralCode}</span>
+                    </p>
+                  </div>
+
+                  {/* ── Stats ────────────────────────────────────────────── */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                      <p className="text-3xl font-black" style={{ color: '#60a5fa' }}>{referral.referralCount}</p>
+                      <p className="text-xs font-bold text-white mt-1">Friends Joined</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>who used your code</p>
+                    </div>
+                    <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                      <p className="text-3xl font-black" style={{ color: '#fbbf24' }}>₹{referral.referralCount * 50}</p>
+                      <p className="text-xs font-bold text-white mt-1">Total Earned</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>from referral rewards</p>
+                    </div>
+                  </div>
+
+                  {/* ── How it works ─────────────────────────────────────── */}
+                  <div className="rounded-2xl p-4" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>How It Works</p>
+                    <div className="space-y-3">
+                      {[
+                        { step: '1', icon: '🔗', title: 'Share your code', desc: `Send your code ${referral.referralCode} or copy the invite link to a friend`, color: '#60a5fa' },
+                        { step: '2', icon: '👤', title: 'Friend signs up', desc: 'They create an account and enter your referral code', color: '#a78bfa' },
+                        { step: '3', icon: '💳', title: 'Friend makes first deposit', desc: 'As soon as admin approves their first deposit, both rewards are credited automatically', color: '#fb923c' },
+                        { step: '4', icon: '💰', title: 'Both of you get paid', desc: 'You get ₹50 credited to your wallet. Your friend gets ₹30 bonus on top of their deposit', color: '#34d399' },
+                      ].map(s => (
+                        <div key={s.step} className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-7 h-7 rounded-xl flex items-center justify-center text-sm font-black"
+                            style={{ background: `${s.color}18`, border: `1px solid ${s.color}35`, color: s.color }}>
+                            {s.step}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-white">{s.icon} {s.title}</p>
+                            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{s.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Reward breakdown ─────────────────────────────────── */}
+                  <div className="rounded-2xl p-4" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.35)' }}>Reward Breakdown</p>
+                    <div className="space-y-2">
+                      {[
+                        { who: 'You (referrer)', when: 'When friend completes first deposit', get: '₹50', color: '#34d399', icon: '🎁' },
+                        { who: 'Your friend (referred)', when: 'When their first deposit is approved', get: '₹30', color: '#fbbf24', icon: '🌟' },
+                      ].map(r => (
+                        <div key={r.who} className="flex items-center justify-between p-3 rounded-xl"
+                          style={{ background: `${r.color}0d`, border: `1px solid ${r.color}22` }}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{r.icon}</span>
+                            <div>
+                              <p className="text-xs font-black text-white">{r.who}</p>
+                              <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{r.when}</p>
+                            </div>
+                          </div>
+                          <p className="text-lg font-black flex-shrink-0" style={{ color: r.color }}>{r.get}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Important conditions */}
+                    <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <p className="text-[10px] font-bold mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>📋 Conditions</p>
+                      {[
+                        'Reward fires automatically once admin approves the referred user\'s first deposit',
+                        'Each user can only be referred once — the code must be applied before their first deposit',
+                        'You cannot use your own referral code',
+                        'No limit on how many friends you can refer — earn ₹50 for every one',
+                      ].map((c, i) => (
+                        <p key={i} className="text-[10px] mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>• {c}</p>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Referred-by status ───────────────────────────────── */}
+                  {referral.referredBy ? (
+                    <div className="rounded-2xl p-4" style={{ background: 'rgba(10,12,20,0.97)', border: `1px solid ${referral.referralRewardPaid ? 'rgba(52,211,153,0.3)' : 'rgba(251,191,36,0.25)'}` }}>
+                      <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.35)' }}>Your Referral Status</p>
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{referral.referralRewardPaid ? '✅' : '⏳'}</span>
+                        <div>
+                          <p className="text-xs font-black text-white">
+                            {referral.referralRewardPaid ? 'Referral bonus credited!' : 'Referral pending'}
+                          </p>
+                          <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                            {referral.referralRewardPaid
+                              ? `₹30 was added to your wallet when your first deposit was approved.`
+                              : `You joined via code `}
+                            {!referral.referralRewardPaid && (
+                              <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{referral.referredBy}</span>
+                            )}
+                            {!referral.referralRewardPaid && `. Make your first deposit to unlock ₹30 bonus.`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Apply a friend's code ────────────────────────── */
+                    <div className="rounded-2xl p-4" style={{ background: 'rgba(10,12,20,0.97)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Have a Friend's Code?</p>
+                      <p className="text-[11px] mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>Enter it before your first deposit to get ₹30 bonus for yourself</p>
+                      <div className="flex gap-2">
+                        <input
+                          value={applyCode}
+                          onChange={e => {
+                            let val = e.target.value;
+                            // If user pastes a full share link, extract just the code
+                            const refMatch = val.match(/[?&]ref=([A-Z0-9]{4,8})/i);
+                            if (refMatch) val = refMatch[1];
+                            setApplyCode(val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+                            setApplyMsg(null);
+                          }}
+                          placeholder="Enter code e.g. AB3K7X"
+                          className="flex-1 px-3 py-2.5 rounded-xl text-sm font-mono font-black focus:outline-none"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', letterSpacing: '0.15em' }}
+                        />
+                        <button
+                          disabled={applyLoading || applyCode.length < 4}
+                          onClick={async () => {
+                            setApplyLoading(true); setApplyMsg(null);
+                            try {
+                              const r = await referralApi.apply(applyCode);
+                              setApplyMsg({ ok: true, text: r.data.message });
+                              setApplyCode('');
+                              referralApi.get().then(r2 => setReferral(r2.data)).catch(() => {});
+                            } catch (e: any) {
+                              setApplyMsg({ ok: false, text: e?.response?.data?.error ?? 'Failed to apply code' });
+                            } finally {
+                              setApplyLoading(false);
+                            }
+                          }}
+                          className="px-5 py-2.5 rounded-xl text-xs font-black transition-all flex-shrink-0"
+                          style={{
+                            background: applyCode.length >= 4 ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.04)',
+                            color: applyCode.length >= 4 ? '#34d399' : 'rgba(255,255,255,0.2)',
+                            border: `1px solid ${applyCode.length >= 4 ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                            cursor: applyCode.length >= 4 && !applyLoading ? 'pointer' : 'default',
+                          }}>
+                          {applyLoading ? '…' : 'Apply'}
+                        </button>
+                      </div>
+                      {applyMsg && (
+                        <p className="mt-2 text-xs font-medium" style={{ color: applyMsg.ok ? '#34d399' : '#f87171' }}>
+                          {applyMsg.ok ? '✓ ' : '⚠ '}{applyMsg.text}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </motion.div>
           )}

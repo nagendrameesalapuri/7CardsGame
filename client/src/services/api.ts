@@ -85,6 +85,17 @@ export const usersApi = {
   removeFavorite: (targetId: string) => api.delete(`/users/favorites/${targetId}`),
 };
 
+export const referralApi = {
+  get: () => api.get<{
+    referralCode: string;
+    referralLink: string;
+    referralCount: number;
+    referralRewardPaid: boolean;
+    referredBy: string | null;
+  }>("/users/referral"),
+  apply: (code: string) => api.post<{ success: boolean; message: string; referrerUsername: string }>("/users/referral/apply", { code }),
+};
+
 export const gamesApi = {
   history: () => api.get<{ games: any[] }>("/games/history"),
   multiplayerStats: () => api.get<{
@@ -270,6 +281,7 @@ export const admin = {
   kickUser: (id: string) => adminApi.post(`/users/${id}/kick`),
   resetUserStats: (id: string) => adminApi.post(`/users/${id}/reset-stats`),
   deleteUser: (id: string) => adminApi.delete(`/users/${id}`),
+  deleteBulkUsers: (userIds: string[]) => adminApi.delete<{ deleted: number }>("/users/bulk", { data: { userIds } }),
   deleteAllGuests: () => adminApi.delete<{ deleted: number }>("/users/guests"),
 
   getLeaderboard: () => adminApi.get<{ leaderboard: any[] }>("/leaderboard"),
@@ -429,6 +441,13 @@ export const admin = {
 
   resetUserSpins: (userId: string, type: "money" | "points") =>
     adminApi.post(`/spin-analytics/${userId}/reset`, { type }),
+
+  getReferrals: () =>
+    adminApi.get<{
+      stats: { totalReferrals: number; paidReferrals: number; pendingReferrals: number; totalPaidOut: number; totalReferrerPayout: number; totalReferredPayout: number };
+      topReferrers: any[];
+      referralEvents: any[];
+    }>("/referrals"),
 };
 
 export const announcementsApi = {

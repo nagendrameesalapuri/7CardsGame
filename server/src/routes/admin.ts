@@ -23,6 +23,7 @@ import { DepositRequest } from "../models/DepositRequest";
 import { Transaction } from "../models/Transaction";
 import { SupportTicket } from "../models/SupportTicket";
 import { getAnalyticsSnapshot, resetAnalytics } from "../utils/gameAnalytics";
+import { REFERRAL_REWARD_REFERRER, REFERRAL_REWARD_REFERRED } from "../utils/referral";
 import { PlayerProgress } from "../models/PlayerProgress";
 import { computeAndCacheBadge } from "../utils/badgeCache";
 import {
@@ -587,6 +588,29 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
+  // ── Bulk-delete multiple user accounts ────────────────────────────────────
+  router.delete("/users/bulk", async (req: Request, res: Response) => {
+    try {
+      const { userIds } = req.body as { userIds: string[] };
+      if (!Array.isArray(userIds) || userIds.length === 0)
+        return res.status(400).json({ error: "userIds array required" });
+
+      // Kick every online user from the list
+      const sockets = await io.fetchSockets();
+      for (const s of sockets) {
+        if (userIds.includes(String((s as any).userId))) {
+          s.emit("auth:kicked", { message: "Your account has been deleted by an admin" });
+          s.disconnect(true);
+        }
+      }
+
+      const result = await User.deleteMany({ _id: { $in: userIds } });
+      res.json({ success: true, deleted: result.deletedCount });
+    } catch {
+      res.status(500).json({ error: "Failed to bulk-delete users" });
+    }
+  });
+
   // ── Delete user account permanently ────────────────────────────────────────
   router.delete("/users/:id", async (req: Request, res: Response) => {
     try {
@@ -860,6 +884,48 @@ export default function createAdminRouter(io: Server) {
           description: desc,
           metadata: { depositRequestId: dr.id, utrNumber: dr.utrNumber },
         });
+
+        // ── Referral reward: fire on first deposit only ──────────────────────
+        const depositor = await User.findById(dr.userId)
+          .select('referredBy referralRewardPaid username')
+          .lean() as any;
+        if (depositor?.referredBy && !depositor.referralRewardPaid) {
+          const referrer = await User.findOne({ referralCode: depositor.referredBy })
+            .select('_id username')
+            .lean() as any;
+          if (referrer) {
+            // Credit referrer
+            await User.updateOne({ _id: referrer._id }, {
+              $inc: { walletBalance: REFERRAL_REWARD_REFERRER, referralCount: 1 },
+            });
+            await Transaction.create({
+              userId: String(referrer._id),
+              type: 'referral_bonus',
+              amount: REFERRAL_REWARD_REFERRER,
+              status: 'completed',
+              description: `Referral reward — ${depositor.username} made their first deposit`,
+              metadata: { referredUserId: dr.userId, referredUsername: depositor.username },
+            });
+            // Credit referred user
+            await User.updateOne({ _id: dr.userId }, {
+              $inc: { walletBalance: REFERRAL_REWARD_REFERRED },
+              $set:  { referralRewardPaid: true },
+            });
+            await Transaction.create({
+              userId: dr.userId,
+              type: 'referral_bonus',
+              amount: REFERRAL_REWARD_REFERRED,
+              status: 'completed',
+              description: `Referral bonus — joined via ${referrer.username}'s invite`,
+              metadata: { referrerUserId: String(referrer._id), referrerUsername: referrer.username },
+            });
+            console.info(`[Referral] ₹${REFERRAL_REWARD_REFERRER} → ${referrer.username}, ₹${REFERRAL_REWARD_REFERRED} → ${depositor.username}`);
+          } else {
+            // Referrer account deleted — mark paid to prevent retry
+            await User.updateOne({ _id: dr.userId }, { $set: { referralRewardPaid: true } });
+          }
+        }
+        // ────────────────────────────────────────────────────────────────────
       }
 
       res.json({ success: true });
@@ -1780,6 +1846,16 @@ export default function createAdminRouter(io: Server) {
         { 'metadata.exploitFlag': true },
         { $unset: { 'metadata.exploitFlag': '' } },
       );
+      // Release stuck heldBalance on all users — restore available balance
+      await User.updateMany(
+        { heldBalance: { $gt: 0 } },
+        { $set: { heldBalance: 0 } },
+      );
+      // Clear heldPlayerIds on any rooms still in forming/ready state
+      await Room.updateMany(
+        { matchState: { $in: ['forming', 'ready'] }, 'heldPlayerIds.0': { $exists: true } },
+        { $set: { heldPlayerIds: [] } },
+      );
       // Reset the in-memory anti-exploit tracker for all users
       _resetHoldExploitTracker();
       res.json({ success: true, deleted: deleted.deletedCount });
@@ -1807,6 +1883,7 @@ export default function createAdminRouter(io: Server) {
             totalMoneyWon:     { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$prizeType', 'cash'] }] }, '$prizeAmount', 0] } },
             totalMoneySpent:   { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'money'] }, { $eq: ['$isFree', false] }] }, '$costRupees', 0] } },
             totalPointsSpent:  { $sum: { $cond: [{ $and: [{ $eq: ['$spinType', 'points'] }, { $eq: ['$isFree', false] }] }, '$costPoints', 0] } },
+            totalPointsWon:    { $sum: { $cond: [{ $eq: ['$prizeType', 'points'] }, '$prizeAmount', 0] } },
             lastSpinAt:        { $max: '$createdAt' },
           },
         },
@@ -1842,6 +1919,7 @@ export default function createAdminRouter(io: Server) {
           totalMoneyWon:     Math.round((sl.totalMoneyWon ?? 0) * 100) / 100,
           totalMoneySpent:   Math.round((sl.totalMoneySpent ?? 0) * 100) / 100,
           totalPointsSpent:  sl.totalPointsSpent ?? 0,
+          totalPointsWon:    sl.totalPointsWon ?? 0,
           lastSpinAt: sl.lastSpinAt ?? (u.spinLastDate ? new Date(u.spinLastDate) : null),
         };
       }).filter((u: any) => u.allTimeMoneySpin > 0 || u.allTimePointsSpin > 0 || u.moneySpinsToday > 0 || u.pointsSpinsToday > 0)
@@ -1955,8 +2033,8 @@ export default function createAdminRouter(io: Server) {
       const since  = days > 0 ? new Date(Date.now() - days * 86400 * 1000) : new Date(0);
 
       const includeGames = ['all','multiplayer_free','multiplayer_wager','ai_game'].includes(type);
-      const includeSolo  = type === 'survival_solo';
-      const includeTeam  = type === 'survival_team';
+      const includeSolo  = type === 'survival_solo' || type === 'all';
+      const includeTeam  = type === 'survival_team' || type === 'all';
 
       // ── Helpers ──────────────────────────────────────────────────────────────
       // entry_hold = no wallet deduction (just a hold record); only entry_locked / entry_fee actually debit the wallet
@@ -1991,6 +2069,44 @@ export default function createAdminRouter(io: Server) {
         const games = await Game.find(gMatch).sort({ startedAt: -1 }).limit(400).lean() as any[];
 
         const roomIds = games.map((g:any) => g.roomId);
+
+        // Collect human userIds from bot games to cross-reference with survival tournaments
+        const botGameHumanIds = [...new Set(
+          games
+            .filter((g: any) => g.players.some((p: any) => p.isBot))
+            .flatMap((g: any) => g.players.filter((p: any) => !p.isBot).map((p: any) => String(p.userId)))
+        )];
+
+        // Fetch survival solo tournaments for these users in the time window
+        const survTourneys = botGameHumanIds.length
+          ? await SurvivalTournament.find({
+              userId: { $in: botGameHumanIds },
+              createdAt: { $gte: new Date(since.getTime() - 86400000) }, // 1 day buffer
+            }).select('userId createdAt completedAt').lean() as any[]
+          : [];
+        const soloWindows = new Map<string, { start: number; end: number }[]>();
+        for (const t of survTourneys) {
+          const uid = String(t.userId);
+          if (!soloWindows.has(uid)) soloWindows.set(uid, []);
+          soloWindows.get(uid)!.push({ start: new Date(t.createdAt).getTime(), end: t.completedAt ? new Date(t.completedAt).getTime() : Date.now() });
+        }
+
+        // Fetch survival team tournaments for these users in the time window
+        const survTeams = botGameHumanIds.length
+          ? await SurvivalTeam.find({
+              'members.userId': { $in: botGameHumanIds },
+              createdAt: { $gte: new Date(since.getTime() - 86400000) },
+            }).select('members createdAt completedAt').lean() as any[]
+          : [];
+        const teamWindows = new Map<string, { start: number; end: number }[]>();
+        for (const t of survTeams) {
+          for (const m of (t.members ?? [])) {
+            const uid = String(m.userId);
+            if (!teamWindows.has(uid)) teamWindows.set(uid, []);
+            teamWindows.get(uid)!.push({ start: new Date(t.createdAt).getTime(), end: t.completedAt ? new Date(t.completedAt).getTime() : Date.now() });
+          }
+        }
+
         const txns = roomIds.length
           ? await Transaction.find({ 'metadata.roomCode': { $in: roomIds } }).lean() as any[]
           : [];
@@ -2002,8 +2118,30 @@ export default function createAdminRouter(io: Server) {
         }
 
         for (const g of games) {
-          const hasBots  = g.players.some((p:any) => p.isBot);
-          const gType    = hasBots ? 'ai_game' : (g.entryFee ?? 0) > 0 ? 'multiplayer_wager' : 'multiplayer_free';
+          const hasBots      = g.players.some((p:any) => p.isBot);
+          const humanPlayer  = g.players.find((p:any) => !p.isBot);
+          const humanId      = humanPlayer ? String(humanPlayer.userId) : null;
+          const gameTime     = new Date(g.startedAt).getTime();
+
+          // Determine if this bot game is actually a survival stage
+          // by checking if the human player had an active survival tournament at game time
+          let gType = hasBots ? 'ai_game' : (g.entryFee ?? 0) > 0 ? 'multiplayer_wager' : 'multiplayer_free';
+          if (hasBots && humanId) {
+            const inSolo = (soloWindows.get(humanId) ?? []).some(w => gameTime >= w.start && gameTime <= w.end);
+            if (inSolo) gType = 'survival_solo';
+            else {
+              const inTeam = (teamWindows.get(humanId) ?? []).some(w => gameTime >= w.start && gameTime <= w.end);
+              if (inTeam) gType = 'survival_team';
+            }
+          }
+
+          // Survival stage games are shown inside their tournament entry — skip as standalone items
+          if (gType === 'survival_solo' || gType === 'survival_team') continue;
+
+          // Skip if this game's actual type doesn't match the requested filter
+          if (type === 'ai_game' && gType !== 'ai_game') continue;
+          if (type === 'multiplayer_free' && gType !== 'multiplayer_free') continue;
+          if (type === 'multiplayer_wager' && gType !== 'multiplayer_wager') continue;
           const rt       = txnMap.get(g.roomId) ?? [];
           const summ     = txnSummary(rt);
           const humanPct = g.players.filter((p:any)=>!p.isBot).length;
@@ -2033,6 +2171,12 @@ export default function createAdminRouter(io: Server) {
                 showCallerUsername: rShowPR?.username ?? null,
                 showCallerIsBot:    rShowPR ? isBotByName(rShowPR.username) : false,
                 playerCount: pr.length,
+                playerScores: pr.map((x: any) => ({
+                  username: x.username,
+                  isBot: isBotByName(x.username),
+                  roundPoints: x.roundPoints ?? 0,
+                  totalScore: x.totalScore ?? 0,
+                })),
               };
             }),
             startedAt: g.startedAt, endedAt: g.endedAt??null,
@@ -2172,6 +2316,12 @@ export default function createAdminRouter(io: Server) {
                   winnerIsBot:       rWinnerPR ? isBotByNameStage(rWinnerPR.username) : false,
                   showCallerUsername: rShowPR?.username ?? null,
                   showCallerIsBot:    rShowPR ? isBotByNameStage(rShowPR.username) : false,
+                  playerScores: roundPR.map((x: any) => ({
+                    username: x.username,
+                    isBot: isBotByNameStage(x.username),
+                    roundPoints: x.roundPoints ?? 0,
+                    totalScore:  x.totalScore ?? 0,
+                  })),
                 };
               }),
             };
@@ -2302,6 +2452,88 @@ export default function createAdminRouter(io: Server) {
   router.post("/analytics/reset", (_req: Request, res: Response) => {
     resetAnalytics();
     res.json({ success: true, message: "Analytics reset" });
+  });
+
+  // ── GET /api/admin/referrals ─────────────────────────────────────────────────
+  router.get("/referrals", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      // All referral_bonus transactions (two per successful referral: referrer + referred)
+      const txns = await Transaction.find({ type: "referral_bonus" })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // All users who have ever referred someone (referralCount > 0)
+      const referrers = await User.find({ referralCount: { $gt: 0 } })
+        .select("_id username avatar referralCode referralCount")
+        .lean();
+
+      // All users who were referred (have referredBy set)
+      const referred = await User.find({ referredBy: { $ne: null, $exists: true } })
+        .select("_id username avatar referredBy referralRewardPaid createdAt")
+        .lean();
+
+      // Build referrer map for quick lookup: referralCode → referrer info
+      const codeToReferrer = new Map(referrers.map((r: any) => [r.referralCode, r]));
+
+      // Enrich referred list with referrer username
+      const referralEvents = referred.map((u: any) => {
+        const referrer = codeToReferrer.get(u.referredBy) as any;
+        // Find the bonus tx for this referred user
+        const bonusTx = txns.find(
+          (t: any) =>
+            t.userId === String(u._id) &&
+            t.metadata?.referrerUserId != null,
+        );
+        return {
+          referredId:       String(u._id),
+          referredUsername: u.username,
+          referredAvatar:   u.avatar ?? "avatar_1",
+          referrerId:       referrer ? String(referrer._id) : null,
+          referrerUsername: referrer?.username ?? "Unknown",
+          referrerAvatar:   referrer?.avatar ?? "avatar_1",
+          referralCode:     u.referredBy,
+          rewardPaid:       u.referralRewardPaid ?? false,
+          referredGot:      bonusTx ? bonusTx.amount : 0,
+          joinedAt:         u.createdAt,
+          rewardAt:         bonusTx ? bonusTx.createdAt : null,
+        };
+      });
+
+      // Top referrers leaderboard
+      const topReferrers = referrers
+        .map((r: any) => ({
+          id:             String(r._id),
+          username:       r.username,
+          avatar:         r.avatar ?? "avatar_1",
+          referralCode:   r.referralCode,
+          referralCount:  r.referralCount,
+          totalEarned:    r.referralCount * 50,
+        }))
+        .sort((a: any, b: any) => b.referralCount - a.referralCount);
+
+      // Summary stats
+      const totalReferrals       = referred.length;
+      const paidReferrals        = referred.filter((u: any) => u.referralRewardPaid).length;
+      const pendingReferrals     = totalReferrals - paidReferrals;
+      const totalReferrerPayout  = txns
+        .filter((t: any) => t.metadata?.referredUserId)
+        .reduce((s: number, t: any) => s + t.amount, 0);
+      const totalReferredPayout  = txns
+        .filter((t: any) => t.metadata?.referrerUserId)
+        .reduce((s: number, t: any) => s + t.amount, 0);
+      const totalPaidOut         = totalReferrerPayout + totalReferredPayout;
+
+      res.json({
+        stats: { totalReferrals, paidReferrals, pendingReferrals, totalPaidOut, totalReferrerPayout, totalReferredPayout },
+        topReferrers,
+        referralEvents: referralEvents.sort((a: any, b: any) =>
+          new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+        ),
+      });
+    } catch (err) {
+      console.error("[Admin] referrals error:", err);
+      res.status(500).json({ error: "Failed to load referrals" });
+    }
   });
 
   return router;

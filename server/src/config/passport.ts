@@ -2,6 +2,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { User } from '../models/User';
 import { Transaction } from '../models/Transaction';
+import { generateUniqueReferralCode } from '../utils/referral';
 
 const JOINING_BONUS = 30; // ₹30 for new Google sign-ups
 
@@ -25,6 +26,7 @@ export function configurePassport(): void {
             const googleAvatar = profile.photos?.[0]?.value ?? null;
             let user = await User.findOne({ googleId: profile.id });
             if (!user) {
+              const referralCode = await generateUniqueReferralCode();
               user = await User.create({
                 googleId: profile.id,
                 username: profile.displayName?.slice(0, 20) ?? `Player${Date.now()}`,
@@ -32,6 +34,7 @@ export function configurePassport(): void {
                 avatar: googleAvatar ?? 'avatar_1',
                 isGuest: false,
                 walletBalance: JOINING_BONUS,
+                referralCode,
               });
               // Log the joining bonus as a transaction for audit trail
               await Transaction.create({

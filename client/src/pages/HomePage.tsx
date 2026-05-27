@@ -27,9 +27,14 @@ export function HomePage() {
   const [guestError, setGuestError] = useState('');
   const [mode, setMode] = useState<'home' | 'guest'>('home');
 
-  const urlError = new URLSearchParams(window.location.search).get('error');
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlError = urlParams.get('error');
   const googleNotConfigured = urlError === 'google_not_configured';
   const tooManyRequests = urlError === 'too_many_requests';
+
+  // Persist referral code from ?ref= param so it survives the Google OAuth redirect
+  const refCode = urlParams.get('ref');
+  if (refCode) localStorage.setItem('pendingReferralCode', refCode.toUpperCase());
 
   if (isAuthenticated) {
     navigate('/lobby');

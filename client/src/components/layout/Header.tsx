@@ -197,9 +197,10 @@ export function Header() {
   const navItems = [
     { to: '/lobby',         label: 'Play',    icon: '⚔️' },
     ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Board', icon: '🏆' }] : []),
-    { to: '/wallet',        label: 'Rewards', icon: '🎁' },
-    { to: '/notifications', label: 'Alerts',  icon: '🔔' },
-    { to: '/profile',       label: 'Profile', icon: '👤' },
+    { to: '/wallet',                label: 'Rewards', icon: '🎁' },
+    { to: '/notifications',         label: 'Alerts',  icon: '🔔' },
+    { to: '/profile?tab=referral',  label: 'Refer',   icon: '🤝' },
+    { to: '/profile',               label: 'Profile', icon: '👤' },
     ...(user?.isAdmin ? [{ to: '/admin-portal', label: 'Admin', icon: '🛡️' }] : []),
   ];
 
@@ -224,9 +225,10 @@ export function Header() {
           <nav className="hidden sm:flex items-center gap-6 text-sm text-dark-muted">
             <Link to="/lobby"         className="hover:text-white transition-colors">Play</Link>
             {leaderboardEnabled && <Link to="/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>}
-            <Link to="/wallet"        className="hover:text-white transition-colors">Rewards</Link>
-            <Link to="/notifications" className="hover:text-white transition-colors">Alerts</Link>
-            <Link to="/profile"       className="hover:text-white transition-colors">Profile</Link>
+            <Link to="/wallet"               className="hover:text-white transition-colors">Rewards</Link>
+            <Link to="/notifications"        className="hover:text-white transition-colors">Alerts</Link>
+            <Link to="/profile?tab=referral" className="hover:text-white transition-colors" style={{ color: '#4ade80' }}>Refer</Link>
+            <Link to="/profile"              className="hover:text-white transition-colors">Profile</Link>
             {user?.isAdmin && (
               <Link to="/admin-portal" className="hover:text-white transition-colors font-semibold" style={{ color: '#a855f7' }}>Admin</Link>
             )}
@@ -298,7 +300,8 @@ export function Header() {
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-20 bg-dark-surface/95 backdrop-blur-md border-t border-dark-border">
           <div className="flex items-center justify-around h-14">
             {navItems.map(({ to, label, icon }) => {
-              const active = location.pathname === to;
+              const [toPath] = to.split('?');
+              const active = location.pathname === toPath;
               return (
                 <Link
                   key={to}
