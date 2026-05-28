@@ -480,6 +480,11 @@ export const admin = {
       topReferrers: any[];
       referralEvents: any[];
     }>("/referrals"),
+
+  getTransfers: (page = 1) =>
+    adminApi.get<{ transfers: any[]; total: number; page: number; pages: number }>(
+      `/transfers?page=${page}`,
+    ),
 };
 
 export const announcementsApi = {

@@ -2923,5 +2923,106 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
+  // ── GET /api/admin/transfers — paginated friend-transfer log ─────────────
+  router.get('/transfers', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page  = Math.max(1, parseInt(String(req.query.page  ?? 1)));
+      const limit = Math.min(100, parseInt(String(req.query.limit ?? 50)));
+      const skip  = (page - 1) * limit;
+
+      // Fetch all transfer_sent transactions (each = one transfer event)
+      const sentTxs = await Transaction.find({ type: 'transfer_sent' })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean() as any[];
+
+      const total = await Transaction.countDocuments({ type: 'transfer_sent' });
+
+      if (sentTxs.length === 0) {
+        return res.json({ transfers: [], total, page, pages: 0 });
+      }
+
+      // Gather all unique sender and recipient user IDs
+      const senderIds    = [...new Set(sentTxs.map((t: any) => String(t.userId)))];
+      const recipientIds = [...new Set(
+        sentTxs
+          .map((t: any) => String(t.metadata?.transferToUserId ?? ''))
+          .filter(Boolean),
+      )];
+
+      // Load user records (balance + giftBalance) for all involved users
+      const allIds = [...new Set([...senderIds, ...recipientIds])];
+      const users  = await User.find({ _id: { $in: allIds } })
+        .select('_id username avatar walletBalance giftBalance')
+        .lean() as any[];
+      const userMap = new Map(users.map((u: any) => [String(u._id), u]));
+
+      // For each transfer_sent, find the matching transfer_received transaction
+      // (same amount, recipient userId, created within 5 seconds)
+      const enriched = await Promise.all(sentTxs.map(async (sent: any) => {
+        const recipientId = String(sent.metadata?.transferToUserId ?? '');
+        const sender      = userMap.get(String(sent.userId));
+        const recipient   = userMap.get(recipientId);
+
+        // Matching receive transaction
+        const received = recipientId
+          ? await Transaction.findOne({
+              userId:    recipientId,
+              type:      'transfer_received',
+              amount:    sent.amount,
+              createdAt: { $gte: new Date(sent.createdAt.getTime() - 5000), $lte: new Date(sent.createdAt.getTime() + 5000) },
+            }).lean() as any
+          : null;
+
+        // Last qualifying deposit for this sender before this transfer
+        const lastDeposit = await DepositRequest.findOne({
+          userId:    sent.userId,
+          status:    'approved',
+          amount:    { $gte: 50 },
+          updatedAt: { $lte: sent.createdAt },
+        }).sort({ updatedAt: -1 })
+          .select('amount updatedAt submissionType')
+          .lean() as any;
+
+        return {
+          transferId:      String(sent._id),
+          transferredAt:   sent.createdAt,
+          amount:          sent.amount,
+          // Sender snapshot
+          sender: {
+            userId:        String(sent.userId),
+            username:      sent.metadata?.transferToUsername ? (sender?.username ?? sent.metadata?.transferFromUsername) : (sender?.username ?? 'Unknown'),
+            avatar:        sender?.avatar ?? null,
+            balanceBefore: sent.balanceBefore,
+            balanceAfter:  sent.balanceAfter,
+            currentBalance: sender?.walletBalance ?? null,
+          },
+          // Recipient snapshot
+          recipient: {
+            userId:        recipientId,
+            username:      sent.metadata?.transferToUsername ?? recipient?.username ?? 'Unknown',
+            avatar:        recipient?.avatar ?? null,
+            balanceBefore: received?.balanceBefore ?? null,
+            balanceAfter:  received?.balanceAfter ?? null,
+            currentBalance: recipient?.walletBalance ?? null,
+            currentGiftBalance: recipient?.giftBalance ?? null,
+          },
+          // Qualifying deposit that unlocked this transfer
+          qualifyingDeposit: lastDeposit ? {
+            amount:    lastDeposit.amount,
+            approvedAt: lastDeposit.updatedAt,
+            type:      lastDeposit.submissionType ?? 'voucher',
+          } : null,
+        };
+      }));
+
+      res.json({ transfers: enriched, total, page, pages: Math.ceil(total / limit) });
+    } catch (err) {
+      console.error('[Admin] Transfers error:', err);
+      res.status(500).json({ error: 'Failed to load transfer history' });
+    }
+  });
+
   return router;
 }

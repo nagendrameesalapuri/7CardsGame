@@ -54,7 +54,8 @@ type Section =
   | "roomtracker"
   | "referrals"
   | "scheduledtournaments"
-  | "email";
+  | "email"
+  | "transfers";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -7110,6 +7111,231 @@ function ReferralsSection() {
   );
 }
 
+// ── Transfer Tracker ─────────────────────────────────────────────────────────
+
+function TransferTrackerSection() {
+  const [items,   setItems]   = React.useState<any[]>([]);
+  const [total,   setTotal]   = React.useState(0);
+  const [page,    setPage]    = React.useState(1);
+  const [pages,   setPages]   = React.useState(1);
+  const [loading, setLoading] = React.useState(true);
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async (p = 1) => {
+    setLoading(true);
+    try {
+      const { data } = await admin.getTransfers(p);
+      setItems(data.transfers);
+      setTotal(data.total);
+      setPage(data.page);
+      setPages(data.pages);
+    } catch { /* silent */ } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(1); }, [load]);
+
+  const fmt = (n: number | null | undefined) =>
+    n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const fmtDate = (d: string) => {
+    const dt = new Date(d);
+    return dt.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Aggregate summary stats
+  const totalVol = items.reduce((s, t) => s + (t.amount ?? 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-white">💸 Friend Transfer Log</h2>
+          <p className="text-xs text-dark-muted mt-0.5">
+            {total} transfer{total !== 1 ? 's' : ''} total
+            {items.length > 0 && ` · ₹${totalVol.toLocaleString('en-IN')} shown on this page`}
+          </p>
+        </div>
+        <button onClick={() => load(page)}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+          style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}>
+          ↺ Refresh
+        </button>
+      </div>
+
+      {/* Summary stat chips */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Total Transfers', value: total, icon: '🔢', color: '#a5b4fc' },
+            { label: 'Volume (this page)', value: `₹${totalVol.toLocaleString('en-IN')}`, icon: '💰', color: '#fbbf24' },
+            { label: 'Unique Senders', value: new Set(items.map((t: any) => t.sender?.userId)).size, icon: '👤', color: '#34d399' },
+          ].map(s => (
+            <div key={s.label} className="rounded-2xl p-4 flex items-center gap-3" style={cardStyle}>
+              <span className="text-2xl">{s.icon}</span>
+              <div>
+                <p className="text-[10px] text-dark-muted uppercase tracking-wider">{s.label}</p>
+                <p className="text-lg font-black" style={{ color: s.color }}>{s.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-12 text-dark-muted text-sm animate-pulse">Loading transfers…</div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-16 rounded-2xl" style={cardStyle}>
+          <p className="text-4xl mb-3">💸</p>
+          <p className="text-sm font-bold text-white">No transfers yet</p>
+          <p className="text-xs text-dark-muted mt-1">Friend transfers will appear here once players start sending balance.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((t: any) => {
+            const isOpen = expanded === t.transferId;
+            return (
+              <div key={t.transferId} className="rounded-2xl overflow-hidden transition-all"
+                style={{ background: 'rgba(12,14,18,0.97)', border: '1px solid rgba(255,255,255,0.07)' }}>
+
+                {/* ── Row summary ── */}
+                <button
+                  onClick={() => setExpanded(isOpen ? null : t.transferId)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.02] transition-colors text-left">
+
+                  {/* Amount pill */}
+                  <div className="w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+                    style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                    <span className="text-[9px] text-yellow-400 font-bold uppercase tracking-wide">₹</span>
+                    <span className="text-base font-black text-yellow-300 leading-tight">{t.amount}</span>
+                  </div>
+
+                  {/* Sender → Recipient */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-black text-white truncate max-w-[100px]">{t.sender?.username ?? '?'}</span>
+                      <span className="text-yellow-400 text-xs font-black">→</span>
+                      <span className="text-sm font-black text-emerald-300 truncate max-w-[100px]">{t.recipient?.username ?? '?'}</span>
+                    </div>
+                    <p className="text-[10px] text-dark-muted mt-0.5">{fmtDate(t.transferredAt)}</p>
+                  </div>
+
+                  {/* Deposit badge */}
+                  {t.qualifyingDeposit ? (
+                    <div className="flex-shrink-0 text-right hidden sm:block">
+                      <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider">Deposit that unlocked</p>
+                      <p className="text-xs font-black text-indigo-300">₹{t.qualifyingDeposit.amount}</p>
+                      <p className="text-[9px] text-dark-muted">{fmtDate(t.qualifyingDeposit.approvedAt)}</p>
+                    </div>
+                  ) : (
+                    <div className="flex-shrink-0 hidden sm:block">
+                      <span className="text-[9px] text-red-400 font-semibold px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        No deposit found
+                      </span>
+                    </div>
+                  )}
+
+                  <span className="text-dark-muted flex-shrink-0 text-xs transition-transform duration-200"
+                    style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+                </button>
+
+                {/* ── Expanded detail ── */}
+                {isOpen && (
+                  <div className="px-4 pb-4 border-t border-white/5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+
+                      {/* Sender card */}
+                      <div className="rounded-xl p-4 space-y-2"
+                        style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)' }}>
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">↗ Sender</p>
+                        <Row label="Username"       value={t.sender?.username ?? '—'} />
+                        <Row label="User ID"        value={t.sender?.userId ?? '—'} mono />
+                        <Row label="Balance before" value={fmt(t.sender?.balanceBefore)} color="#fbbf24" />
+                        <Row label="Balance after"  value={fmt(t.sender?.balanceAfter)}  color="#f87171" />
+                        <Row label="Current balance" value={fmt(t.sender?.currentBalance)} color="#a5b4fc" />
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Qualifying Deposit</p>
+                          {t.qualifyingDeposit ? (
+                            <>
+                              <Row label="Deposit amount"  value={fmt(t.qualifyingDeposit.amount)} color="#34d399" />
+                              <Row label="Approved at"     value={fmtDate(t.qualifyingDeposit.approvedAt)} />
+                              <Row label="Type"            value={t.qualifyingDeposit.type} />
+                            </>
+                          ) : (
+                            <p className="text-xs text-red-400">No qualifying deposit on record</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Recipient card */}
+                      <div className="rounded-xl p-4 space-y-2"
+                        style={{ background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.18)' }}>
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3">↙ Recipient</p>
+                        <Row label="Username"       value={t.recipient?.username ?? '—'} />
+                        <Row label="User ID"        value={t.recipient?.userId ?? '—'} mono />
+                        <Row label="Balance before" value={fmt(t.recipient?.balanceBefore)} color="#fbbf24" />
+                        <Row label="Balance after"  value={fmt(t.recipient?.balanceAfter)}  color="#34d399" />
+                        <Row label="Current balance"       value={fmt(t.recipient?.currentBalance)} color="#a5b4fc" />
+                        <Row label="Current gift balance"  value={fmt(t.recipient?.currentGiftBalance)} color="#fbbf24" />
+                        <div className="pt-2 border-t border-white/5">
+                          <p className="text-[9px] text-emerald-300 font-semibold">
+                            Gift balance = play-only funds, cannot be withdrawn
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Transfer metadata */}
+                    <div className="mt-3 rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-1"
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <Row label="Transfer ID"   value={t.transferId} mono />
+                      <Row label="Transferred at" value={fmtDate(t.transferredAt)} />
+                      <Row label="Amount"         value={fmt(t.amount)} color="#fbbf24" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button disabled={page <= 1} onClick={() => load(page - 1)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 transition-all"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#e2e8f0' }}>
+            ← Prev
+          </button>
+          <span className="text-xs text-dark-muted">Page {page} / {pages}</span>
+          <button disabled={page >= pages} onClick={() => load(page + 1)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 transition-all"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#e2e8f0' }}>
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Simple label/value row used inside expanded transfer cards
+function Row({ label, value, color, mono }: { label: string; value: string; color?: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-[10px] text-dark-muted flex-shrink-0">{label}</span>
+      <span className={`text-[11px] font-semibold text-right break-all${mono ? ' font-mono' : ''}`}
+        style={{ color: color ?? '#e2e8f0' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function RoomTrackerSection() {
   const [items,    setItems]    = React.useState<any[]>([]);
   const [total,    setTotal]    = React.useState(0);
@@ -8666,6 +8892,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "deposits",      icon: "🎟️", label: "Voucher Queue" },
       { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
+      { key: "transfers",     icon: "💸", label: "Friend Transfers" },
       { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
       { key: "referrals",             icon: "🤝", label: "Referrals" },
       { key: "scheduledtournaments",  icon: "⚔️", label: "Tournaments" },
@@ -8909,6 +9136,7 @@ export function AdminPage() {
               {section === "roomtracker" && <RoomTrackerSection />}
               {section === "referrals" && <ReferralsSection />}
               {section === "scheduledtournaments" && <ScheduledTournamentsSection />}
+              {section === "transfers" && <TransferTrackerSection />}
             </motion.div>
           </AnimatePresence>
         </div>
