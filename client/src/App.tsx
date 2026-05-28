@@ -18,6 +18,7 @@ import { AdminLoginPage } from './pages/AdminLoginPage';
 import { AdminPage } from './pages/AdminPage';
 import { SpectatorPage } from './pages/SpectatorPage';
 import { SurvivalTournamentPage } from './pages/SurvivalTournamentPage';
+import { TournamentsPage } from './pages/TournamentsPage';
 import { ProgressionPage } from './pages/ProgressionPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { AdminPortalPage } from './pages/AdminPortalPage';
@@ -771,6 +772,7 @@ export function App() {
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/spectate/:code" element={<ProtectedRoute><SpectatorPage /></ProtectedRoute>} />
               <Route path="/survival" element={<ProtectedRoute><SurvivalTournamentPage /></ProtectedRoute>} />
+              <Route path="/tournaments" element={<ProtectedRoute><TournamentsPage /></ProtectedRoute>} />
               <Route path="/progression" element={<ProtectedRoute><ProgressionPage /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
               <Route path="/admin-portal" element={<ProtectedRoute><AdminPortalPage /></ProtectedRoute>} />

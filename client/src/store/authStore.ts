@@ -10,12 +10,14 @@ interface AuthState {
   guestToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  comebackBonus: number;
 
   guestLogin: (username: string) => Promise<void>;
   googleLogin: () => void;
   loadMe: () => Promise<void>;
   logout: () => void;
   setToken: (token: string, guestToken?: string) => void;
+  clearComebackBonus: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -24,10 +26,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       guestToken: null,
-      // Start as loading if localStorage already has a token so ProtectedRoute
-      // shows a spinner instead of immediately redirecting to / before loadMe() runs.
       isLoading: !!localStorage.getItem('token'),
       isAuthenticated: false,
+      comebackBonus: 0,
 
       setToken: (token, guestToken) => {
         localStorage.setItem('token', token);
@@ -63,12 +64,13 @@ export const useAuthStore = create<AuthState>()(
         try {
           const res = await authApi.getMe();
           const me = res.data.user;
+          const bonus = (res.data as any).comebackBonus ?? 0;
           if (me.isAdmin) {
             localStorage.setItem('adminToken', token);
           } else {
             localStorage.removeItem('adminToken');
           }
-          set({ user: me, isAuthenticated: true, isLoading: false });
+          set({ user: me, isAuthenticated: true, isLoading: false, comebackBonus: bonus });
           connectSocket(token, get().guestToken ?? undefined);
         } catch {
           set({ user: null, isAuthenticated: false, isLoading: false, token: null });
@@ -77,12 +79,14 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      clearComebackBonus: () => set({ comebackBonus: 0 }),
+
       logout: () => {
         authApi.logout().catch(() => {});
         disconnectSocket();
         localStorage.removeItem('token');
         localStorage.removeItem('guestToken');
-        set({ user: null, token: null, guestToken: null, isAuthenticated: false });
+        set({ user: null, token: null, guestToken: null, isAuthenticated: false, comebackBonus: 0 });
       },
     }),
     {

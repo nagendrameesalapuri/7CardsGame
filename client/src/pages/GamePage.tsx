@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../store/gameStore";
 import { useAuthStore } from "../store/authStore";
@@ -15,10 +15,19 @@ export function GamePage() {
     subscribeToEvents,
     leaveRoom,
     reset,
+    resumeRoomCodes,
+    resumeGame,
   } = useGameStore();
   const { isAuthenticated } = useAuthStore();
   const { active: isSurvival } = useSurvivalStore();
   const navigate = useNavigate();
+
+  // Grace period: wait up to 4s for reconnect response before showing "no game"
+  const [connecting, setConnecting] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setConnecting(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -45,6 +54,22 @@ export function GamePage() {
       navigate("/lobby", { replace: true });
     }
   }, [forceEndedMsg, navigate, reset]);
+
+  // Tournament round transition: when a new tournament room is ready, auto-join it
+  useEffect(() => {
+    const tCode = resumeRoomCodes.find((c) => c.startsWith('T'));
+    if (tCode && !game) {
+      resumeGame(tCode);
+    }
+  }, [resumeRoomCodes, game, resumeGame]);
+
+  // Also catch tournament:room_ready directly (fires when user is still on this page between rounds)
+  useEffect(() => {
+    const unsub = on('tournament:room_ready', (data: any) => {
+      if (data?.roomCode) useGameStore.getState().resumeGame(data.roomCode);
+    });
+    return unsub;
+  }, []);
 
   // When a survival tiebreaker is triggered, set tiebreaker state and go to /survival
   useEffect(() => {
@@ -124,6 +149,19 @@ export function GamePage() {
   if (!isAuthenticated) return null;
 
   if (!game && !room && !isSurvival) {
+    const hasTournamentRoom = resumeRoomCodes.some((c) => c.startsWith('T'));
+    if (hasTournamentRoom || connecting) {
+      // Auto-join in progress or still waiting for reconnect response
+      return (
+        <div className="min-h-screen bg-dark-bg flex flex-col items-center justify-center gap-3">
+          <div className="text-4xl animate-pulse">⚔️</div>
+          <p className="text-white font-bold text-lg">
+            {hasTournamentRoom ? 'Joining tournament room…' : 'Connecting to game…'}
+          </p>
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Please wait</p>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-dark-bg flex flex-col items-center justify-center gap-4">
         <p className="text-dark-muted text-lg">No active game found.</p>

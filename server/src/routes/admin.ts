@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { requireAdmin } from "../middleware/adminAuth";
 import { AdminConfig, getAdminConfig } from "../models/AdminConfig";
 import { SpinLog } from "../models/SpinLog";
+import { ScheduledTournament } from "../models/ScheduledTournament";
 import { User } from "../models/User";
 import { Room } from "../models/Room";
 import { Game } from "../models/Game";
@@ -37,6 +38,9 @@ import { NotificationBroadcast }  from "../models/NotificationBroadcast";
 import type { NotificationCategory } from "../models/Notification";
 import { Announcement }           from "../models/Announcement";
 import createPlayerIntelRouter    from "./playerIntelligence";
+import { sendAdminEmail, AdminEmailTemplate } from "../services/mailer";
+import { EmailLog } from "../models/EmailLog";
+import { v4 as uuidv4 } from "uuid";
 
 export default function createAdminRouter(io: Server) {
   const router = Router();
@@ -2536,6 +2540,381 @@ export default function createAdminRouter(io: Server) {
     } catch (err) {
       console.error("[Admin] referrals error:", err);
       res.status(500).json({ error: "Failed to load referrals" });
+    }
+  });
+
+  // ── Scheduled Tournaments ───────────────────────────────────────────────────
+
+  router.get('/scheduled-tournaments', requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      const tournaments = await ScheduledTournament.find()
+        .sort({ startTime: -1 })
+        .lean();
+      res.json({ tournaments });
+    } catch {
+      res.status(500).json({ error: 'Failed to load tournaments' });
+    }
+  });
+
+  router.post('/scheduled-tournaments', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { name, description, bannerColor, startTime, endTime, entryFee, prizePool, prizeBreakdown, maxPlayers, mode, eliminationTarget, winnersCount } = req.body;
+      if (!name || !startTime || !endTime || prizePool === undefined) {
+        return res.status(400).json({ error: 'name, startTime, endTime, prizePool are required' });
+      }
+      if (new Date(startTime) >= new Date(endTime)) {
+        return res.status(400).json({ error: 'endTime must be after startTime' });
+      }
+      const tournament = await ScheduledTournament.create({
+        name, description: description ?? '', bannerColor: bannerColor ?? 'purple',
+        startTime: new Date(startTime), endTime: new Date(endTime),
+        entryFee: entryFee ?? 0, prizePool,
+        prizeBreakdown: prizeBreakdown ?? [
+          { rank: 1, percentage: 50, label: '🥇 Champion' },
+          { rank: 2, percentage: 30, label: '🥈 Runner-up' },
+          { rank: 3, percentage: 20, label: '🥉 Third Place' },
+        ],
+        maxPlayers: maxPlayers ?? 0,
+        mode: mode ?? 'timed',
+        eliminationTarget: eliminationTarget ?? 201,
+        winnersCount: winnersCount ?? 1,
+      });
+      res.json({ success: true, tournament });
+    } catch (err) {
+      console.error('[Admin] create tournament error:', err);
+      res.status(500).json({ error: 'Failed to create tournament' });
+    }
+  });
+
+  router.patch('/scheduled-tournaments/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const tournament = await ScheduledTournament.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      if (tournament.status === 'completed' || tournament.status === 'cancelled') {
+        return res.status(400).json({ error: 'Cannot edit a completed or cancelled tournament' });
+      }
+
+      const allowed = ['name', 'description', 'bannerColor', 'startTime', 'endTime', 'entryFee', 'prizePool', 'prizeBreakdown', 'maxPlayers', 'mode', 'eliminationTarget', 'winnersCount'];
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) (tournament as any)[key] = req.body[key];
+      }
+      await tournament.save();
+      res.json({ success: true, tournament });
+    } catch {
+      res.status(500).json({ error: 'Failed to update tournament' });
+    }
+  });
+
+  // ── Tournament Bot Fill ────────────────────────────────────────────────────
+  const TOURNAMENT_BOT_NAMES = [
+    'Arjun_K', 'Priya_S', 'Rahul_V', 'Sneha_M', 'Vikram_P',
+    'Anjali_R', 'Rohan_D', 'Kavya_N', 'Aditya_G', 'Pooja_T',
+    'Kiran_B', 'Meera_J', 'Suresh_H', 'Divya_L', 'Aman_C',
+    'Ritu_W', 'Nikhil_E', 'Swati_F', 'Rajesh_Q', 'Sonia_X',
+  ];
+  const BOT_AVATARS = ['avatar_2', 'avatar_4', 'avatar_6', 'avatar_8', 'avatar_10'];
+
+  router.post('/scheduled-tournaments/:id/fill-bots', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const tournament = await ScheduledTournament.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.status !== 'upcoming') return res.status(400).json({ error: 'Bots can only be added to upcoming tournaments' });
+
+      const count: number = Number(req.body.count ?? 0);
+
+      // Always wipe existing bots first for a clean slate
+      (tournament.registrations as any[]) = tournament.registrations.filter((r: any) => !r.isBot);
+
+      if (count > 0) {
+        const humanCount = tournament.registrations.length;
+        const available = tournament.maxPlayers > 0 ? tournament.maxPlayers - humanCount : count;
+        const botsToAdd = Math.min(count, available);
+
+        // Shuffle names so same set isn't always used in the same order
+        const shuffled = [...TOURNAMENT_BOT_NAMES].sort(() => Math.random() - 0.5);
+
+        const { Types } = await import('mongoose');
+        for (let i = 0; i < botsToAdd; i++) {
+          (tournament.registrations as any[]).push({
+            userId: new Types.ObjectId(),
+            username: shuffled[i % shuffled.length],
+            avatar: BOT_AVATARS[i % BOT_AVATARS.length],
+            registeredAt: new Date(),
+            score: 0,
+            prizeWon: 0,
+            rank: 0,
+            eliminated: false,
+            timeoutCount: 0,
+            isBot: true,
+          });
+        }
+      }
+
+      await tournament.save();
+      io.emit('tournament:updated', { tournamentId: String(tournament._id) });
+
+      const botCount = (tournament.registrations as any[]).filter((r: any) => r.isBot).length;
+      res.json({ success: true, botCount, totalPlayers: tournament.registrations.length });
+    } catch (err) {
+      console.error('[Admin] fill-bots error:', err);
+      res.status(500).json({ error: 'Failed to fill bots' });
+    }
+  });
+
+  // DELETE all tournaments (optional ?status=cancelled,completed filter)
+  router.delete('/scheduled-tournaments', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { status } = req.query;
+      const filter: any = {};
+      if (status) {
+        const statuses = String(status).split(',').map(s => s.trim());
+        filter.status = { $in: statuses };
+      }
+      const result = await ScheduledTournament.deleteMany(filter);
+      // Notify all clients so user-facing pages refresh
+      io.emit('tournaments:cleared');
+      res.json({ success: true, deleted: result.deletedCount });
+    } catch {
+      res.status(500).json({ error: 'Failed to clear tournaments' });
+    }
+  });
+
+  router.delete('/scheduled-tournaments/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const tournament = await ScheduledTournament.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      if (tournament.status === 'completed') {
+        return res.status(400).json({ error: 'Cannot cancel a completed tournament' });
+      }
+
+      // Refund all registered players
+      let refunded = 0;
+      if (tournament.entryFee > 0) {
+        for (const reg of tournament.registrations) {
+          const user = await User.findById(reg.userId);
+          if (user) {
+            const balanceBefore = user.walletBalance;
+            user.walletBalance += tournament.entryFee;
+            await user.save();
+            await Transaction.create({
+              userId: String(reg.userId),
+              type: 'refund',
+              amount: tournament.entryFee,
+              status: 'completed',
+              description: `Entry refund — "${tournament.name}" (cancelled)`,
+              balanceBefore,
+              balanceAfter: user.walletBalance,
+              heldBefore: user.heldBalance,
+              heldAfter: user.heldBalance,
+              metadata: { scheduledTournamentId: String(tournament._id) },
+            });
+            refunded++;
+          }
+        }
+      }
+
+      tournament.status = 'cancelled';
+      tournament.cancelledAt = new Date();
+      tournament.cancelReason = req.body.reason ?? 'Cancelled by admin';
+      await tournament.save();
+
+      res.json({ success: true, refunded });
+    } catch (err) {
+      console.error('[Admin] cancel tournament error:', err);
+      res.status(500).json({ error: 'Failed to cancel tournament' });
+    }
+  });
+
+  // Manual trigger to complete a live tournament immediately
+  router.post('/scheduled-tournaments/:id/complete', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const tournament = await ScheduledTournament.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+      if (tournament.status !== 'live') {
+        return res.status(400).json({ error: 'Tournament must be live to complete' });
+      }
+
+      // Force endTime to now so scheduler picks it up, or call distributePrizes inline
+      tournament.endTime = new Date();
+      await tournament.save();
+
+      res.json({ success: true, message: 'Tournament will be completed within 30 seconds by the scheduler' });
+    } catch {
+      res.status(500).json({ error: 'Failed to trigger completion' });
+    }
+  });
+
+  // ── Email Broadcast ─────────────────────────────────────────────────────────
+
+  router.post('/email/send', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+        return res.status(503).json({ error: 'Gmail SMTP not configured on server' });
+      }
+
+      const { target, targetEmails, inactiveDays, template } = req.body as {
+        target: 'all' | 'inactive' | 'specific';
+        targetEmails?: string[];   // for target=specific
+        inactiveDays?: number;     // for target=inactive (default 7)
+        template: AdminEmailTemplate;
+      };
+
+      // Resolve recipients
+      let users: { email: string; username: string; unsubscribeToken?: string }[] = [];
+
+      const baseFilter = { isGuest: false, email: { $exists: true, $nin: [null, ''] }, emailUnsubscribed: { $ne: true } };
+
+      if (target === 'specific' && targetEmails?.length) {
+        const found = await User.find({ ...baseFilter, email: { $in: targetEmails } })
+          .select('email username unsubscribeToken').lean();
+        users = found.map((u: any) => ({ email: u.email, username: u.username, unsubscribeToken: u.unsubscribeToken }));
+      } else if (target === 'inactive') {
+        const days = inactiveDays ?? 7;
+        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const found = await User.find({
+          ...baseFilter,
+          $or: [{ lastSeenAt: { $lte: cutoff } }, { lastSeenAt: { $exists: false } }],
+        }).select('email username unsubscribeToken').lean();
+        users = found.map((u: any) => ({ email: u.email, username: u.username, unsubscribeToken: u.unsubscribeToken }));
+      } else {
+        const found = await User.find(baseFilter).select('email username unsubscribeToken').lean();
+        users = found.map((u: any) => ({ email: u.email, username: u.username, unsubscribeToken: u.unsubscribeToken }));
+      }
+
+      if (users.length === 0) {
+        return res.json({ sent: 0, failed: 0, skipped: 0, message: 'No matching recipients found' });
+      }
+
+      let sent = 0; let failed = 0;
+      const campaignId = uuidv4();
+      const BATCH = 10;
+      for (let i = 0; i < users.length; i += BATCH) {
+        const batch = users.slice(i, i + BATCH);
+        await Promise.all(batch.map(async (u) => {
+          const trackingId = uuidv4();
+          // Ensure user has an unsubscribe token (lazy generation for existing users)
+          let unsubToken = u.unsubscribeToken;
+          if (!unsubToken) {
+            unsubToken = uuidv4();
+            await User.updateOne({ email: u.email }, { $set: { unsubscribeToken: unsubToken } });
+          }
+          try {
+            await sendAdminEmail({ to: u.email, username: u.username, template, trackingId, unsubscribeToken: unsubToken });
+            // Derive subject for log
+            const subjectMap: Record<string, string> = {
+              winback: `₹ gift is waiting for you!`,
+              tournament: `Tournament Alert`,
+              bonus: `Bonus credited`,
+              announcement: `Announcement`,
+              withdrawal_approved: `Withdrawal Approved`,
+              withdrawal_rejected: `Withdrawal Not Processed`,
+              deposit_confirmed: `Deposit Confirmed`,
+              deposit_rejected: `Deposit Not Verified`,
+              welcome: `Welcome to Arena of Sevens`,
+              top_player: `You're a top player!`,
+            };
+            await EmailLog.create({
+              campaignId,
+              trackingId,
+              to: u.email,
+              username: u.username,
+              templateId: template.id,
+              subject: subjectMap[template.id] ?? template.id,
+              target,
+            });
+            sent++;
+          } catch (e) {
+            console.error(`[AdminEmail] Failed to send to ${u.email}:`, e);
+            failed++;
+          }
+        }));
+        if (i + BATCH < users.length) await new Promise(r => setTimeout(r, 200));
+      }
+
+      console.log(`[AdminEmail] Sent=${sent} Failed=${failed} Template=${template.id}`);
+      res.json({ sent, failed, skipped: 0, campaignId });
+    } catch (err) {
+      console.error('[AdminEmail] Error:', err);
+      res.status(500).json({ error: 'Email send failed' });
+    }
+  });
+
+  // Unsubscribed users list
+  router.get('/email/unsubscribed', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page ?? 1)));
+      const limit = 50;
+      const total = await User.countDocuments({ emailUnsubscribed: true });
+      const users = await User.find({ emailUnsubscribed: true })
+        .select('username email emailUnsubscribedAt createdAt')
+        .sort({ emailUnsubscribedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+      res.json({ users, total, page, pages: Math.ceil(total / limit) });
+    } catch {
+      res.status(500).json({ error: 'Failed to load unsubscribed list' });
+    }
+  });
+
+  // Resubscribe a user (admin action)
+  router.post('/email/resubscribe/:userId', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const user = await User.findById(req.params.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      user.emailUnsubscribed = false;
+      user.emailUnsubscribedAt = undefined;
+      await user.save();
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to resubscribe user' });
+    }
+  });
+
+  // Public tracking pixel — no auth (called by email clients loading the image)
+  router.get('/email/track/:trackingId', async (req: Request, res: Response) => {
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    res.set('Content-Type', 'image/gif');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.send(pixel);
+    try {
+      await EmailLog.findOneAndUpdate(
+        { trackingId: req.params.trackingId, opened: false },
+        { $set: { opened: true, openedAt: new Date() } }
+      );
+    } catch { /* silent */ }
+  });
+
+  // Email history — paginated list of sent campaigns
+  router.get('/email/history', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page ?? 1)));
+      const limit = 50;
+      const skip = (page - 1) * limit;
+
+      // Aggregate by campaignId
+      const campaigns = await EmailLog.aggregate([
+        { $sort: { sentAt: -1 } },
+        { $group: {
+          _id: '$campaignId',
+          templateId: { $first: '$templateId' },
+          target:     { $first: '$target' },
+          sentAt:     { $first: '$sentAt' },
+          total:      { $sum: 1 },
+          opened:     { $sum: { $cond: ['$opened', 1, 0] } },
+          recipients: { $push: { username: '$username', to: '$to', opened: '$opened', openedAt: '$openedAt' } },
+        }},
+        { $sort: { sentAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ]);
+
+      const total = (await EmailLog.distinct('campaignId')).length;
+
+      res.json({ campaigns, total, page, pages: Math.ceil(total / limit) });
+    } catch (err) {
+      console.error('[EmailHistory]', err);
+      res.status(500).json({ error: 'Failed to load history' });
     }
   });
 

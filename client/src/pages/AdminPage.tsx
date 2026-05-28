@@ -2,7 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
-import { admin } from "../services/api";
+import { admin, adminTournamentsApi } from "../services/api";
 import { on } from "../services/socket";
 import { useAuthStore } from "../store/authStore";
 import { Avatar } from "../components/ui/Avatar";
@@ -52,7 +52,9 @@ type Section =
   | "holdsystem"
   | "spinanalytics"
   | "roomtracker"
-  | "referrals";
+  | "referrals"
+  | "scheduledtournaments"
+  | "email";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -6033,6 +6035,884 @@ function fmtDate(d: string|Date|null) {
   return dt.toLocaleDateString("en-IN",{day:"2-digit",month:"short"}) + " " + dt.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
 }
 
+// Convert a UTC ISO string → "YYYY-MM-DDTHH:MM" in local time for datetime-local inputs
+function toLocalInput(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Convert a local datetime-local string → UTC ISO string for the server
+function toUTCIso(localStr: string): string {
+  return localStr ? new Date(localStr).toISOString() : '';
+}
+
+// ── Color helpers ─────────────────────────────────────────────────────────────
+const T_ACCENT: Record<string, { text: string; border: string; glow: string }> = {
+  purple: { text: '#a5b4fc', border: 'rgba(99,102,241,0.45)',  glow: 'rgba(99,102,241,0.12)' },
+  blue:   { text: '#93c5fd', border: 'rgba(59,130,246,0.45)',  glow: 'rgba(59,130,246,0.12)' },
+  green:  { text: '#86efac', border: 'rgba(34,197,94,0.45)',   glow: 'rgba(34,197,94,0.12)'  },
+  orange: { text: '#fed7aa', border: 'rgba(249,115,22,0.45)',  glow: 'rgba(249,115,22,0.12)' },
+  red:    { text: '#fca5a5', border: 'rgba(239,68,68,0.45)',   glow: 'rgba(239,68,68,0.12)'  },
+};
+
+// ── Scheduled Tournaments Section ─────────────────────────────────────────────
+function ScheduledTournamentsSection() {
+  const [tournaments, setTournaments] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const [editTarget, setEditTarget] = React.useState<any>(null);
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = React.useState<'all' | 'upcoming' | 'live' | 'completed' | 'cancelled'>('all');
+  const [clearConfirm, setClearConfirm] = React.useState<'all' | 'finished' | null>(null);
+  const [clearing, setClearing] = React.useState(false);
+  const [botFillInputs, setBotFillInputs] = React.useState<Record<string, string>>({});
+  const [fillingBots, setFillingBots] = React.useState<string | null>(null);
+
+  const defaultForm = {
+    name: '', description: '', bannerColor: 'purple',
+    startTime: '', endTime: '', entryFee: 0, prizePool: 1000, maxPlayers: 0,
+    mode: 'elimination' as 'timed' | 'elimination',
+    eliminationTarget: 201,
+    winnersCount: 1,
+    prizeBreakdown: [
+      { rank: 1, percentage: 50, label: '🥇 Champion' },
+      { rank: 2, percentage: 30, label: '🥈 Runner-up' },
+      { rank: 3, percentage: 20, label: '🥉 Third Place' },
+    ],
+  };
+  const [form, setForm] = React.useState(defaultForm);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await adminTournamentsApi.list();
+      setTournaments(res.data.tournaments);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const handleClearAll = async (mode: 'all' | 'finished') => {
+    setClearing(true);
+    try {
+      const status = mode === 'finished' ? 'completed,cancelled' : undefined;
+      const res = await adminTournamentsApi.deleteAll(status);
+      setToast(`Deleted ${(res.data as any).deleted} tournament(s)`);
+      setClearConfirm(null);
+      await load();
+    } catch {
+      setToast('Failed to delete');
+    } finally { setClearing(false); }
+  };
+
+  const handleFillBots = async (tournamentId: string, count: number) => {
+    setFillingBots(tournamentId);
+    try {
+      const res = await adminTournamentsApi.fillBots(tournamentId, count);
+      const d = res.data as any;
+      setToast(count === 0 ? 'Bots removed' : `Added bots — ${d.botCount} bot(s) in tournament (${d.totalPlayers} total)`);
+      await load();
+    } catch {
+      setToast('Failed to fill bots');
+    } finally { setFillingBots(null); }
+  };
+
+  // Auto-generate prize breakdown when winnersCount changes
+  const generatePrizeBreakdown = (count: number) => {
+    const LABELS = ['🥇 Champion', '🥈 Runner-up', '🥉 Third Place'];
+    const SUFFIX = ['th','st','nd','rd'];
+    const DISTRIBUTIONS: Record<number, number[]> = {
+      1:  [100],
+      2:  [65, 35],
+      3:  [50, 30, 20],
+      4:  [40, 27, 20, 13],
+      5:  [35, 23, 18, 14, 10],
+      6:  [30, 20, 17, 14, 11, 8],
+      7:  [27, 18, 15, 13, 11, 9, 7],
+      8:  [25, 17, 14, 12, 10, 9, 7, 6],
+      9:  [23, 16, 13, 11, 9, 8, 7, 7, 6],
+      10: [20, 15, 12, 10, 9, 8, 7, 7, 6, 6],
+    };
+    let percs = DISTRIBUTIONS[count];
+    if (!percs) {
+      const base = Math.floor(100 / count);
+      const rem   = 100 - base * count;
+      percs = Array(count).fill(base);
+      percs[0] += rem;
+    }
+    return percs.map((pct, i) => ({
+      rank:       i + 1,
+      percentage: pct,
+      label:      LABELS[i] ?? `${i + 1}${SUFFIX[Math.min((i + 1) % 10, 3)]} Place`,
+    }));
+  };
+
+  // Sync prize breakdown count to winnersCount whenever it changes
+  React.useEffect(() => {
+    setForm(f => ({ ...f, prizeBreakdown: generatePrizeBreakdown(Math.max(1, f.winnersCount)) }));
+  }, [form.winnersCount]);
+
+const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  const handleSave = async () => {
+    if (!form.name || !form.startTime) return showToast('Name and start time required');
+    setSaving(true);
+    // Convert local datetime-local values → UTC ISO before sending
+    // endTime defaults to startTime + 24 hours if not set
+    const startIso = toUTCIso(form.startTime);
+    const endIso = form.endTime ? toUTCIso(form.endTime) : new Date(new Date(startIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const payload = {
+      ...form,
+      startTime: startIso,
+      endTime:   endIso,
+    };
+    try {
+      if (editTarget) {
+        await adminTournamentsApi.update(editTarget._id, payload);
+        showToast('Tournament updated');
+      } else {
+        await adminTournamentsApi.create(payload);
+        showToast('Tournament created!');
+      }
+      setShowCreate(false);
+      setEditTarget(null);
+      setForm(defaultForm);
+      load();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error ?? 'Failed to save');
+    } finally { setSaving(false); }
+  };
+
+  const handleEdit = (t: any) => {
+    setForm({
+      name: t.name, description: t.description ?? '', bannerColor: t.bannerColor ?? 'purple',
+      startTime: toLocalInput(t.startTime ?? ''), endTime: toLocalInput(t.endTime ?? ''),
+      entryFee: t.entryFee ?? 0, prizePool: t.prizePool ?? 0, maxPlayers: t.maxPlayers ?? 0,
+      mode: 'elimination' as 'timed' | 'elimination',
+      eliminationTarget: t.eliminationTarget ?? 201,
+      winnersCount: t.winnersCount ?? 1,
+      prizeBreakdown: t.prizeBreakdown ?? defaultForm.prizeBreakdown,
+    });
+    setEditTarget(t);
+    setShowCreate(true);
+  };
+
+  const handleCancel = async (t: any) => {
+    if (!window.confirm(`Cancel "${t.name}"? All entry fees will be refunded.`)) return;
+    try {
+      await adminTournamentsApi.cancel(t._id, 'Cancelled by admin');
+      showToast('Tournament cancelled, entries refunded');
+      load();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error ?? 'Failed to cancel');
+    }
+  };
+
+  const handleComplete = async (t: any) => {
+    if (!window.confirm(`End "${t.name}" now and distribute prizes?`)) return;
+    try {
+      await adminTournamentsApi.complete(t._id);
+      showToast('Tournament ending... prizes will be distributed within 30s');
+      load();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error ?? 'Failed');
+    }
+  };
+
+  const inputCls = "w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:ring-1";
+  const inputStyle = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' };
+  const labelCls = "text-[11px] font-semibold uppercase tracking-wide mb-1.5 block";
+
+  const topPrize = form.prizeBreakdown.length > 0 ? Math.floor(form.prizePool * form.prizeBreakdown[0].percentage / 100) : form.prizePool;
+  const totalPct = form.prizeBreakdown.reduce((s, p) => s + p.percentage, 0);
+
+  const filteredTournaments = filterStatus === 'all' ? tournaments : tournaments.filter(t => t.status === filterStatus);
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-black text-white">⚔️ Scheduled Tournaments</h2>
+          <p className="text-xs text-dark-muted mt-0.5">Create and manage contest events</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setClearConfirm('finished')}
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all"
+            style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+          >
+            🗑 Clear Finished
+          </button>
+          <button
+            onClick={() => setClearConfirm('all')}
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all"
+            style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.35)' }}
+          >
+            🗑 Clear All
+          </button>
+          <button
+            onClick={() => { setForm(defaultForm); setEditTarget(null); setShowCreate(true); }}
+            className="px-4 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)', color: 'white', border: '1px solid rgba(99,102,241,0.5)' }}
+          >
+            + New Contest
+          </button>
+        </div>
+      </div>
+
+      {/* ── Clear Confirmation Modal ── */}
+      {clearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgba(13,13,25,0.98)', border: '1px solid rgba(239,68,68,0.4)', boxShadow: '0 0 40px rgba(239,68,68,0.15)' }}>
+            <div className="text-4xl text-center mb-4">🗑️</div>
+            <h3 className="text-lg font-black text-white text-center mb-2">
+              {clearConfirm === 'all' ? 'Delete ALL Tournaments?' : 'Delete Finished Tournaments?'}
+            </h3>
+            <p className="text-xs text-center mb-6" style={{ color: 'rgba(252,165,165,0.8)' }}>
+              {clearConfirm === 'all'
+                ? 'This will permanently delete every tournament (upcoming, live, completed, cancelled). This cannot be undone.'
+                : 'This will permanently delete all completed and cancelled tournaments. Upcoming and live contests are kept.'}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setClearConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleClearAll(clearConfirm)}
+                disabled={clearing}
+                className="flex-1 py-2.5 rounded-xl text-sm font-black"
+                style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: 'white', border: '1px solid rgba(239,68,68,0.5)', opacity: clearing ? 0.6 : 1 }}
+              >
+                {clearing ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create / Edit Modal ── */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl" style={{ background: 'rgba(13,13,25,0.98)', border: '1px solid rgba(99,102,241,0.3)', boxShadow: '0 0 60px rgba(99,102,241,0.2)' }}>
+
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div>
+                <h3 className="text-base font-black text-white">{editTarget ? '✏️ Edit Contest' : '🏆 Create New Contest'}</h3>
+                <p className="text-xs text-dark-muted mt-0.5">Fill in details — players will see this exactly</p>
+              </div>
+              <button
+                onClick={() => { setShowCreate(false); setEditTarget(null); setForm(defaultForm); }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-dark-muted hover:text-white transition-colors"
+                style={{ background: 'rgba(255,255,255,0.07)' }}
+              >✕</button>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-0">
+              {/* Left: Form */}
+              <div className="flex-1 px-6 py-5 space-y-5">
+
+                {/* Section: Basic Info */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: '#a5b4fc' }}>📋 Contest Info</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Contest Name *</label>
+                      <input
+                        value={form.name}
+                        onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="e.g. Saturday Arena Championship"
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Tagline / Description</label>
+                      <input
+                        value={form.description}
+                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder="Short description shown on the contest card"
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Theme Color</label>
+                        <div className="flex gap-2 pt-1">
+                          {['purple', 'blue', 'green', 'orange', 'red'].map(c => (
+                            <button
+                              key={c}
+                              onClick={() => setForm(f => ({ ...f, bannerColor: c }))}
+                              className="w-7 h-7 rounded-lg transition-all"
+                              style={{
+                                background: T_ACCENT[c]?.text ?? '#a5b4fc',
+                                border: form.bannerColor === c ? '2px solid white' : '2px solid transparent',
+                                boxShadow: form.bannerColor === c ? `0 0 10px ${T_ACCENT[c]?.text}` : 'none',
+                                opacity: form.bannerColor === c ? 1 : 0.4,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Max Players</label>
+                        <input
+                          type="number" min="0"
+                          value={form.maxPlayers}
+                          onChange={e => setForm(f => ({ ...f, maxPlayers: Number(e.target.value) }))}
+                          placeholder="0 = unlimited"
+                          className={inputCls}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Schedule */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: '#a5b4fc' }}>📅 Schedule</p>
+                  <div>
+                    <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Start Time *</label>
+                    <input
+                      type="datetime-local"
+                      value={form.startTime}
+                      onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
+                      className={inputCls}
+                      style={{ ...inputStyle, colorScheme: 'dark' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Section: Mode — always Elimination */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: '#a5b4fc' }}>⚙️ Elimination Settings</p>
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <div>
+                      <label className={labelCls} style={{ color: '#fca5a5' }}>Elimination Target (pts)</label>
+                      <input
+                        type="number" min="1"
+                        value={form.eliminationTarget}
+                        onChange={e => setForm(f => ({ ...f, eliminationTarget: Number(e.target.value) }))}
+                        className={inputCls}
+                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)' }}
+                      />
+                      <p className="text-[10px] mt-1" style={{ color: 'rgba(255,100,100,0.6)' }}>Score ≥ this → eliminated</p>
+                    </div>
+                    <div>
+                      <label className={labelCls} style={{ color: '#fca5a5' }}>Winners Count</label>
+                      <input
+                        type="number" min="1"
+                        value={form.winnersCount}
+                        onChange={e => setForm(f => ({ ...f, winnersCount: Number(e.target.value) }))}
+                        className={inputCls}
+                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)' }}
+                      />
+                      <p className="text-[10px] mt-1" style={{ color: 'rgba(255,100,100,0.6)' }}>End when N survivors left</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Prize */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: '#a5b4fc' }}>💰 Prize & Entry</p>
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                      <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Prize Pool (pts) *</label>
+                      <input
+                        type="number" min="0"
+                        value={form.prizePool}
+                        onChange={e => setForm(f => ({ ...f, prizePool: Number(e.target.value) }))}
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Entry Fee (0 = free)</label>
+                      <input
+                        type="number" min="0"
+                        value={form.entryFee}
+                        onChange={e => setForm(f => ({ ...f, entryFee: Number(e.target.value) }))}
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Prize winners count — always visible, drives breakdown */}
+                  <div className="flex items-center justify-between mb-3">
+                    <label className={labelCls} style={{ color: 'rgba(255,255,255,0.45)' }}>Prize Breakdown</label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-dark-muted">Winners:</span>
+                      <div className="flex items-center rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+                        <button
+                          onClick={() => setForm(f => ({ ...f, winnersCount: Math.max(1, f.winnersCount - 1) }))}
+                          className="px-3 py-1.5 text-sm font-black text-white transition-colors hover:bg-white/10"
+                          style={{ background: 'rgba(255,255,255,0.06)' }}
+                        >−</button>
+                        <span className="px-3 py-1.5 text-sm font-black text-white min-w-[2.5rem] text-center" style={{ background: 'rgba(99,102,241,0.15)' }}>
+                          {form.winnersCount}
+                        </span>
+                        <button
+                          onClick={() => setForm(f => ({ ...f, winnersCount: Math.min(10, f.winnersCount + 1) }))}
+                          className="px-3 py-1.5 text-sm font-black text-white transition-colors hover:bg-white/10"
+                          style={{ background: 'rgba(255,255,255,0.06)' }}
+                        >+</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2 p-3 rounded-2xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    {form.prizeBreakdown.map((p, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <span className="text-xs font-bold w-6 text-center flex-shrink-0" style={{ color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7c2f' : 'rgba(255,255,255,0.4)' }}>
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${p.rank}`}
+                        </span>
+                        <input
+                          value={p.label}
+                          onChange={e => setForm(f => ({ ...f, prizeBreakdown: f.prizeBreakdown.map((b, j) => j === i ? { ...b, label: e.target.value } : b) }))}
+                          placeholder="Label"
+                          className="flex-1 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        />
+                        <input
+                          type="number" min="0" max="100"
+                          value={p.percentage}
+                          onChange={e => setForm(f => ({ ...f, prizeBreakdown: f.prizeBreakdown.map((b, j) => j === i ? { ...b, percentage: Number(e.target.value) } : b) }))}
+                          className="w-14 rounded-lg px-2 py-1.5 text-xs text-white text-center"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        />
+                        <span className="text-[10px] text-dark-muted">%</span>
+                        <span className="text-[10px] font-black w-20 text-right" style={{ color: T_ACCENT[form.bannerColor]?.text ?? '#a5b4fc' }}>
+                          {Math.floor(form.prizePool * p.percentage / 100).toLocaleString()} pts
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between pt-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                      <span className="text-[10px] text-dark-muted">Total allocated</span>
+                      <span className="text-[10px] font-black" style={{ color: totalPct === 100 ? '#4ade80' : '#f87171' }}>{totalPct}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Live Preview Card */}
+              <div className="lg:w-72 px-6 py-5 border-t lg:border-t-0 lg:border-l" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
+                <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>👁 Live Preview</p>
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(15,15,28,0.95)', border: `1px solid ${T_ACCENT[form.bannerColor]?.border ?? '#a5b4fc'}`, boxShadow: `0 0 20px ${T_ACCENT[form.bannerColor]?.glow}` }}>
+                  {/* preview header */}
+                  <div className="px-3 py-2 flex items-center justify-between" style={{ background: T_ACCENT[form.bannerColor]?.glow, borderBottom: `1px solid ${T_ACCENT[form.bannerColor]?.border}` }}>
+                    <p className="text-xs font-black text-white truncate flex-1">{form.name || 'Contest Name'}</p>
+                    <div className="flex gap-1 ml-2 flex-shrink-0">
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24' }}>⏳ SOON</span>
+                      {form.mode === 'elimination' && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>💀 ELIM</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* preview body */}
+                  <div className="px-3 py-3">
+                    <div className="flex items-end justify-between mb-2.5">
+                      <div>
+                        <p className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Prize Pool</p>
+                        <p className="text-xl font-black leading-none" style={{ color: T_ACCENT[form.bannerColor]?.text }}>
+                          {form.prizePool.toLocaleString()}
+                          <span className="text-xs font-medium ml-1" style={{ color: 'rgba(255,255,255,0.35)' }}>pts</span>
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[9px] uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Entry</p>
+                        <span className="px-3 py-1.5 rounded-lg text-xs font-black" style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: 'white' }}>
+                          {form.entryFee === 0 ? 'Free' : `${form.entryFee} pts`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-full mb-2" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                      <div className="h-full w-2/5 rounded-full" style={{ background: `linear-gradient(90deg,${T_ACCENT[form.bannerColor]?.text},${T_ACCENT[form.bannerColor]?.text}88)` }} />
+                    </div>
+                    <div className="flex justify-between mb-2.5">
+                      <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{form.maxPlayers > 0 ? `${form.maxPlayers} spots` : 'Open'}</span>
+                      {form.mode === 'elimination' && <span className="text-[9px]" style={{ color: '#f87171' }}>Target: {form.eliminationTarget}pts</span>}
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: T_ACCENT[form.bannerColor]?.text }}>
+                        🏆 {topPrize.toLocaleString()} pts
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'white' }}>
+                        👥 {form.prizeBreakdown.length} winners
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'white' }}>
+                        {form.mode === 'elimination' ? '💀 Elim' : '⏱ Timed'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-center mt-3" style={{ color: 'rgba(255,255,255,0.2)' }}>Preview updates as you type</p>
+              </div>
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <button
+                onClick={() => { setShowCreate(false); setEditTarget(null); setForm(defaultForm); }}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-8 py-2.5 rounded-xl text-sm font-black shadow-lg transition-all"
+                style={{ background: saving ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg,#6366f1,#818cf8)', color: 'white', border: '1px solid rgba(99,102,241,0.5)' }}
+              >
+                {saving ? 'Saving...' : editTarget ? '✓ Update Contest' : '🚀 Launch Contest'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Filter Tabs ── */}
+      <div className="flex gap-1.5 mb-5 flex-wrap">
+        {(['all', 'upcoming', 'live', 'completed', 'cancelled'] as const).map(s => {
+          const counts: Record<string, number> = {
+            all: tournaments.length,
+            upcoming: tournaments.filter(t => t.status === 'upcoming').length,
+            live: tournaments.filter(t => t.status === 'live').length,
+            completed: tournaments.filter(t => t.status === 'completed').length,
+            cancelled: tournaments.filter(t => t.status === 'cancelled').length,
+          };
+          const icons: Record<string, string> = { all: '📋', upcoming: '⏳', live: '🔴', completed: '✅', cancelled: '❌' };
+          const colors: Record<string, string> = { all: '#a5b4fc', upcoming: '#fbbf24', live: '#4ade80', completed: '#94a3b8', cancelled: '#f87171' };
+          const isActive = filterStatus === s;
+          return (
+            <button
+              key={s}
+              onClick={() => setFilterStatus(s)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+              style={isActive
+                ? { background: `${colors[s]}20`, color: colors[s], border: `1px solid ${colors[s]}40` }
+                : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              {icons[s]} {s.charAt(0).toUpperCase() + s.slice(1)}
+              {counts[s] > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black"
+                  style={{ background: isActive ? `${colors[s]}30` : 'rgba(255,255,255,0.08)', color: isActive ? colors[s] : 'rgba(255,255,255,0.4)' }}>
+                  {counts[s]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Contest List ── */}
+      {loading ? (
+        <div className="space-y-4">
+          {[1,2,3].map(i => <div key={i} className="rounded-2xl h-36 animate-pulse" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }} />)}
+        </div>
+      ) : filteredTournaments.length === 0 ? (
+        <div className="text-center py-16">
+          <p className="text-5xl mb-3">⚔️</p>
+          <p className="text-sm text-white font-bold mb-1">No contests {filterStatus !== 'all' ? `with status "${filterStatus}"` : 'yet'}</p>
+          <p className="text-xs text-dark-muted">Click "+ New Contest" to create your first one</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          {filteredTournaments.map(t => {
+            const regs: any[] = t.registrations ?? [];
+            const isExpanded = expandedId === t._id;
+            const ac = T_ACCENT[t.bannerColor ?? 'purple'] ?? T_ACCENT.purple;
+            const isElim = t.mode === 'elimination';
+            const survivors = isElim ? regs.filter(r => !r.eliminated).length : null;
+            const elimCount = isElim ? regs.filter(r => r.eliminated).length : null;
+            const fillPct = t.maxPlayers > 0 ? Math.min(100, (regs.length / t.maxPlayers) * 100) : 30;
+            const spotsLeft = t.maxPlayers > 0 ? t.maxPlayers - regs.length : null;
+            const topPrizeCard = (t.prizeBreakdown ?? []).length > 0 ? Math.floor(t.prizePool * t.prizeBreakdown[0].percentage / 100) : t.prizePool;
+
+            const sortedRegs = [...regs].sort((a, b) => {
+              if (t.status === 'completed') return (a.rank ?? 999) - (b.rank ?? 999);
+              if (isElim) {
+                if (a.eliminated && !b.eliminated) return 1;
+                if (!a.eliminated && b.eliminated) return -1;
+                if (!a.eliminated) return (a.score ?? 0) - (b.score ?? 0);
+                return (new Date(b.eliminatedAt).getTime() || 0) - (new Date(a.eliminatedAt).getTime() || 0);
+              }
+              return (b.score ?? 0) - (a.score ?? 0);
+            });
+
+            return (
+              <div
+                key={t._id}
+                className={`rounded-2xl overflow-hidden${isExpanded ? ' xl:col-span-2' : ''}`}
+                style={{
+                  background: 'rgba(13,13,25,0.95)',
+                  border: `1px solid ${ac.border}`,
+                  boxShadow: `0 0 20px ${ac.glow}`,
+                }}
+              >
+                {/* Card header */}
+                <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: ac.glow, borderBottom: `1px solid ${ac.border}` }}>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <p className="text-sm font-black text-white truncate">{t.name}</p>
+                    {t.description && <p className="text-[10px] hidden sm:block truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{t.description}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                    {(() => {
+                      const statusMap: Record<string, { color: string; label: string; pulse?: boolean }> = {
+                        upcoming:  { color: '#fbbf24', label: '⏳ Upcoming' },
+                        live:      { color: '#4ade80', label: '🔴 LIVE', pulse: true },
+                        completed: { color: '#94a3b8', label: '✅ Done' },
+                        cancelled: { color: '#f87171', label: '❌ Cancelled' },
+                      };
+                      const s = statusMap[t.status] ?? statusMap.upcoming;
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black${s.pulse ? ' animate-pulse' : ''}`}
+                          style={{ background: `${s.color}20`, color: s.color, border: `1px solid ${s.color}40` }}>
+                          {s.label}
+                        </span>
+                      );
+                    })()}
+                    {isElim && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+                        💀 ELIM
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card body */}
+                <div className="px-4 pt-3.5 pb-3">
+                  {/* Prize + entry row */}
+                  <div className="flex items-end justify-between gap-4 mb-3">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Prize Pool</p>
+                      <p className="text-2xl font-black leading-none" style={{ color: ac.text }}>
+                        {t.prizePool.toLocaleString()}
+                        <span className="text-sm font-medium ml-1" style={{ color: 'rgba(255,255,255,0.35)' }}>pts</span>
+                      </p>
+                      <p className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        {fmtDate(t.startTime)} → {fmtDate(t.endTime)}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Entry</p>
+                      <span className="px-4 py-1.5 rounded-xl text-xs font-black inline-block"
+                        style={{ background: t.entryFee === 0 ? 'rgba(34,197,94,0.2)' : 'linear-gradient(135deg,#22c55e,#16a34a)', color: t.entryFee === 0 ? '#4ade80' : 'white', border: '1px solid rgba(34,197,94,0.4)' }}>
+                        {t.entryFee === 0 ? 'FREE' : `${t.entryFee} pts`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Player fill bar */}
+                  <div className="mb-3">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${fillPct}%`, background: fillPct > 80 ? 'linear-gradient(90deg,#ef4444,#f87171)' : `linear-gradient(90deg,${ac.text},${ac.text}88)` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                      <span className="text-[9px] font-bold" style={{ color: spotsLeft !== null && spotsLeft < 5 ? '#f87171' : 'rgba(255,255,255,0.4)' }}>
+                        {spotsLeft !== null ? (spotsLeft <= 0 ? '🔴 Full' : `${spotsLeft} spots left`) : `${regs.length} registered`}
+                      </span>
+                      <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                        {t.maxPlayers > 0 ? `${t.maxPlayers} total` : 'Open'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stat chips */}
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: ac.text }}>
+                      🏆 {topPrizeCard.toLocaleString()} pts
+                    </span>
+                    <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-white" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                      👥 {regs.length} players
+                    </span>
+                    {isElim ? (
+                      <>
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                          💀 Target: {t.eliminationTarget}pts
+                        </span>
+                        {(t.status === 'live' || t.status === 'completed') && (
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: 'rgba(34,197,94,0.08)', color: '#4ade80' }}>
+                            ✅ {survivors} alive · 💀 {elimCount} out
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-white" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        ⏱ Timed
+                      </span>
+                    )}
+                    {t.entryFee > 0 && regs.length > 0 && (
+                      <span className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: 'rgba(34,197,94,0.08)', color: '#4ade80' }}>
+                        💰 {(regs.length * t.entryFee).toLocaleString()} pts collected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 flex-wrap">
+                    {t.status === 'upcoming' && (
+                      <button onClick={() => handleEdit(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}>
+                        ✏️ Edit
+                      </button>
+                    )}
+                    {/* Secret bot fill — only visible to admin */}
+                    {t.status === 'upcoming' && (() => {
+                      const botCount = regs.filter((r: any) => r.isBot).length;
+                      const fillVal = botFillInputs[t._id] ?? '1';
+                      const fillNum = Math.max(0, parseInt(fillVal, 10) || 0);
+                      return (
+                        <div className="flex items-center gap-1 rounded-lg px-2 py-1" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}>
+                          <span className="text-[10px] font-bold" style={{ color: '#c084fc' }}>🤖</span>
+                          <input
+                            type="text" inputMode="numeric" value={fillVal}
+                            onChange={e => setBotFillInputs(prev => ({ ...prev, [t._id]: e.target.value }))}
+                            className="w-8 text-center text-[11px] font-bold bg-transparent outline-none"
+                            style={{ color: '#e9d5ff' }}
+                          />
+                          <button
+                            disabled={fillingBots === t._id}
+                            onClick={() => handleFillBots(t._id, fillNum)}
+                            className="text-[10px] font-black px-1.5 py-0.5 rounded"
+                            style={{ background: 'rgba(168,85,247,0.2)', color: '#c084fc' }}
+                          >
+                            {fillingBots === t._id ? '…' : 'Fill'}
+                          </button>
+                          {botCount > 0 && (
+                            <button
+                              disabled={fillingBots === t._id}
+                              onClick={() => handleFillBots(t._id, 0)}
+                              className="text-[10px] font-bold px-1 rounded"
+                              style={{ color: '#f87171' }}
+                              title="Remove all bots"
+                            >✕</button>
+                          )}
+                          {botCount > 0 && (
+                            <span className="text-[9px] font-bold" style={{ color: 'rgba(168,85,247,0.6)' }}>{botCount} bot{botCount !== 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {t.status === 'live' && (
+                      <button onClick={() => handleComplete(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                        🏁 End & Pay Out
+                      </button>
+                    )}
+                    {(t.status === 'upcoming' || t.status === 'live') && (
+                      <button onClick={() => handleCancel(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        ✕ Cancel
+                      </button>
+                    )}
+                    {regs.length > 0 && (
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : t._id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold ml-auto"
+                        style={isExpanded
+                          ? { background: ac.glow, color: ac.text, border: `1px solid ${ac.border}` }
+                          : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.07)' }}
+                      >
+                        {isExpanded ? '▲ Hide' : `👥 Players (${regs.length})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Players Panel */}
+                {isExpanded && (
+                  <div className="border-t" style={{ borderColor: ac.border, background: 'rgba(0,0,0,0.3)' }}>
+                    <div className="px-4 py-3 flex items-center justify-between border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        👥 Registered Players ({regs.length})
+                      </p>
+                    </div>
+                    {regs.length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-3xl mb-2">👥</p>
+                        <p className="text-xs text-dark-muted">No players yet</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              {['Rank', 'Player', 'Score', t.status === 'completed' ? 'Prize' : 'Status'].map(h => (
+                                <th key={h} className="px-4 py-2 text-left text-[9px] font-black uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedRegs.map((reg, idx) => {
+                              const rank = t.status === 'completed' ? (reg.rank ?? idx + 1) : idx + 1;
+                              const isEliminated = isElim && reg.eliminated;
+                              const medal = isEliminated ? '💀' : rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+                              return (
+                                <tr key={String(reg.userId)} className="hover:bg-white/[0.02] transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', opacity: isEliminated ? 0.6 : 1 }}>
+                                  <td className="px-4 py-2.5 text-sm">{medal}</td>
+                                  <td className="px-4 py-2.5">
+                                    <p className="text-xs font-bold" style={{ color: isEliminated ? '#f87171' : 'white', textDecoration: isEliminated ? 'line-through' : 'none' }}>{reg.username ?? '—'}</p>
+                                    <p className="text-[9px] font-mono" style={{ color: 'rgba(255,255,255,0.25)' }}>{String(reg.userId).slice(-8)}</p>
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span className="text-xs font-black" style={{ color: isEliminated ? '#f87171' : (reg.score ?? 0) > 0 ? ac.text : 'rgba(255,255,255,0.3)' }}>
+                                      {(reg.score ?? 0).toLocaleString()} pts
+                                    </span>
+                                    {isEliminated && reg.eliminatedAt && (
+                                      <p className="text-[9px] text-dark-muted mt-0.5">
+                                        {new Date(reg.eliminatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    {isEliminated ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>💀 Out</span>
+                                    ) : t.status === 'completed' ? (
+                                      reg.prizeWon > 0
+                                        ? <span className="px-2 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}>+{reg.prizeWon.toLocaleString()} pts</span>
+                                        : <span className="text-[9px] text-dark-muted">—</span>
+                                    ) : t.status === 'live' ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black animate-pulse" style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>● Playing</span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>Registered</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl text-sm font-bold text-white shadow-2xl"
+          style={{ background: 'rgba(15,15,28,0.97)', border: '1px solid rgba(99,102,241,0.5)', boxShadow: '0 0 30px rgba(99,102,241,0.3)' }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Referrals Section ─────────────────────────────────────────────────────────
 function ReferralsSection() {
   const [data, setData] = React.useState<any>(null);
@@ -7061,6 +7941,627 @@ function RoomTrackerSection() {
   );
 }
 
+// ── Email Campaign Section ────────────────────────────────────────────────────
+
+type EmailTemplateId = 'winback' | 'tournament' | 'bonus' | 'announcement' | 'withdrawal_approved' | 'withdrawal_rejected' | 'deposit_confirmed' | 'deposit_rejected' | 'welcome' | 'top_player';
+
+const EMAIL_TEMPLATES: {
+  id: EmailTemplateId;
+  icon: string;
+  label: string;
+  accent: string;
+  bg: string;
+  desc: string;
+  fields: { key: string; label: string; type: 'text' | 'number' | 'textarea'; placeholder: string; required?: boolean }[];
+}[] = [
+  {
+    id: 'winback',
+    icon: '🎁',
+    label: 'Win-Back Gift',
+    accent: '#a855f7',
+    bg: 'rgba(168,85,247,0.10)',
+    desc: 'Re-engage inactive players with a personal gift message.',
+    fields: [
+      { key: 'bonusAmount', label: 'Bonus Amount (₹)', type: 'number', placeholder: '30', required: true },
+      { key: 'customNote', label: 'Custom Note (optional)', type: 'text', placeholder: 'e.g. We have exciting new features waiting for you!' },
+    ],
+  },
+  {
+    id: 'tournament',
+    icon: '⚔️',
+    label: 'Tournament Alert',
+    accent: '#6366f1',
+    bg: 'rgba(99,102,241,0.10)',
+    desc: 'Invite players to an upcoming tournament with prize details.',
+    fields: [
+      { key: 'name',        label: 'Tournament Name',    type: 'text',   placeholder: 'Grand Championship',  required: true },
+      { key: 'prizePool',   label: 'Prize Pool (pts)',   type: 'number', placeholder: '5000',                required: true },
+      { key: 'entryFee',    label: 'Entry Fee (pts, 0=FREE)', type: 'number', placeholder: '50',            required: true },
+      { key: 'startTime',   label: 'Start Time (display text)', type: 'text', placeholder: 'Sun, 1 Jun · 8 PM IST', required: true },
+      { key: 'description', label: 'Extra Details (optional)', type: 'textarea', placeholder: 'Top 3 players win prizes...' },
+    ],
+  },
+  {
+    id: 'bonus',
+    icon: '💰',
+    label: 'Bonus Drop',
+    accent: '#10b981',
+    bg: 'rgba(16,185,129,0.10)',
+    desc: 'Notify players that a bonus was credited to their account.',
+    fields: [
+      { key: 'amount',  label: 'Bonus Amount (₹)', type: 'number', placeholder: '50',          required: true },
+      { key: 'occasion', label: 'Occasion / Reason', type: 'text', placeholder: 'Weekend Special', required: true },
+    ],
+  },
+  {
+    id: 'announcement',
+    icon: '📣',
+    label: 'Announcement',
+    accent: '#f59e0b',
+    bg: 'rgba(245,158,11,0.10)',
+    desc: 'Send a custom news or update email with an optional CTA button.',
+    fields: [
+      { key: 'headline', label: 'Headline',            type: 'text',     placeholder: 'New Feature Alert!',   required: true },
+      { key: 'body',     label: 'Body (use \\n for new lines)', type: 'textarea', placeholder: 'We just launched...',  required: true },
+      { key: 'ctaText',  label: 'Button Text (optional)', type: 'text', placeholder: 'Play Now' },
+      { key: 'ctaUrl',   label: 'Button URL (optional)',  type: 'text', placeholder: 'https://...' },
+    ],
+  },
+  {
+    id: 'withdrawal_approved',
+    icon: '✅',
+    label: 'Withdrawal Approved',
+    accent: '#10b981',
+    bg: 'rgba(16,185,129,0.10)',
+    desc: 'Notify player their withdrawal has been approved.',
+    fields: [
+      { key: 'amount', label: 'Amount (₹)',     type: 'number', placeholder: '500',             required: true },
+      { key: 'method', label: 'Payment Method', type: 'text',   placeholder: 'UPI / Bank Transfer', required: true },
+      { key: 'eta',    label: 'ETA (optional)', type: 'text',   placeholder: '24–48 hours' },
+    ],
+  },
+  {
+    id: 'withdrawal_rejected',
+    icon: '🚫',
+    label: 'Withdrawal Rejected',
+    accent: '#f87171',
+    bg: 'rgba(248,113,113,0.10)',
+    desc: 'Notify player their withdrawal was rejected with a reason.',
+    fields: [
+      { key: 'amount', label: 'Amount (₹)',       type: 'number', placeholder: '500',                required: true },
+      { key: 'reason', label: 'Rejection Reason', type: 'text',   placeholder: 'Invalid bank details', required: true },
+    ],
+  },
+  {
+    id: 'deposit_confirmed',
+    icon: '💚',
+    label: 'Deposit Confirmed',
+    accent: '#4ade80',
+    bg: 'rgba(74,222,128,0.10)',
+    desc: 'Confirm a player\'s deposit was received and credited.',
+    fields: [
+      { key: 'amount', label: 'Amount (₹)', type: 'number', placeholder: '200', required: true },
+    ],
+  },
+  {
+    id: 'deposit_rejected',
+    icon: '🔴',
+    label: 'Deposit Rejected',
+    accent: '#ef4444',
+    bg: 'rgba(239,68,68,0.10)',
+    desc: 'Inform player their deposit / UTR could not be verified.',
+    fields: [
+      { key: 'amount', label: 'Amount (₹)', type: 'number', placeholder: '200',              required: true },
+      { key: 'reason', label: 'Reason',     type: 'text',   placeholder: 'UTR not matched',  required: true },
+    ],
+  },
+  {
+    id: 'welcome',
+    icon: '👋',
+    label: 'Welcome',
+    accent: '#f59e0b',
+    bg: 'rgba(245,158,11,0.10)',
+    desc: 'Welcome a new player with a starter bonus.',
+    fields: [
+      { key: 'bonusAmount', label: 'Starter Bonus (₹)', type: 'number', placeholder: '20', required: true },
+    ],
+  },
+  {
+    id: 'top_player',
+    icon: '🏆',
+    label: 'VIP Recognition',
+    accent: '#fbbf24',
+    bg: 'rgba(251,191,36,0.10)',
+    desc: 'Recognize a top player with a special reward message.',
+    fields: [
+      { key: 'rank',         label: 'Rank / Title',            type: 'text',   placeholder: '#1 Player this week',      required: true },
+      { key: 'rewardAmount', label: 'Reward Amount (₹)',        type: 'number', placeholder: '100',                      required: true },
+      { key: 'customMsg',    label: 'Custom Message (optional)', type: 'text',  placeholder: 'Keep up the amazing play!' },
+    ],
+  },
+];
+
+const TEMPLATE_LABELS: Record<string, string> = {
+  winback: '🎁 Win-Back', tournament: '⚔️ Tournament', bonus: '💰 Bonus Drop',
+  announcement: '📣 Announcement', withdrawal_approved: '✅ Withdrawal Approved',
+  withdrawal_rejected: '🚫 Withdrawal Rejected', deposit_confirmed: '💚 Deposit Confirmed',
+  deposit_rejected: '🔴 Deposit Rejected', welcome: '👋 Welcome', top_player: '🏆 VIP',
+};
+
+function EmailUnsubscribedTab() {
+  const [users, setUsers]   = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal]   = useState(0);
+  const [page, setPage]     = useState(1);
+  const [pages, setPages]   = useState(1);
+  const [resubbing, setResubbing] = useState<string | null>(null);
+  const [toast, setToast]   = useState<string | null>(null);
+
+  const load = async (p: number) => {
+    setLoading(true);
+    try {
+      const r = await admin.getEmailUnsubscribed(p);
+      setUsers(r.data.users);
+      setTotal(r.data.total);
+      setPages(r.data.pages);
+      setPage(p);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleResubscribe = async (userId: string, username: string) => {
+    setResubbing(userId);
+    try {
+      await admin.resubscribeUser(userId);
+      setUsers(prev => prev.filter(u => u._id !== userId));
+      setTotal(prev => prev - 1);
+      setToast(`${username} resubscribed`);
+      setTimeout(() => setToast(null), 3000);
+    } catch { /* silent */ }
+    finally { setResubbing(null); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <span style={{ color: '#f87171', fontWeight: 800, fontSize: 15 }}>🚫 Unsubscribed Users</span>
+          <span style={{ color: '#64748b', fontSize: 13, marginLeft: 8 }}>— {total} total</span>
+        </div>
+        {toast && <span style={{ color: '#4ade80', fontSize: 13, fontWeight: 700 }}>✅ {toast}</span>}
+      </div>
+
+      {loading ? (
+        <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>Loading...</div>
+      ) : !users.length ? (
+        <div style={{ ...cardStyle, padding: 32, textAlign: 'center' }}>
+          <p style={{ color: '#4ade80', fontSize: 15, fontWeight: 700, margin: '0 0 6px' }}>🎉 No one has unsubscribed yet!</p>
+          <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>All your players are still subscribed to emails.</p>
+        </div>
+      ) : (
+        <div style={{ ...cardStyle, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                {['Username', 'Email', 'Joined', 'Unsubscribed At', 'Action'].map(h => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '12px 16px', color: '#f1f5f9', fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{u.email}</td>
+                  <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 12 }}>{new Date(u.createdAt).toLocaleDateString('en-IN')}</td>
+                  <td style={{ padding: '12px 16px', color: '#f87171', fontSize: 12 }}>
+                    {u.emailUnsubscribedAt ? new Date(u.emailUnsubscribedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <button
+                      onClick={() => handleResubscribe(u._id, u.username)}
+                      disabled={resubbing === u._id}
+                      style={{ padding: '5px 14px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', fontWeight: 700, fontSize: 12, cursor: resubbing === u._id ? 'not-allowed' : 'pointer' }}
+                    >
+                      {resubbing === u._id ? '...' : 'Resubscribe'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {pages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => load(p)} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${p === page ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: p === page ? 'rgba(99,102,241,0.15)' : 'transparent', color: p === page ? '#a5b4fc' : '#64748b', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>{p}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmailHistoryTab() {
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [page, setPage]           = useState(1);
+  const [pages, setPages]         = useState(1);
+  const [expanded, setExpanded]   = useState<string | null>(null);
+
+  const load = async (p: number) => {
+    setLoading(true);
+    try {
+      const r = await admin.getEmailHistory(p);
+      setCampaigns(r.data.campaigns);
+      setPages(r.data.pages);
+      setPage(p);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>Loading history...</div>;
+  if (!campaigns.length) return <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>No campaigns sent yet.</div>;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {campaigns.map(c => {
+        const openRate = c.total > 0 ? Math.round((c.opened / c.total) * 100) : 0;
+        const isOpen = expanded === c._id;
+        return (
+          <div key={c._id} style={{ ...cardStyle, overflow: 'hidden' }}>
+            <button
+              onClick={() => setExpanded(isOpen ? null : c._id)}
+              style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}
+            >
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 13 }}>{TEMPLATE_LABELS[c.templateId] ?? c.templateId}</span>
+                  <span style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{c.target}</span>
+                </div>
+                <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(c.sentAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST</div>
+              </div>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#a5b4fc', fontWeight: 800, fontSize: 16 }}>{c.total}</div>
+                  <div style={{ color: '#475569', fontSize: 10 }}>Sent</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#4ade80', fontWeight: 800, fontSize: 16 }}>{c.opened}</div>
+                  <div style={{ color: '#475569', fontSize: 10 }}>Opened</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: openRate > 30 ? '#4ade80' : openRate > 10 ? '#fbbf24' : '#f87171', fontWeight: 800, fontSize: 16 }}>{openRate}%</div>
+                  <div style={{ color: '#475569', fontSize: 10 }}>Rate</div>
+                </div>
+                <span style={{ color: '#475569', fontSize: 14 }}>{isOpen ? '▲' : '▼'}</span>
+              </div>
+            </button>
+
+            {isOpen && (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 18px', maxHeight: 260, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      {['Username', 'Email', 'Status', 'Opened At'].map(h => (
+                        <th key={h} style={{ color: '#64748b', fontWeight: 700, padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {c.recipients.map((r: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '6px 8px', color: '#cbd5e1', fontWeight: 600 }}>{r.username}</td>
+                        <td style={{ padding: '6px 8px', color: '#64748b' }}>{r.to}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ color: r.opened ? '#4ade80' : '#94a3b8', fontWeight: 700 }}>{r.opened ? '👁 Opened' : '📨 Sent'}</span>
+                        </td>
+                        <td style={{ padding: '6px 8px', color: '#64748b' }}>
+                          {r.openedAt ? new Date(r.openedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {pages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 8 }}>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => load(p)} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${p === page ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: p === page ? 'rgba(99,102,241,0.15)' : 'transparent', color: p === page ? '#a5b4fc' : '#64748b', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>{p}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmailCampaignSection() {
+  const [tab, setTab]                 = useState<'compose' | 'history' | 'unsubscribed'>('compose');
+  const [selectedTpl, setSelectedTpl] = useState<EmailTemplateId>('winback');
+  const [target, setTarget]           = useState<'all' | 'inactive' | 'specific'>('all');
+  const [inactiveDays, setInactiveDays] = useState('7');
+  const [specificEmails, setSpecificEmails] = useState('');
+  const [fields, setFields]           = useState<Record<string, string>>({});
+  const [sending, setSending]         = useState(false);
+  const [result, setResult]           = useState<{ sent: number; failed: number; message?: string } | null>(null);
+  const [err, setErr]                 = useState<string | null>(null);
+  const [confirmed, setConfirmed]     = useState(false);
+
+  const tpl = EMAIL_TEMPLATES.find(t => t.id === selectedTpl)!;
+
+  const setField = (key: string, val: string) => setFields(prev => ({ ...prev, [key]: val }));
+
+  const buildTemplate = (): any => {
+    if (selectedTpl === 'winback') return { id: 'winback', bonusAmount: Number(fields.bonusAmount ?? 30), customNote: fields.customNote || undefined };
+    if (selectedTpl === 'tournament') return { id: 'tournament', name: fields.name, prizePool: Number(fields.prizePool), entryFee: Number(fields.entryFee ?? 0), startTime: fields.startTime, description: fields.description || undefined };
+    if (selectedTpl === 'bonus') return { id: 'bonus', amount: Number(fields.amount), occasion: fields.occasion };
+    if (selectedTpl === 'withdrawal_approved') return { id: 'withdrawal_approved', amount: Number(fields.amount), method: fields.method, eta: fields.eta || undefined };
+    if (selectedTpl === 'withdrawal_rejected') return { id: 'withdrawal_rejected', amount: Number(fields.amount), reason: fields.reason };
+    if (selectedTpl === 'deposit_confirmed') return { id: 'deposit_confirmed', amount: Number(fields.amount) };
+    if (selectedTpl === 'deposit_rejected') return { id: 'deposit_rejected', amount: Number(fields.amount), reason: fields.reason };
+    if (selectedTpl === 'welcome') return { id: 'welcome', bonusAmount: Number(fields.bonusAmount ?? 20) };
+    if (selectedTpl === 'top_player') return { id: 'top_player', rank: fields.rank, rewardAmount: Number(fields.rewardAmount), customMsg: fields.customMsg || undefined };
+    return { id: 'announcement', headline: fields.headline, body: fields.body, ctaText: fields.ctaText || undefined, ctaUrl: fields.ctaUrl || undefined };
+  };
+
+  const canSend = tpl.fields.filter(f => f.required).every(f => (fields[f.key] ?? '').trim() !== '');
+
+  const handleSend = async () => {
+    if (!canSend || !confirmed) return;
+    setSending(true); setErr(null); setResult(null);
+    try {
+      const payload: any = {
+        target,
+        template: buildTemplate(),
+      };
+      if (target === 'inactive') payload.inactiveDays = Number(inactiveDays) || 7;
+      if (target === 'specific') payload.targetEmails = specificEmails.split(/[\n,]+/).map((e: string) => e.trim()).filter(Boolean);
+      const r = await admin.sendEmail(payload);
+      setResult(r.data);
+      setConfirmed(false);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error ?? 'Failed to send emails');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 860, margin: '0 auto' }}>
+      {/* Header */}
+      <div className="mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ color: '#f1f5f9', fontSize: 22, fontWeight: 900, margin: 0 }}>✉️ Email Campaigns</h2>
+          <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>Send branded emails to your players using pre-built templates.</p>
+        </div>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 3 }}>
+          {([['compose', '✏️ Compose'], ['history', '📋 History'], ['unsubscribed', '🚫 Unsubscribed']] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)} style={{ padding: '7px 18px', borderRadius: 8, fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer', background: tab === t ? 'rgba(99,102,241,0.25)' : 'transparent', color: tab === t ? '#a5b4fc' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'history' && <EmailHistoryTab />}
+      {tab === 'unsubscribed' && <EmailUnsubscribedTab />}
+      {tab === 'compose' && <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        {/* LEFT — template picker + fields */}
+        <div className="flex flex-col gap-4">
+          {/* Template cards */}
+          <div style={{ ...cardStyle, padding: '20px 20px 16px' }}>
+            <p style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>Choose Template</p>
+            <div className="grid grid-cols-2 gap-2">
+              {EMAIL_TEMPLATES.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setSelectedTpl(t.id); setFields({}); setResult(null); setErr(null); setConfirmed(false); }}
+                  style={{
+                    background: selectedTpl === t.id ? t.bg : 'rgba(255,255,255,0.03)',
+                    border: `1.5px solid ${selectedTpl === t.id ? t.accent : 'rgba(255,255,255,0.07)'}`,
+                    borderRadius: 10, padding: '12px 10px', textAlign: 'left', cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>{t.icon}</div>
+                  <div style={{ color: selectedTpl === t.id ? t.accent : '#e2e8f0', fontWeight: 700, fontSize: 12 }}>{t.label}</div>
+                  <div style={{ color: '#64748b', fontSize: 11, marginTop: 2, lineHeight: 1.4 }}>{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Template fields */}
+          <div style={{ ...cardStyle, padding: '20px' }}>
+            <p style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 14px' }}>
+              {tpl.icon} {tpl.label} — Variables
+            </p>
+            <div className="flex flex-col gap-3">
+              {tpl.fields.map(f => (
+                <div key={f.key}>
+                  <label style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>
+                    {f.label}{f.required && <span style={{ color: '#f87171' }}> *</span>}
+                  </label>
+                  {f.type === 'textarea' ? (
+                    <textarea
+                      rows={3}
+                      placeholder={f.placeholder}
+                      value={fields[f.key] ?? ''}
+                      onChange={e => setField(f.key, e.target.value)}
+                      style={{
+                        width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 8, padding: '8px 10px', color: '#f1f5f9', fontSize: 13, resize: 'vertical',
+                        outline: 'none', fontFamily: 'inherit',
+                      }}
+                    />
+                  ) : (
+                    <input
+                      type={f.type}
+                      placeholder={f.placeholder}
+                      value={fields[f.key] ?? ''}
+                      onChange={e => setField(f.key, e.target.value)}
+                      style={{
+                        width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 8, padding: '8px 10px', color: '#f1f5f9', fontSize: 13, outline: 'none',
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — targeting + send */}
+        <div className="flex flex-col gap-4">
+          {/* Audience */}
+          <div style={{ ...cardStyle, padding: '20px' }}>
+            <p style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 14px' }}>Target Audience</p>
+            <div className="flex flex-col gap-2">
+              {([
+                { key: 'all',      label: 'All Registered Players',  icon: '👥', desc: 'Every non-guest user with an email' },
+                { key: 'inactive', label: 'Inactive Players',         icon: '💤', desc: 'Haven\'t logged in for N days' },
+                { key: 'specific', label: 'Specific Emails',          icon: '🎯', desc: 'Paste email addresses manually' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setTarget(opt.key)}
+                  style={{
+                    background: target === opt.key ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)',
+                    border: `1.5px solid ${target === opt.key ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.07)'}`,
+                    borderRadius: 10, padding: '10px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>{opt.icon}</span>
+                  <div>
+                    <div style={{ color: target === opt.key ? '#a5b4fc' : '#e2e8f0', fontWeight: 700, fontSize: 13 }}>{opt.label}</div>
+                    <div style={{ color: '#64748b', fontSize: 11 }}>{opt.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {target === 'inactive' && (
+              <div className="mt-3">
+                <label style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>Inactive for at least (days)</label>
+                <input
+                  type="number" min="1"
+                  value={inactiveDays}
+                  onChange={e => setInactiveDays(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: '#f1f5f9', fontSize: 13, outline: 'none' }}
+                />
+              </div>
+            )}
+
+            {target === 'specific' && (
+              <div className="mt-3">
+                <label style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>Email addresses (one per line or comma-separated)</label>
+                <textarea
+                  rows={4}
+                  placeholder="user1@gmail.com&#10;user2@gmail.com"
+                  value={specificEmails}
+                  onChange={e => setSpecificEmails(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: '#f1f5f9', fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Preview card */}
+          <div style={{ ...cardStyle, padding: '20px', background: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.2)' }}>
+            <p style={{ color: '#a5b4fc', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>Email Preview Summary</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 28 }}>{tpl.icon}</span>
+              <div>
+                <div style={{ color: '#f1f5f9', fontWeight: 800, fontSize: 14 }}>{tpl.label}</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>Template selected</div>
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+              {tpl.fields.filter(f => fields[f.key]).map(f => (
+                <div key={f.key}><span style={{ color: '#64748b' }}>{f.label}:</span> <span style={{ color: '#cbd5e1' }}>{fields[f.key]?.slice(0, 40)}{(fields[f.key]?.length ?? 0) > 40 ? '…' : ''}</span></div>
+              ))}
+              {tpl.fields.filter(f => f.required && !fields[f.key]).length > 0 && (
+                <div style={{ color: '#f87171', marginTop: 4 }}>⚠ Fill required fields above</div>
+              )}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>
+              Sends to: <span style={{ color: '#a5b4fc', fontWeight: 700 }}>
+                {target === 'all' ? 'All registered players' : target === 'inactive' ? `Inactive ${inactiveDays}+ days` : 'Specific emails'}
+              </span>
+            </div>
+          </div>
+
+          {/* Confirm + Send */}
+          <div style={{ ...cardStyle, padding: '20px' }}>
+            {!result && !err && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 14 }}>
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={e => setConfirmed(e.target.checked)}
+                  style={{ marginTop: 2, accentColor: '#6366f1', width: 16, height: 16 }}
+                />
+                <span style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
+                  I confirm I want to send this email campaign to the selected audience. This action cannot be undone.
+                </span>
+              </label>
+            )}
+
+            {result && (
+              <div style={{ background: 'rgba(0,200,100,0.08)', border: '1px solid rgba(0,200,100,0.3)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+                <p style={{ color: '#4ade80', fontWeight: 800, fontSize: 15, margin: '0 0 6px' }}>✅ Campaign Sent!</p>
+                <p style={{ color: '#6ee7b7', fontSize: 13, margin: 0 }}>
+                  {result.sent} sent · {result.failed} failed{result.message ? ` · ${result.message}` : ''}
+                </p>
+              </div>
+            )}
+
+            {err && (
+              <div style={{ background: 'rgba(220,50,50,0.08)', border: '1px solid rgba(220,50,50,0.3)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>❌ {err}</p>
+              </div>
+            )}
+
+            <button
+              disabled={!canSend || !confirmed || sending}
+              onClick={handleSend}
+              style={{
+                width: '100%', padding: '13px 0', borderRadius: 10, fontWeight: 900, fontSize: 15,
+                background: canSend && confirmed && !sending ? `linear-gradient(135deg,${tpl.accent},#6366f1)` : 'rgba(255,255,255,0.06)',
+                color: canSend && confirmed && !sending ? '#fff' : '#475569',
+                border: 'none', cursor: canSend && confirmed && !sending ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s',
+              }}
+            >
+              {sending ? '⏳ Sending...' : `${tpl.icon} Send Campaign`}
+            </button>
+
+            {result && (
+              <button
+                onClick={() => { setResult(null); setErr(null); setConfirmed(false); }}
+                style={{ width: '100%', marginTop: 8, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'transparent', color: '#64748b', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer' }}
+              >
+                Send Another
+              </button>
+            )}
+          </div>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────────────────
 
 type NavGroup = {
@@ -7100,6 +8601,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "leaderboard",   icon: "🥇", label: "Leaderboard" },
       { key: "support",       icon: "🎧", label: "Support" },
       { key: "notify",        icon: "📢", label: "Notify Players" },
+      { key: "email",         icon: "✉️",  label: "Email Campaigns" },
       { key: "announcements", icon: "📣", label: "Announcements" },
     ],
   },
@@ -7122,7 +8624,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "withdrawals",   icon: "🎁", label: "Reward Delivery" },
       { key: "wallets",       icon: "💰", label: "Player Wallets" },
       { key: "missedpayouts", icon: "🚨", label: "Missed Payouts" },
-      { key: "referrals",     icon: "🤝", label: "Referrals" },
+      { key: "referrals",             icon: "🤝", label: "Referrals" },
+      { key: "scheduledtournaments",  icon: "⚔️", label: "Tournaments" },
     ],
   },
   {
@@ -7348,6 +8851,7 @@ export function AdminPage() {
               {section === "gameconfig" && <GameConfigSection config={config} onSave={saveConfig} />}
               {section === "walletconfig" && <WalletConfigSection config={config} onSave={saveConfig} />}
               {section === "notify" && <NotifySection />}
+              {section === "email" && <EmailCampaignSection />}
               {section === "announcements" && <AnnouncementsSection />}
               {section === "survivalconfig" && <SurvivalConfigSection config={config} onSave={saveConfig} />}
               {section === "analytics" && <AnalyticsSection />}
@@ -7361,6 +8865,7 @@ export function AdminPage() {
               {section === "spinanalytics" && <SpinAnalyticsSection />}
               {section === "roomtracker" && <RoomTrackerSection />}
               {section === "referrals" && <ReferralsSection />}
+              {section === "scheduledtournaments" && <ScheduledTournamentsSection />}
             </motion.div>
           </AnimatePresence>
         </div>

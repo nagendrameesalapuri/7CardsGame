@@ -31,6 +31,7 @@ import {
   handleSurvivalMatchEnd,
   handleSurvivalForceEnd,
 } from "./survivalHandler";
+import { handleElimTournamentMatchEnd } from "../../utils/tournamentScheduler";
 import { awardXp } from "../../utils/progressionService";
 import {
   XP_REWARDS,
@@ -49,6 +50,8 @@ const activeGames = new Map<string, GameState>();
 const roomToGame = new Map<string, string>();
 // Turn timers (gameId → NodeJS.Timeout)
 const turnTimers = new Map<string, NodeJS.Timeout>();
+// Per-game tournament timeout counts (gameId → userId → count)
+const gameTimeoutCounts = new Map<string, Record<string, number>>();
 // Ready-for-next-round tracking: gameId → Set of userIds who have clicked "Play Next Round"
 const roundReadyPlayers = new Map<string, Set<string>>();
 // Auto-advance timers: if not all humans click "Next Round" within 20 s, advance anyway
@@ -308,6 +311,7 @@ export function forceEndGame(io: Server, roomCode: string): boolean {
   gameDifficultyBoost.delete(gameId);
   gameBotPersonality.delete(gameId);
   gameBotPersonalitiesMap.delete(gameId);
+  gameTimeoutCounts.delete(gameId);
   if (state) state.players.filter(p => p.isBot).forEach(b => BotPlayer.cleanupBotContext(b.id));
   cancelTurnTimer(gameId);
 
@@ -1183,6 +1187,10 @@ async function handleMatchEnd(io: Server, state: GameState) {
     }).catch(console.error);
   }
 
+  // Capture and clear timeout counts before cleanup
+  const timeoutCounts = gameTimeoutCounts.get(state.id) ?? {};
+  gameTimeoutCounts.delete(state.id);
+
   activeGames.delete(state.id);
   roomToGame.delete(state.roomId);
   roundReadyPlayers.delete(state.id);
@@ -1206,6 +1214,10 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
+
+  // Elimination tournament: pass ALL player IDs so bot tournament registrations are also scored/eliminated
+  const allTournamentPlayerIds = state.players.map((p) => p.userId);
+  handleElimTournamentMatchEnd(io, allTournamentPlayerIds, playerScoreUpdates, timeoutCounts, state.roomId).catch(console.error);
 }
 
 
@@ -1333,6 +1345,14 @@ function startTurnTimer(io: Server, gameId: string) {
   const timer = setTimeout(() => {
     const current = activeGames.get(gameId);
     if (!current) return;
+
+    // Track tournament timeout strikes for human players
+    const timedOutPlayer = current.players[current.currentPlayerIndex];
+    if (timedOutPlayer && !timedOutPlayer.isBot) {
+      const counts = gameTimeoutCounts.get(gameId) ?? {};
+      counts[timedOutPlayer.userId] = (counts[timedOutPlayer.userId] ?? 0) + 1;
+      gameTimeoutCounts.set(gameId, counts);
+    }
 
     const result = GameEngine.processTimeout(current);
     activeGames.set(gameId, result.state);

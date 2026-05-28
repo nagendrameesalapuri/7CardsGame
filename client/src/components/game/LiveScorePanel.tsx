@@ -126,7 +126,7 @@ export function LiveScorePanel({ players, myPlayerId, roundNumber, roundCount, t
                       {teamPlayers.map(p => (
                         <span key={p.id} className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
                           style={{ background: 'rgba(255,255,255,0.07)', color: p.id === myPlayerId ? '#4ade80' : 'rgba(148,163,184,0.8)' }}>
-                          {p.id === myPlayerId ? 'You' : p.username} {p.isBot ? '🤖' : ''}
+                          {p.id === myPlayerId ? 'You' : p.username} {p.avatar?.startsWith('bot_') ? '🤖' : ''}
                         </span>
                       ))}
                     </div>
@@ -290,7 +290,7 @@ export function LiveScorePanel({ players, myPlayerId, roundNumber, roundCount, t
                       <p className="flex-1 text-xs font-semibold truncate leading-none"
                         style={{ color: isMe ? '#4ade80' : 'rgba(226,232,240,0.85)' }}>
                         {isMe ? 'You' : p.username}
-                        {p.isBot && <span className="ml-1 opacity-70">🤖</span>}
+                        {p.avatar?.startsWith('bot_') && <span className="ml-1 opacity-70">🤖</span>}
                       </p>
                       <div className="flex-shrink-0 text-right">
                         {p.isEliminated ? (

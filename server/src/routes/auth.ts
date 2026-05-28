@@ -2,7 +2,12 @@ import { Router, Request, Response } from 'express';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
+import { Transaction } from '../models/Transaction';
 import { v4 as uuidv4 } from 'uuid';
+
+const COMEBACK_BONUS = 30;
+const COMEBACK_INACTIVE_DAYS = 7;
+const COMEBACK_COOLDOWN_DAYS = 30; // max once per 30 days
 
 const router = Router();
 
@@ -92,8 +97,41 @@ router.get('/me', async (req: Request, res: Response) => {
     const user = await User.findById(decoded.userId).select('-guestToken');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // ── Win-back bonus: credit ₹30 if inactive 7+ days and not claimed in 30 days ──
+    let comebackBonus = 0;
+    if (!user.isGuest) {
+      const now = new Date();
+      const inactiveCutoff = new Date(now.getTime() - COMEBACK_INACTIVE_DAYS * 24 * 60 * 60 * 1000);
+      const cooldownCutoff = new Date(now.getTime() - COMEBACK_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+
+      const wasInactive  = !user.lastSeenAt || user.lastSeenAt <= inactiveCutoff;
+      const notOnCooldown = !user.lastComebackBonusAt || user.lastComebackBonusAt <= cooldownCutoff;
+
+      if (wasInactive && notOnCooldown) {
+        const balanceBefore = user.walletBalance;
+        user.walletBalance += COMEBACK_BONUS;
+        user.lastComebackBonusAt = now;
+        await user.save();
+
+        await Transaction.create({
+          userId:        user.id,
+          type:          'deposit',
+          amount:        COMEBACK_BONUS,
+          status:        'completed',
+          description:   `Welcome back bonus — ₹${COMEBACK_BONUS} for returning after ${COMEBACK_INACTIVE_DAYS}+ days`,
+          balanceBefore,
+          balanceAfter:  user.walletBalance,
+          heldBefore:    user.heldBalance,
+          heldAfter:     user.heldBalance,
+        });
+
+        comebackBonus = COMEBACK_BONUS;
+        console.log(`[WinBack] Credited ₹${COMEBACK_BONUS} to ${user.username} (inactive ${COMEBACK_INACTIVE_DAYS}+ days)`);
+      }
+    }
+
     const u = user.toJSON() as any;
-    res.json({ user: { id: user.id, ...u, isAdmin: user.isAdmin } });
+    res.json({ user: { id: user.id, ...u, isAdmin: user.isAdmin }, comebackBonus });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }

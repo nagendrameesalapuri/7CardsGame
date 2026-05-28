@@ -28,8 +28,11 @@ import walletRoutes from './routes/wallet';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
 import survivalRoutes from './routes/survival';
+import tournamentRoutes from './routes/tournaments';
 import progressionRoutes from './routes/progression';
 import notificationRoutes from './routes/notifications';
+import { startTournamentScheduler } from './utils/tournamentScheduler';
+import { startReengagementScheduler } from './utils/reengagementScheduler';
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -108,6 +111,7 @@ async function bootstrap() {
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/survival', survivalRoutes);
+  app.use('/api/tournaments', tournamentRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/progression', progressionRoutes);
   app.use('/api/notifications', notificationRoutes);
@@ -128,6 +132,41 @@ async function bootstrap() {
     }
   });
 
+  // ── Public: Email unsubscribe (linked from email footers, no auth) ───────────
+  app.get('/api/email/unsubscribe/:token', async (req, res) => {
+    const { token } = req.params;
+    const clientUrl = (process.env.CLIENT_URL ?? 'http://localhost:3000').split(',')[0].trim();
+
+    const unsubscribedHtml = (msg: string, isError = false) => `
+      <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Unsubscribe — Arena of Sevens</title>
+      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#0d0b1e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#0f0d2a;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:48px 40px;max-width:480px;width:100%;text-align:center}.icon{font-size:52px;margin-bottom:16px}.title{color:#f1f5f9;font-size:22px;font-weight:900;margin-bottom:10px}.msg{color:#94a3b8;font-size:15px;line-height:1.6;margin-bottom:28px}.btn{display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-weight:700;font-size:15px;border-radius:10px;text-decoration:none}</style>
+      </head><body><div class="card">
+        <div class="icon">${isError ? '⚠️' : '✅'}</div>
+        <h1 class="title">${isError ? 'Something went wrong' : 'You\'ve been unsubscribed'}</h1>
+        <p class="msg">${msg}</p>
+        <a href="${clientUrl}" class="btn">Return to Arena of Sevens</a>
+      </div></body></html>`;
+
+    try {
+      const user = await User.findOne({ unsubscribeToken: token });
+      if (!user) {
+        return res.status(404).send(unsubscribedHtml('This unsubscribe link is invalid or has already been used.', true));
+      }
+      if (user.emailUnsubscribed) {
+        return res.send(unsubscribedHtml(`You're already unsubscribed. You won't receive any more emails from us.`));
+      }
+      user.emailUnsubscribed = true;
+      user.emailUnsubscribedAt = new Date();
+      await user.save();
+      console.log(`[Email] ${user.username} (${user.email}) unsubscribed`);
+      res.send(unsubscribedHtml(`<strong>${user.username}</strong>, you've been removed from our email list. You won't receive any more emails from Arena of Sevens.`));
+    } catch (err) {
+      console.error('[Unsubscribe]', err);
+      res.status(500).send(unsubscribedHtml('An error occurred. Please try again later.', true));
+    }
+  });
+
   // ── Socket.IO ────────────────────────────────────────────────────────────────
   const io = new Server(httpServer, {
     cors: { origin: corsOrigin, methods: ['GET', 'POST'], credentials: true },
@@ -139,6 +178,8 @@ async function bootstrap() {
   app.use('/api/admin', createAdminRouter(io));
 
   initSocketIO(io);
+  startTournamentScheduler(io);
+  startReengagementScheduler();
 
   // ── Startup: refund games orphaned by previous crash/deployment ─────────────
   // Uses atomic claim (status: 'playing' → 'finished') to prevent double-refund

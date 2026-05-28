@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { roomsApi, configApi, walletApi, referralApi } from '../services/api';
+import { roomsApi, configApi, walletApi, tournamentsApi } from '../services/api';
 import { notify } from '../services/notify';
 import { on } from '../services/socket';
 import { Layout } from '../components/layout/Layout';
@@ -60,7 +60,7 @@ function RankRing({ pct, color, icon, level }: { pct: number; color: string; ico
 
 export function LobbyPage() {
   const { room, game, subscribeToEvents, createRoom, resumeRoomCodes, clearResume, joinRoom, resumeGame } = useGameStore();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, comebackBonus, clearComebackBonus } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -82,8 +82,7 @@ export function LobbyPage() {
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
-  const [referralCode, setReferralCode] = useState<string | null>(null);
-  const [referralCopied, setReferralCopied] = useState(false);
+  const [upcomingTournament, setUpcomingTournament] = useState<any>(null);
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
     featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '' },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
@@ -164,8 +163,9 @@ export function LobbyPage() {
           setShowLaunchBonus(true);
         }
       }).catch(() => {});
-      referralApi.get().then(r => {
-        setReferralCode(r.data.referralCode);
+      tournamentsApi.list().then(r => {
+        const active = r.data.tournaments.find((t: any) => t.status === 'live') ?? r.data.tournaments.find((t: any) => t.status === 'upcoming');
+        setUpcomingTournament(active ?? null);
       }).catch(() => {});
     }
 
@@ -567,107 +567,89 @@ export function LobbyPage() {
               </motion.div>
             )}
 
-            {/* Refer & Earn */}
-            {!user?.isGuest && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
-                className="relative overflow-hidden rounded-2xl cursor-pointer"
-                onClick={() => navigate('/profile')}
-                style={{
-                  background: 'linear-gradient(135deg,rgba(6,22,14,0.98),rgba(4,14,10,0.97))',
-                  border: '1px solid rgba(52,211,153,0.28)',
-                  boxShadow: '0 4px 32px rgba(52,211,153,0.06)',
-                }}>
-                {/* Glow blobs */}
-                <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(52,211,153,0.14),transparent 70%)', filter: 'blur(24px)' }} />
-                <div className="absolute -bottom-6 -left-6 w-28 h-28 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(251,191,36,0.08),transparent 70%)', filter: 'blur(20px)' }} />
-                <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(52,211,153,0.5),transparent)' }} />
 
-                <div className="relative px-4 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                      style={{ background: 'linear-gradient(135deg,rgba(52,211,153,0.2),rgba(16,185,129,0.1))', border: '1px solid rgba(52,211,153,0.35)' }}>
-                      🎁
-                    </div>
-                    <div className="flex-1 min-w-0">
+            {/* Tournaments */}
+            {upcomingTournament && (() => {
+              const userId = String((user as any)?.id ?? (user as any)?._id ?? '');
+              const isRegistered = userId
+                ? upcomingTournament.registrations?.some((r: any) => String(r.userId) === userId)
+                : false;
+              const isLive = upcomingTournament.status === 'live';
+
+              // Registered + live → show active tournament banner
+              if (isRegistered && isLive) {
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+                    className="relative overflow-hidden rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg,rgba(34,197,94,0.2),rgba(16,185,129,0.12))', border: '1px solid rgba(34,197,94,0.45)' }}
+                  >
+                    <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full animate-pulse" style={{ background: 'radial-gradient(circle,rgba(34,197,94,0.25),transparent 70%)', filter: 'blur(18px)' }} />
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="px-2 py-0.5 text-[9px] font-bold rounded-full animate-pulse" style={{ background: 'rgba(34,197,94,0.25)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.5)' }}>🔴 TOURNAMENT LIVE</span>
+                        <span className="text-[9px] font-bold" style={{ color: 'rgba(255,255,255,0.4)' }}>You're competing!</span>
+                      </div>
+                      <p className="text-sm font-black text-white mb-1">{upcomingTournament.name}</p>
+                      <p className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                        Every point you win right now counts toward your tournament score. Play any game below!
+                      </p>
                       <div className="flex items-center gap-2">
-                        <p className="text-base font-black text-white">Refer &amp; Earn</p>
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
-                          style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399', border: '1px solid rgba(52,211,153,0.3)' }}>
-                          ₹50 BONUS
-                        </span>
-                      </div>
-                      <p className="text-xs text-dark-muted">Invite friends · Both of you win cash</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative px-4 py-3 flex flex-col gap-2">
-                  {/* Reward pills */}
-                  <div className="flex gap-2">
-                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
-                      style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}>
-                      <span className="text-base">🎁</span>
-                      <div>
-                        <p className="text-xs font-black" style={{ color: '#34d399' }}>You get ₹50</p>
-                        <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>per friend who deposits</p>
+                        <div className="flex-1 rounded-xl px-3 py-1.5 text-center text-xs font-bold" style={{ background: 'rgba(0,0,0,0.25)', color: '#4ade80' }}>
+                          🏆 Prize Pool: {upcomingTournament.prizePool.toLocaleString()} pts
+                        </div>
+                        <button
+                          onClick={() => navigate('/tournaments')}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold"
+                          style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
+                        >
+                          Standings →
+                        </button>
                       </div>
                     </div>
-                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
-                      style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                      <span className="text-base">🌟</span>
-                      <div>
-                        <p className="text-xs font-black" style={{ color: '#fbbf24' }}>Friend gets ₹30</p>
-                        <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.4)' }}>on their first deposit</p>
+                  </motion.div>
+                );
+              }
+
+              // Default: teaser card for non-registered or upcoming
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+                  className="relative overflow-hidden rounded-2xl cursor-pointer"
+                  style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.4)' }}
+                  onClick={() => navigate('/tournaments')}
+                >
+                  <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.25),transparent 70%)', filter: 'blur(20px)' }} />
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          {isLive
+                            ? <span className="px-2 py-0.5 text-[9px] font-bold rounded-full animate-pulse" style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.4)' }}>🔴 LIVE</span>
+                            : <span className="px-2 py-0.5 text-[9px] font-bold rounded-full" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>⏳ Upcoming</span>
+                          }
+                        </div>
+                        <p className="text-base font-black text-white leading-tight">{upcomingTournament.name}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-lg font-black" style={{ color: '#a5b4fc' }}>{upcomingTournament.prizePool.toLocaleString()}</div>
+                        <div className="text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>Prize Pool pts</div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Code row */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 rounded-xl px-3 py-2 flex items-center gap-2"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>Code:</span>
-                      <span className="font-mono font-black text-base tracking-[0.2em]" style={{ color: '#34d399' }}>
-                        {referralCode ?? '······'}
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                        {upcomingTournament.registrations?.length ?? 0} players · {upcomingTournament.entryFee === 0 ? 'Free Entry' : `${upcomingTournament.entryFee} pts`}
+                      </div>
+                      <span className="text-xs font-bold" style={{ color: '#a5b4fc' }}>View & Register →</span>
                     </div>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        const text = referralCode ? `${window.location.origin}/?ref=${referralCode}` : '';
-                        if (!text) return;
-                        if (navigator.clipboard?.writeText) {
-                          navigator.clipboard.writeText(text).catch(() => {});
-                        } else {
-                          const el = document.createElement('textarea');
-                          el.value = text; el.style.position = 'fixed'; el.style.opacity = '0';
-                          document.body.appendChild(el); el.select();
-                          document.execCommand('copy'); document.body.removeChild(el);
-                        }
-                        setReferralCopied(true);
-                        setTimeout(() => setReferralCopied(false), 2000);
-                      }}
-                      className="px-4 py-2 rounded-xl text-xs font-black transition-all flex-shrink-0"
-                      style={{
-                        background: referralCopied ? 'rgba(52,211,153,0.28)' : 'rgba(52,211,153,0.14)',
-                        color: '#34d399',
-                        border: '1px solid rgba(52,211,153,0.35)',
-                      }}>
-                      {referralCopied ? '✓ Copied!' : '⎘ Copy Link'}
-                    </button>
                   </div>
-
-                  <p className="text-[10px] text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                    Tap card to see full details → Profile › Refer tab
-                  </p>
-                </div>
-              </motion.div>
-            )}
+                </motion.div>
+              );
+            })()}
 
             {/* Multiplayer */}
             <motion.div
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
               className="relative overflow-hidden rounded-2xl"
               style={{
                 background: 'linear-gradient(135deg,rgba(8,5,28,0.98),rgba(4,2,18,0.97))',
@@ -883,6 +865,70 @@ export function LobbyPage() {
             }}
             onClose={() => setShowLaunchBonus(false)}
           />
+        )}
+
+        {/* ── Win-Back Bonus Modal ── */}
+        {comebackBonus > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+            onClick={clearComebackBonus}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: 'spring', bounce: 0.35 }}
+              className="relative rounded-3xl overflow-hidden max-w-sm w-full"
+              style={{ background: 'linear-gradient(135deg,#0d1b0e,#0a1a10)', border: '1px solid rgba(34,197,94,0.5)', boxShadow: '0 0 60px rgba(34,197,94,0.2)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Glow */}
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle,rgba(34,197,94,0.3),transparent 70%)', filter: 'blur(30px)' }} />
+
+              <div className="relative px-6 pt-8 pb-6 text-center">
+                <motion.div
+                  animate={{ rotate: [0, -10, 10, -8, 8, 0], scale: [1, 1.15, 1] }}
+                  transition={{ duration: 0.8, delay: 0.3 }}
+                  className="text-6xl mb-4"
+                >
+                  🎁
+                </motion.div>
+
+                <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#4ade80' }}>Welcome Back!</p>
+                <h2 className="text-3xl font-black text-white mb-1">₹{comebackBonus} Added!</h2>
+                <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  We've added ₹{comebackBonus} to your wallet for coming back. Ready to play?
+                </p>
+
+                <div className="rounded-2xl px-4 py-3 mb-6" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>Your wallet balance</p>
+                  <p className="text-2xl font-black" style={{ color: '#4ade80' }}>
+                    ₹{((user as any)?.walletBalance ?? 0).toFixed(2)}
+                  </p>
+                </div>
+
+                <button
+                  onClick={clearComebackBonus}
+                  className="w-full py-3 rounded-2xl text-base font-black"
+                  style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff' }}
+                >
+                  ⚔️ Start Playing
+                </button>
+                <button
+                  onClick={clearComebackBonus}
+                  className="mt-3 text-xs"
+                  style={{ color: 'rgba(255,255,255,0.3)' }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </Layout>

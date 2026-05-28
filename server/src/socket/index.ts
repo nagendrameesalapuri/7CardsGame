@@ -8,7 +8,12 @@ import {
   getActiveGame,
   getActiveGameByUserId,
   getAllActiveGamesByUserId,
+  startRoomGame,
 } from "./handlers/gameHandler";
+import { registerTournamentGameBridge } from "../utils/tournamentScheduler";
+
+// Wire tournament scheduler → game engine (avoids circular import)
+registerTournamentGameBridge(startRoomGame);
 import { registerChatHandlers } from "./handlers/chatHandler";
 import { registerVoiceHandlers } from "./handlers/voiceHandler";
 import { registerSpectatorHandlers } from "./handlers/spectatorHandler";

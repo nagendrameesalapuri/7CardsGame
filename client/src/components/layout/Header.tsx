@@ -184,6 +184,8 @@ export function Header() {
     try {
       return on('admin:notification', (n) => addNotification({
         ...n,
+        id: (n as any).id ?? `admin-notif-${Date.now()}`,
+        sentAt: (n as any).sentAt ?? new Date().toISOString(),
         category: (n as any).category ?? 'system',
         actionUrl: (n as any).actionUrl,
       }));
@@ -197,6 +199,7 @@ export function Header() {
   const navItems = [
     { to: '/lobby',         label: 'Play',    icon: '⚔️' },
     ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Board', icon: '🏆' }] : []),
+    { to: '/tournaments',           label: 'Events',  icon: '🎯' },
     { to: '/wallet',                label: 'Rewards', icon: '🎁' },
     { to: '/notifications',         label: 'Alerts',  icon: '🔔' },
     { to: '/profile?tab=referral',  label: 'Refer',   icon: '🤝' },
@@ -223,12 +226,33 @@ export function Header() {
 
           {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-6 text-sm text-dark-muted">
-            <Link to="/lobby"         className="hover:text-white transition-colors">Play</Link>
-            {leaderboardEnabled && <Link to="/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>}
-            <Link to="/wallet"               className="hover:text-white transition-colors">Rewards</Link>
-            <Link to="/notifications"        className="hover:text-white transition-colors">Alerts</Link>
-            <Link to="/profile?tab=referral" className="hover:text-white transition-colors" style={{ color: '#4ade80' }}>Refer</Link>
-            <Link to="/profile"              className="hover:text-white transition-colors">Profile</Link>
+            {[
+              { to: '/lobby',              label: 'Play' },
+              ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Leaderboard' }] : []),
+              { to: '/tournaments',        label: 'Events' },
+              { to: '/wallet',             label: 'Rewards' },
+              { to: '/notifications',      label: 'Alerts' },
+              { to: '/profile',            label: 'Profile' },
+            ].map(({ to, label }) => {
+              const active = location.pathname === to;
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  className="hover:text-white transition-colors font-medium"
+                  style={{ color: active ? '#ffffff' : undefined }}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+            <Link
+              to="/profile?tab=referral"
+              className="hover:text-white transition-colors font-semibold"
+              style={{ color: location.pathname === '/profile' ? '#4ade80' : 'rgba(148,163,184,0.7)' }}
+            >
+              Refer
+            </Link>
             {user?.isAdmin && (
               <Link to="/admin-portal" className="hover:text-white transition-colors font-semibold" style={{ color: '#a855f7' }}>Admin</Link>
             )}

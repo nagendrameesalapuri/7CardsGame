@@ -835,12 +835,12 @@ function OpponentChip({
             alt={player.username}
             className="w-full h-full object-cover"
           />
-        ) : player.isBot ? (
+        ) : player.avatar?.startsWith("bot_") ? (
           <span className="text-base">🤖</span>
         ) : (
           <span className="text-sm">{initials}</span>
         )}
-        {player.isBot && (
+        {player.avatar?.startsWith("bot_") && (
           <div
             className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black text-white leading-none"
             style={{

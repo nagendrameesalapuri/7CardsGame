@@ -72,8 +72,8 @@ export function Avatar({ avatar, username, size = 'md', className, showName, isB
           )} />
         )}
 
-        {/* Bot badge — personality-colored for AI bots */}
-        {(isBot || botCfg) && (
+        {/* Bot badge — only shown when avatar explicitly uses a bot_ personality key */}
+        {botCfg && (
           <span
             className="absolute -top-1 -right-1 rounded-full w-4 h-4 flex items-center justify-center text-[7px] font-black"
             style={botCfg

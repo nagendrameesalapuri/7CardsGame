@@ -9,7 +9,9 @@ export type TransactionType =
   | 'entry_locked'        // Hold converted to locked entry when game went LIVE
   | 'match_settlement'    // Prize credited after match completion
   | 'abandoned_resolution'// Match abandoned — holds released, noted in history
-  | 'system_rollback';    // Admin/system rollback entry
+  | 'system_rollback'     // Admin/system rollback entry
+  | 'tournament_prize'    // Scheduled tournament prize payout
+  | 'tournament_entry';   // Scheduled tournament entry fee
 
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
@@ -37,6 +39,7 @@ export interface ITransaction extends Document {
     rollbackId?: string;
     linkedTransactionId?: string;
     exploitFlag?: boolean;
+    scheduledTournamentId?: string;
   };
   createdAt: Date;
 }
@@ -51,6 +54,7 @@ const TransactionSchema = new Schema<ITransaction>(
         'referral_bonus',
         'entry_hold', 'entry_released', 'entry_locked', 'match_settlement',
         'abandoned_resolution', 'system_rollback',
+        'tournament_prize', 'tournament_entry',
       ],
       required: true,
     },

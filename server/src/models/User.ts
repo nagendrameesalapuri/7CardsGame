@@ -41,6 +41,11 @@ export interface IUser extends Document {
     showSuccesses: number;
   };
   lastSeenAt?: Date;
+  lastReengagementEmailAt?: Date;
+  lastComebackBonusAt?: Date;
+  emailUnsubscribed?: boolean;
+  emailUnsubscribedAt?: Date;
+  unsubscribeToken?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,7 +89,12 @@ const UserSchema = new Schema<IUser>(
       avatar: { type: String, default: 'avatar_1' },
       addedAt: { type: Date, default: Date.now },
     }],
-    lastSeenAt: { type: Date },
+    lastSeenAt:                { type: Date },
+    lastReengagementEmailAt:   { type: Date },
+    lastComebackBonusAt:       { type: Date },
+    emailUnsubscribed:         { type: Boolean, default: false },
+    emailUnsubscribedAt:       { type: Date },
+    unsubscribeToken:          { type: String, sparse: true, unique: true },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
