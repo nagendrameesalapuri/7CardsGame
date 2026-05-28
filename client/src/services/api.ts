@@ -204,6 +204,8 @@ export const walletApi = {
     api.post<{ aiPoints: number; bonusSpins: number }>("/wallet/claim-launch-bonus"),
   spinHistory: () =>
     api.get<{ logs: any[] }>("/wallet/spin-history"),
+  transfer: (recipientId: string, amount: number) =>
+    api.post<{ balance: number; message: string }>("/wallet/transfer", { recipientId, amount }),
   devAdd: (amount: number) =>
     api.post<{ balance: number; message: string }>("/wallet/dev/add", {
       amount,

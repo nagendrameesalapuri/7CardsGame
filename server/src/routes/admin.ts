@@ -152,6 +152,9 @@ export default function createAdminRouter(io: Server) {
         if (typeof featureFlags.leaderboardEnabled === "boolean") {
           (cfg.featureFlags as any).leaderboardEnabled = featureFlags.leaderboardEnabled;
         }
+        if (typeof featureFlags.eventsEnabled === "boolean") {
+          (cfg.featureFlags as any).eventsEnabled = featureFlags.eventsEnabled;
+        }
       }
 
       if (gameConfig) {
@@ -871,10 +874,10 @@ export default function createAdminRouter(io: Server) {
       if (!dr) return res.status(400).json({ error: "Not found or already processed" });
 
       if (status === "approved") {
-        // Credit wallet
-        await User.findByIdAndUpdate(dr.userId, {
-          $inc: { walletBalance: dr.amount },
-        });
+        // Credit wallet; if ≥₹50 make user eligible to receive friend transfers
+        const transferUpdate: any = { $inc: { walletBalance: dr.amount } };
+        if (dr.amount >= 50) transferUpdate.$set = { transferEligible: true };
+        await User.findByIdAndUpdate(dr.userId, transferUpdate);
         // Record transaction
         const desc =
           dr.submissionType === "voucher"
@@ -2806,12 +2809,14 @@ export default function createAdminRouter(io: Server) {
               tournament: `Tournament Alert`,
               bonus: `Bonus credited`,
               announcement: `Announcement`,
-              withdrawal_approved: `Withdrawal Approved`,
+              withdrawal_approved: `Redemption Approved — Voucher Incoming`,
               withdrawal_rejected: `Withdrawal Not Processed`,
               deposit_confirmed: `Deposit Confirmed`,
               deposit_rejected: `Deposit Not Verified`,
               welcome: `Welcome to Arena of Sevens`,
               top_player: `You're a top player!`,
+              voucher_submitted: `Voucher Received — Verifying`,
+              voucher_delivered: `Your Voucher is Ready!`,
             };
             await EmailLog.create({
               campaignId,

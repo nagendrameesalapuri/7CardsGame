@@ -264,6 +264,8 @@ type EventMap = {
   'voice:answer': { fromUserId: string; answer: object };
   'voice:ice_candidate': { fromUserId: string; candidate: object };
   'voice:error': string;
+  'friend:online': { userId: string };
+  'friend:offline': { userId: string };
 };
 
 export function on<K extends keyof EventMap>(

@@ -103,6 +103,15 @@ export function initSocketIO(io: Server) {
         .catch(() => {});
       // Record last seen on connect
       User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
+      // Notify online friends that this user is now online
+      User.find({ 'favorites.userId': uid }, { _id: 1 }).lean().then((owners) => {
+        for (const owner of owners) {
+          const ownerId = (owner as any)._id.toString();
+          if (onlineUsers.has(ownerId)) {
+            io.to(`user:${ownerId}`).emit('friend:online', { userId: uid });
+          }
+        }
+      }).catch(() => {});
     }
 
     registerRoomHandlers(io, socket);
@@ -178,6 +187,15 @@ export function initSocketIO(io: Server) {
         onlineUsers.delete(uid);
         // Record last seen on disconnect so "last seen" is accurate
         User.findByIdAndUpdate(uid, { lastSeenAt: new Date() }).catch(() => {});
+        // Notify online friends that this user went offline
+        User.find({ 'favorites.userId': uid }, { _id: 1 }).lean().then((owners) => {
+          for (const owner of owners) {
+            const ownerId = (owner as any)._id.toString();
+            if (onlineUsers.has(ownerId)) {
+              io.to(`user:${ownerId}`).emit('friend:offline', { userId: uid });
+            }
+          }
+        }).catch(() => {});
       }
 
       const game = getActiveGame(socket.data.roomCode);

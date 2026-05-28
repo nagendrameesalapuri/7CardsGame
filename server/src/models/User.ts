@@ -19,6 +19,8 @@ export interface IUser extends Document {
   guestToken?: string;
   walletBalance: number;
   heldBalance: number;
+  giftBalance: number;       // received from friend transfers — not withdrawable
+  transferEligible: boolean; // true after admin approves a ≥₹50 deposit, reset after receiving transfer
   aiPoints: number;
   bonusSpins: number;
   launchBonusClaimed: boolean;
@@ -63,6 +65,8 @@ const UserSchema = new Schema<IUser>(
     guestToken:    { type: String, sparse: true, unique: true },
     walletBalance:   { type: Number, default: 0 },
     heldBalance:     { type: Number, default: 0, min: 0 },
+    giftBalance:     { type: Number, default: 0, min: 0 },
+    transferEligible: { type: Boolean, default: false },
     aiPoints:             { type: Number, default: 0 },
     bonusSpins:           { type: Number, default: 0 },
     launchBonusClaimed:   { type: Boolean, default: false },

@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Avatar } from '../ui/Avatar';
 import { notify } from '../../services/notify';
 import { usersApi } from '../../services/api';
-import { socketRoom } from '../../services/socket';
+import { socketRoom, on } from '../../services/socket';
 
 const PERSONALITY_THEME: Record<string, { color: string; glow: string; from: string; to: string; emoji: string; modeName: string }> = {
   safe:       { color: '#22c55e', glow: 'rgba(34,197,94,0.25)',   from: 'rgba(3,18,10,0.98)',  to: 'rgba(5,28,16,0.95)', emoji: '🛡',  modeName: 'Casual Duel'    },
@@ -47,6 +47,19 @@ export function RoomLobby() {
     const unsub = subscribeToEvents();
     return unsub;
   }, [subscribeToEvents]);
+
+  // Real-time friend online/offline status
+  useEffect(() => {
+    try {
+      const unsubOn = on('friend:online', ({ userId }) => {
+        setFavorites(prev => prev.map(f => f.userId === userId ? { ...f, isOnline: true } : f));
+      });
+      const unsubOff = on('friend:offline', ({ userId }) => {
+        setFavorites(prev => prev.map(f => f.userId === userId ? { ...f, isOnline: false } : f));
+      });
+      return () => { unsubOn(); unsubOff(); };
+    } catch { return () => {}; }
+  }, []);
 
   const openInvite = useCallback(async () => {
     setShowInvite(true);

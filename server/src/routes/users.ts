@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { User } from '../models/User';
 import { Game } from '../models/Game';
 import { Transaction } from '../models/Transaction';
+import { DepositRequest } from '../models/DepositRequest';
 import { generateUniqueReferralCode } from '../utils/referral';
 import { getOnlineUserIds } from '../socket';
 
@@ -139,18 +140,19 @@ router.get('/favorites', requireAuth, async (req: Request, res: Response) => {
 
     const onlineIds = getOnlineUserIds();
     const ids = favs.map((f: any) => f.userId);
-    const users = await User.find({ _id: { $in: ids } }).select('_id lastSeenAt').lean();
-    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+    const users = await User.find({ _id: { $in: ids } }).select('_id lastSeenAt').lean() as any[];
+    const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
 
     const enriched = favs.map((f: any) => {
-      const u = userMap.get(f.userId?.toString());
+      const uid = f.userId?.toString();
+      const u = userMap.get(uid);
       return {
         userId: f.userId,
         username: f.username,
         avatar: f.avatar,
         addedAt: f.addedAt,
         lastSeenAt: u?.lastSeenAt ?? null,
-        isOnline: onlineIds.has(f.userId?.toString()),
+        isOnline: onlineIds.has(uid),
       };
     });
 

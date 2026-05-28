@@ -7,6 +7,7 @@ import { Transaction } from '../models/Transaction';
 import { WithdrawalRequest } from '../models/WithdrawalRequest';
 import { DepositRequest } from '../models/DepositRequest';
 import { sendDepositRequestEmail } from '../services/mailer';
+import { sendNotification } from '../services/fcmService';
 import { SpinLog } from '../models/SpinLog';
 import { getAdminConfig } from '../models/AdminConfig';
 
@@ -39,7 +40,7 @@ router.post('/dev/add', async (req: Request, res: Response) => {
 // ── GET /api/wallet ───────────────────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user!.id).select('walletBalance heldBalance isGuest aiPoints launchBonusClaimed bonusSpins');
+    const user = await User.findById(req.user!.id).select('walletBalance heldBalance giftBalance transferEligible isGuest aiPoints launchBonusClaimed bonusSpins');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const [transactions, withdrawalRequests, depositRequests] = await Promise.all([
@@ -65,13 +66,48 @@ router.get('/', async (req: Request, res: Response) => {
       return doc;
     });
 
-    const heldBalance = Math.round((user.heldBalance ?? 0) * 100) / 100;
-    const totalBalance = Math.round(user.walletBalance * 100) / 100;
+    const heldBalance      = Math.round((user.heldBalance ?? 0) * 100) / 100;
+    const totalBalance     = Math.round(user.walletBalance * 100) / 100;
+    const rawGift          = (user as any).giftBalance ?? 0;
+    const giftBalance      = Math.round(Math.min(rawGift, totalBalance) * 100) / 100;
     const availableBalance = Math.max(0, totalBalance - heldBalance);
+    const withdrawableBalance = Math.max(0, totalBalance - giftBalance);
+
+    // Compute transferEligible dynamically:
+    // Eligible = has an approved deposit ≥₹50 within the last 24 hours
+    //            AND has NOT sent a transfer after that deposit's approval time.
+    // Always recomputed so the 24-hr window expires automatically.
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const lastQualifyingDeposit = await DepositRequest.findOne({
+      userId: req.user!.id,
+      status: 'approved',
+      amount: { $gte: 50 },
+      updatedAt: { $gte: twentyFourHoursAgo },
+    }).sort({ updatedAt: -1 }).select('updatedAt').lean();
+
+    let transferEligible = false;
+    if (lastQualifyingDeposit) {
+      const lastTransferSent = await Transaction.findOne({
+        userId: req.user!.id,
+        type: 'transfer_sent',
+        createdAt: { $gt: (lastQualifyingDeposit as any).updatedAt },
+      }).select('_id').lean();
+      transferEligible = !lastTransferSent;
+    }
+
+    // Sync stored flag if it drifted (e.g. window expired while user was offline)
+    const storedEligible = (user as any).transferEligible ?? false;
+    if (storedEligible !== transferEligible) {
+      await User.updateOne({ _id: req.user!.id }, { $set: { transferEligible } });
+    }
+
     res.json({
       balance: totalBalance,
       heldBalance,
       availableBalance,
+      giftBalance,
+      withdrawableBalance,
+      transferEligible,
       isGuest: user.isGuest,
       aiPoints: (user as any).aiPoints ?? 0,
       launchBonusClaimed: (user as any).launchBonusClaimed ?? false,
@@ -284,6 +320,15 @@ router.post('/redeem', async (req: Request, res: Response) => {
     if (!amount || amount < REDEEM_MIN) return res.status(400).json({ error: `Minimum redemption is ₹${REDEEM_MIN}` });
     if (amount > REDEEM_MAX)            return res.status(400).json({ error: `Maximum redemption is ₹${REDEEM_MAX}` });
     if (!ALLOWED_BRANDS.includes(voucherBrand)) return res.status(400).json({ error: 'Select a valid voucher brand' });
+
+    // Only withdrawable balance (walletBalance - giftBalance) can be redeemed
+    const userCheck = await User.findById(req.user!.id).select('walletBalance giftBalance').lean() as any;
+    if (!userCheck) return res.status(404).json({ error: 'User not found' });
+    const effectiveGift     = Math.min(userCheck.giftBalance ?? 0, userCheck.walletBalance);
+    const withdrawable      = Math.max(0, userCheck.walletBalance - effectiveGift);
+    if (amount > withdrawable) {
+      return res.status(400).json({ error: `Only ₹${withdrawable.toFixed(2)} is withdrawable. Received transfer funds (₹${effectiveGift.toFixed(2)}) cannot be withdrawn.` });
+    }
 
     const user = await User.findOneAndUpdate(
       { _id: req.user!.id, walletBalance: { $gte: amount } },
@@ -626,6 +671,145 @@ router.get('/spin-history', requireAuth, async (req: Request, res: Response) => 
   }
 });
 
+// ── POST /api/wallet/transfer — send money to a favorite friend ──────────────
+const TRANSFER_MAX = 100;
+const TRANSFER_MIN_DEPOSIT = 50;
+
+router.post('/transfer', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Guests cannot transfer money. Please sign in.' });
+
+    const { recipientId, amount } = req.body as { recipientId: string; amount: number };
+
+    const parsedAmount = Math.round(Number(amount) * 100) / 100;
+    if (!parsedAmount || parsedAmount <= 0) return res.status(400).json({ error: 'Enter a valid amount' });
+    if (parsedAmount > TRANSFER_MAX) return res.status(400).json({ error: `Maximum transfer is ₹${TRANSFER_MAX}` });
+    if (!recipientId) return res.status(400).json({ error: 'Recipient required' });
+    if (String(recipientId) === String(req.user!.id)) return res.status(400).json({ error: 'Cannot transfer to yourself' });
+
+    // Sender must have recipient in their favorites
+    const sender = await User.findById(req.user!.id).select('walletBalance giftBalance heldBalance favorites username transferEligible');
+    if (!sender) return res.status(404).json({ error: 'User not found' });
+
+    // Sender must have an approved deposit ≥₹50 within the last 24 hrs AND no transfer sent after it
+    const _24hAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const qualifyingDeposit = await DepositRequest.findOne({
+      userId: req.user!.id,
+      status: 'approved',
+      amount: { $gte: TRANSFER_MIN_DEPOSIT },
+      updatedAt: { $gte: _24hAgo },
+    }).sort({ updatedAt: -1 }).select('updatedAt').lean();
+
+    if (!qualifyingDeposit) {
+      return res.status(400).json({
+        error: `You need an approved deposit of at least ₹${TRANSFER_MIN_DEPOSIT} within the last 24 hours to send a transfer.`,
+      });
+    }
+    const alreadySent = await Transaction.findOne({
+      userId: req.user!.id,
+      type: 'transfer_sent',
+      createdAt: { $gt: (qualifyingDeposit as any).updatedAt },
+    }).select('_id').lean();
+    if (alreadySent) {
+      return res.status(400).json({
+        error: 'You have already sent a transfer after your last deposit. Deposit again to send another transfer.',
+      });
+    }
+
+    const isFavorite = sender.favorites.some(f => String(f.userId) === String(recipientId));
+    if (!isFavorite) return res.status(400).json({ error: 'Recipient must be in your favorites' });
+
+    // Sender must have enough own (non-gift) balance
+    const senderGift        = Math.min((sender as any).giftBalance ?? 0, sender.walletBalance);
+    const senderWithdrawable = Math.max(0, sender.walletBalance - senderGift);
+    if (senderWithdrawable < parsedAmount) {
+      return res.status(400).json({ error: `Insufficient withdrawable balance. You can transfer up to ₹${senderWithdrawable.toFixed(2)}` });
+    }
+
+    const recipient = await User.findById(recipientId).select('walletBalance giftBalance username avatar');
+    if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+
+    // ── Atomic deduction from sender, lock sender's eligibility ─────────────
+    const updatedSender = await User.findOneAndUpdate(
+      { _id: req.user!.id, walletBalance: { $gte: parsedAmount } },
+      { $inc: { walletBalance: -parsedAmount }, $set: { transferEligible: false } },
+      { new: true },
+    );
+    if (!updatedSender) return res.status(400).json({ error: 'Insufficient balance (concurrent update)' });
+
+    // ── Credit gift balance to recipient (no eligibility change on recipient) ─
+    const updatedRecipient = await User.findByIdAndUpdate(
+      recipientId,
+      { $inc: { walletBalance: parsedAmount, giftBalance: parsedAmount } },
+      { new: true },
+    );
+
+    // ── Transaction records ──────────────────────────────────────────────────
+    await Promise.all([
+      Transaction.create({
+        userId:      req.user!.id,
+        type:        'transfer_sent',
+        amount:      parsedAmount,
+        status:      'completed',
+        description: `Transferred ₹${parsedAmount} to ${recipient.username}`,
+        balanceBefore: sender.walletBalance,
+        balanceAfter:  updatedSender.walletBalance,
+        metadata:    { transferToUserId: recipientId, transferToUsername: recipient.username },
+      }),
+      Transaction.create({
+        userId:      recipientId,
+        type:        'transfer_received',
+        amount:      parsedAmount,
+        status:      'completed',
+        description: `Received ₹${parsedAmount} from ${sender.username} (play-only, not withdrawable)`,
+        balanceBefore: recipient.walletBalance,
+        balanceAfter:  (updatedRecipient?.walletBalance ?? recipient.walletBalance),
+        metadata:    { transferFromUserId: req.user!.id, transferFromUsername: sender.username },
+      }),
+    ]);
+
+    // Push notifications — fire-and-forget (don't block response)
+    Promise.allSettled([
+      sendNotification({
+        userId: String(req.user!.id),
+        title: '💸 Transfer Sent',
+        message: `₹${parsedAmount} sent to ${recipient.username} successfully. Deposit again to send another transfer.`,
+        category: 'rewards',
+        type: 'success',
+        actionUrl: '/wallet',
+        skipThrottle: true,
+      }),
+      sendNotification({
+        userId: String(recipientId),
+        title: '🎁 You received ₹' + parsedAmount + '!',
+        message: `${sender.username} sent you ₹${parsedAmount} as a gift. Use it in games — it cannot be withdrawn.`,
+        category: 'rewards',
+        type: 'success',
+        actionUrl: '/wallet',
+        skipThrottle: true,
+      }),
+    ]).catch(() => {});
+
+    res.json({
+      balance: updatedSender.walletBalance,
+      message: `₹${parsedAmount} sent to ${recipient.username} successfully!`,
+    });
+  } catch (err) {
+    console.error('[Wallet] Transfer error:', err);
+    res.status(500).json({ error: 'Transfer failed. Please try again.' });
+  }
+});
+
+// ── GET /api/wallet/transfer/eligibility/:userId — check if user can receive transfer ──
+router.get('/transfer/eligibility/:userId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.user!.isGuest) return res.status(403).json({ error: 'Sign in required' });
+    const u = await User.findById(req.params.userId).select('username avatar transferEligible').lean() as any;
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    res.json({ username: u.username, avatar: u.avatar, transferEligible: u.transferEligible ?? false });
+  } catch { res.status(500).json({ error: 'Failed' }); }
+});
+
 // ── DELETE /api/wallet/withdrawal/:id — cancel pending withdrawal ─────────────
 router.delete('/withdrawal/:id', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -685,6 +869,16 @@ router.post('/withdraw', async (req: Request, res: Response) => {
     const { amount, upiId, bankDetails } = req.body as { amount: number; upiId?: string; bankDetails?: any };
     if (!amount || amount < 10) return res.status(400).json({ error: 'Minimum withdrawal is ₹10' });
     if (!upiId && !bankDetails?.accountNumber) return res.status(400).json({ error: 'Provide UPI ID or bank details' });
+
+    // Gift balance is non-withdrawable
+    const userCheck = await User.findById(req.user!.id).select('walletBalance giftBalance').lean() as any;
+    if (!userCheck) return res.status(404).json({ error: 'User not found' });
+    const effectiveGift  = Math.min(userCheck.giftBalance ?? 0, userCheck.walletBalance);
+    const withdrawable   = Math.max(0, userCheck.walletBalance - effectiveGift);
+    if (amount > withdrawable) {
+      return res.status(400).json({ error: `Only ₹${withdrawable.toFixed(2)} is withdrawable. Received transfer funds cannot be withdrawn.` });
+    }
+
     const user = await User.findOneAndUpdate(
       { _id: req.user!.id, walletBalance: { $gte: amount } },
       { $inc: { walletBalance: -amount } },

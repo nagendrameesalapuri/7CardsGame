@@ -399,118 +399,108 @@ export function LobbyPage() {
         {activeTab === 'play' && (
           <div className="space-y-3 pb-8">
 
-            {/* ── Game Modes: 2-column grid ── */}
-            {(adminConfig.featureFlags.survivalEnabled !== false || botOptions.length > 0) && (
-              <div className={`grid gap-3 ${
-                adminConfig.featureFlags.survivalEnabled !== false && botOptions.length > 0
-                  ? 'grid-cols-2' : 'grid-cols-1'
-              }`}>
-
-                {/* AI Survival Championship */}
-                {adminConfig.featureFlags.survivalEnabled !== false && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => navigate('/survival')}
-                    className="relative overflow-hidden rounded-2xl cursor-pointer flex flex-col p-4"
-                    style={{
-                      background: 'linear-gradient(135deg,rgba(5,20,15,0.98),rgba(4,18,14,0.96))',
-                      border: '1px solid rgba(16,185,129,0.3)',
-                      boxShadow: '0 4px 32px rgba(16,185,129,0.08)',
-                      minHeight: '188px',
-                    }}>
-                    <Shimmer />
-                    <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full pointer-events-none"
-                      style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.22),transparent 70%)', filter: 'blur(18px)' }} />
-                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl mb-3 relative flex-shrink-0"
-                      style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,182,212,0.12))', border: '1px solid rgba(16,185,129,0.3)' }}>
-                      🏆
-                      <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                        {[1,2,3,4,5].map(s => (
-                          <div key={s} className="w-1 h-1 rounded-full"
-                            style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
-                        ))}
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full self-start mb-1.5"
+            {/* ── Game Mode Cards (list) ── */}
+            {adminConfig.featureFlags.survivalEnabled !== false && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/survival')}
+                className="relative overflow-hidden rounded-2xl cursor-pointer flex items-center gap-4 px-4 py-4"
+                style={{
+                  background: 'linear-gradient(135deg,rgba(5,20,15,0.98),rgba(4,18,14,0.96))',
+                  border: '1px solid rgba(16,185,129,0.3)',
+                  boxShadow: '0 4px 32px rgba(16,185,129,0.08)',
+                }}>
+                <Shimmer />
+                <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full pointer-events-none"
+                  style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.18),transparent 70%)', filter: 'blur(18px)' }} />
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 relative"
+                  style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,182,212,0.12))', border: '1px solid rgba(16,185,129,0.3)' }}>
+                  🏆
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <div key={s} className="w-1 h-1 rounded-full"
+                        style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-black text-white">AI Survival</p>
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                       style={{ background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.28)' }}>
                       5 STAGES
                     </span>
-                    <p className="text-sm font-black text-white leading-tight">AI Survival</p>
-                    <p className="text-[10px] text-dark-muted mt-0.5 mb-auto">4 tiers · Earn points</p>
-                    <div className="flex flex-wrap gap-1 mt-2 mb-3">
-                      {['🛡','⚡','🎭','🧠','💀'].map(p => (
+                  </div>
+                  <p className="text-[11px] text-dark-muted">4 tiers · Earn points</p>
+                  <div className="flex gap-1 mt-1.5">
+                    {['🛡','⚡','🎭','🧠','💀'].map(p => (
+                      <span key={p} className="text-[11px] px-1 py-0.5 rounded-full"
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(110,231,183,0.75)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff' }}>
+                  →
+                </motion.div>
+              </motion.div>
+            )}
+
+            {botOptions.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
+                <button
+                  onClick={() => setShowPlayVsAI(true)}
+                  disabled={aiLoading}
+                  className="w-full relative overflow-hidden rounded-2xl text-left flex items-center gap-4 px-4 py-4 disabled:opacity-60"
+                  style={{
+                    background: 'linear-gradient(135deg,rgba(10,8,32,0.98),rgba(14,10,40,0.96))',
+                    border: '1px solid rgba(99,102,241,0.32)',
+                    boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
+                  }}>
+                  <Shimmer />
+                  <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full pointer-events-none"
+                    style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.18),transparent 70%)', filter: 'blur(18px)' }} />
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 relative"
+                    style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.35)' }}>
+                    🤖
+                    <motion.div
+                      animate={{ scale: [1, 1.8, 1], opacity: [0.9, 0, 0.9] }}
+                      transition={{ repeat: Infinity, duration: 2 }}
+                      className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full"
+                      style={{ background: '#22c55e' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-black text-white">Play vs AI</p>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+                        4 MODES
+                      </span>
+                      {aiLoading && <span className="text-[9px] text-emerald-400 animate-pulse">…</span>}
+                    </div>
+                    <p className="text-[11px] text-dark-muted">Clash · Chaos · Boss Rush</p>
+                    <div className="flex gap-1 mt-1.5">
+                      {['🛡','⚡','🎭','🧠','💀'].map((p, i) => (
                         <span key={p} className="text-[11px] px-1 py-0.5 rounded-full"
-                          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(110,231,183,0.75)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                          style={{ background: 'rgba(255,255,255,0.04)', color: ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(168,85,247,0.8)','rgba(96,165,250,0.8)','rgba(239,68,68,0.8)'][i], border: '1px solid rgba(255,255,255,0.06)' }}>
                           {p}
                         </span>
                       ))}
                     </div>
-                    <div className="flex justify-end">
-                      <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
-                        style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff' }}>
-                        →
-                      </motion.div>
-                    </div>
+                  </div>
+                  <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                    style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc' }}>
+                    →
                   </motion.div>
-                )}
-
-                {/* Play vs AI */}
-                {botOptions.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
-                    <button
-                      onClick={() => setShowPlayVsAI(true)}
-                      disabled={aiLoading}
-                      className="w-full relative overflow-hidden rounded-2xl text-left flex flex-col p-4 disabled:opacity-60"
-                      style={{
-                        background: 'linear-gradient(135deg,rgba(10,8,32,0.98),rgba(14,10,40,0.96))',
-                        border: '1px solid rgba(99,102,241,0.32)',
-                        boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
-                        minHeight: '188px',
-                      }}>
-                      <Shimmer />
-                      <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full pointer-events-none"
-                        style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)', filter: 'blur(18px)' }} />
-                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl mb-3 relative flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.35)' }}>
-                        🤖
-                        <motion.div
-                          animate={{ scale: [1, 1.8, 1], opacity: [0.9, 0, 0.9] }}
-                          transition={{ repeat: Infinity, duration: 2 }}
-                          className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full"
-                          style={{ background: '#22c55e' }} />
-                      </div>
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                          style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
-                          4 MODES
-                        </span>
-                        {aiLoading && <span className="text-[9px] text-emerald-400 animate-pulse">…</span>}
-                      </div>
-                      <p className="text-sm font-black text-white leading-tight">Play vs AI</p>
-                      <p className="text-[10px] text-dark-muted mt-0.5 mb-auto">Clash · Chaos · Boss Rush</p>
-                      <div className="flex flex-wrap gap-1 mt-2 mb-3">
-                        {['🛡','⚡','🎭','🧠','💀'].map((p, i) => (
-                          <span key={p} className="text-[11px] px-1 py-0.5 rounded-full"
-                            style={{ background: 'rgba(255,255,255,0.04)', color: ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(168,85,247,0.8)','rgba(96,165,250,0.8)','rgba(239,68,68,0.8)'][i], border: '1px solid rgba(255,255,255,0.06)' }}>
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex justify-end">
-                        <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
-                          className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
-                          style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc' }}>
-                          →
-                        </motion.div>
-                      </div>
-                    </button>
-                  </motion.div>
-                )}
-              </div>
+                </button>
+              </motion.div>
             )}
 
             {/* Spin & Win */}

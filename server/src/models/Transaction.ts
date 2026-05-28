@@ -11,7 +11,9 @@ export type TransactionType =
   | 'abandoned_resolution'// Match abandoned — holds released, noted in history
   | 'system_rollback'     // Admin/system rollback entry
   | 'tournament_prize'    // Scheduled tournament prize payout
-  | 'tournament_entry';   // Scheduled tournament entry fee
+  | 'tournament_entry'    // Scheduled tournament entry fee
+  | 'transfer_sent'       // Sender debited for friend transfer
+  | 'transfer_received';  // Recipient credited from friend transfer (non-withdrawable)
 
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
@@ -55,6 +57,7 @@ const TransactionSchema = new Schema<ITransaction>(
         'entry_hold', 'entry_released', 'entry_locked', 'match_settlement',
         'abandoned_resolution', 'system_rollback',
         'tournament_prize', 'tournament_entry',
+        'transfer_sent', 'transfer_received',
       ],
       required: true,
     },

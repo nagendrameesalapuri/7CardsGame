@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { clsx } from "clsx";
 import { useAuthStore } from "../store/authStore";
-import { walletApi } from "../services/api";
+import { walletApi, usersApi } from "../services/api";
 import { on } from "../services/socket";
 import { Layout } from "../components/layout/Layout";
 import { WalletTransaction } from "@shared/types";
@@ -34,6 +34,8 @@ const TX_ICONS: Record<string, string> = {
   match_settlement:     "🏆",
   abandoned_resolution: "🔵",
   system_rollback:      "🔄",
+  transfer_sent:        "↗️",
+  transfer_received:    "↙️",
 };
 
 const TX_LABELS: Record<string, string> = {
@@ -50,6 +52,8 @@ const TX_LABELS: Record<string, string> = {
   match_settlement:     "Match Settlement",
   abandoned_resolution: "Match Abandoned",
   system_rollback:      "System Recovery",
+  transfer_sent:        "Friend Transfer Sent",
+  transfer_received:    "Gift Received",
 };
 
 const TX_COLORS: Record<string, string> = {
@@ -65,14 +69,16 @@ const TX_COLORS: Record<string, string> = {
   match_settlement:     "text-yellow-400",
   abandoned_resolution: "text-sky-400",
   system_rollback:      "text-gray-400",
+  transfer_sent:        "text-orange-400",
+  transfer_received:    "text-emerald-400",
 };
 
 // Which types are balance-neutral (hold placed/released, no actual wallet change)
 const TX_NEUTRAL = new Set(["entry_hold", "entry_released"]);
 // Which types reduce wallet balance
-const TX_DEBIT = new Set(["withdrawal", "entry_fee", "entry_locked"]);
+const TX_DEBIT = new Set(["withdrawal", "entry_fee", "entry_locked", "transfer_sent"]);
 // Which types increase wallet balance
-const TX_CREDIT = new Set(["deposit", "winning", "refund", "bonus", "match_settlement", "abandoned_resolution"]);
+const TX_CREDIT = new Set(["deposit", "winning", "refund", "bonus", "match_settlement", "abandoned_resolution", "transfer_received"]);
 
 function PageBar({ page, total, size, onChange }: {
   page: number; total: number; size: number; onChange: (p: number) => void;
@@ -863,6 +869,9 @@ export function WalletPage() {
   const [balance, setBalance] = useState(0);
   const [heldBalance, setHeldBalance] = useState(0);
   const [availableBalance, setAvailableBalance] = useState(0);
+  const [giftBalance, setGiftBalance] = useState(0);
+  const [withdrawableBalance, setWithdrawableBalance] = useState(0);
+  const [transferEligible, setTransferEligible] = useState(false);
   const [lockedRewards, setLockedRewards] = useState(0);
   const [isGuest, setIsGuest] = useState(false);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -871,6 +880,11 @@ export function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [showVoucherSubmit, setShowVoucherSubmit] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [selectedFav, setSelectedFav] = useState<any>(null);
+  const [transferAmt, setTransferAmt] = useState('');
+  const [transferring, setTransferring] = useState(false);
 
   const [historyTab, setHistoryTab] = useState<HistoryTab>("activity");
   const [txPage, setTxPage] = useState(1);
@@ -883,6 +897,9 @@ export function WalletPage() {
       setBalance(data.balance);
       setHeldBalance(data.heldBalance ?? 0);
       setAvailableBalance(data.availableBalance ?? data.balance);
+      setGiftBalance((data as any).giftBalance ?? 0);
+      setWithdrawableBalance((data as any).withdrawableBalance ?? data.balance);
+      setTransferEligible((data as any).transferEligible ?? false);
       setLockedRewards(data.lockedRewards ?? 0);
       setIsGuest(data.isGuest);
       setTransactions(data.transactions ?? []);
@@ -898,12 +915,19 @@ export function WalletPage() {
   useEffect(() => {
     if (!isAuthenticated) { navigate("/"); return; }
     load();
-    const unsub = on("wallet:prize_won", (d: { amount: number; balance: number }) => {
+    usersApi.getFavorites().then(r => setFavorites(r.data.favorites ?? [])).catch(() => {});
+    const unsubPrize = on("wallet:prize_won", (d: { amount: number; balance: number }) => {
       notify.success(`You won ₹${d.amount}! 🏆`, { duration: 6000 });
       setBalance(d.balance);
       load();
     });
-    return () => { unsub(); };
+    const unsubOn = on('friend:online', ({ userId }) => {
+      setFavorites(prev => prev.map((f: any) => f.userId?.toString() === userId ? { ...f, isOnline: true } : f));
+    });
+    const unsubOff = on('friend:offline', ({ userId }) => {
+      setFavorites(prev => prev.map((f: any) => f.userId?.toString() === userId ? { ...f, isOnline: false } : f));
+    });
+    return () => { unsubPrize(); unsubOn(); unsubOff(); };
   }, [isAuthenticated, navigate, load]);
 
   const deliveredVouchers = withdrawalRequests.filter(w => w.status === "delivered" && w.deliveredVoucherNumber);
@@ -979,17 +1003,23 @@ export function WalletPage() {
                   <p className="text-sm font-black text-white">₹{balance.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-xl px-2 py-2 text-center"
-                  style={{ background: heldBalance > 0 ? "rgba(234,179,8,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${heldBalance > 0 ? "rgba(234,179,8,0.3)" : "rgba(255,255,255,0.06)"}` }}>
-                  <p className="text-[9px] uppercase tracking-wider font-semibold mb-0.5" style={{ color: heldBalance > 0 ? "#fde047" : "#6b7280" }}>Held</p>
-                  <p className={`text-sm font-black ${heldBalance > 0 ? "text-yellow-300" : "text-dark-muted"}`}>
-                    ₹{heldBalance.toLocaleString("en-IN")}
-                  </p>
-                </div>
-                <div className="rounded-xl px-2 py-2 text-center"
                   style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.18)" }}>
-                  <p className="text-[9px] text-green-400 uppercase tracking-wider font-semibold mb-0.5">Free</p>
-                  <p className="text-sm font-black text-green-400">₹{availableBalance.toLocaleString("en-IN")}</p>
+                  <p className="text-[9px] text-green-400 uppercase tracking-wider font-semibold mb-0.5">Withdraw</p>
+                  <p className="text-sm font-black text-green-400">₹{withdrawableBalance.toLocaleString("en-IN")}</p>
                 </div>
+                {giftBalance > 0 ? (
+                  <div className="rounded-xl px-2 py-2 text-center"
+                    style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.22)" }}>
+                    <p className="text-[9px] text-yellow-400 uppercase tracking-wider font-semibold mb-0.5">Gift 🎁</p>
+                    <p className="text-sm font-black text-yellow-300">₹{giftBalance.toLocaleString("en-IN")}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl px-2 py-2 text-center"
+                    style={{ background: heldBalance > 0 ? "rgba(234,179,8,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${heldBalance > 0 ? "rgba(234,179,8,0.3)" : "rgba(255,255,255,0.06)"}` }}>
+                    <p className="text-[9px] uppercase tracking-wider font-semibold mb-0.5" style={{ color: heldBalance > 0 ? "#fde047" : "#6b7280" }}>Held</p>
+                    <p className={`text-sm font-black ${heldBalance > 0 ? "text-yellow-300" : "text-dark-muted"}`}>₹{heldBalance.toLocaleString("en-IN")}</p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -1036,7 +1066,7 @@ export function WalletPage() {
                     <p className="text-[10px] text-dark-muted">Earn Tournament Credits</p>
                   </div>
                 </button>
-                <button onClick={() => setShowRedeem(true)} disabled={balance < 50}
+                <button onClick={() => setShowRedeem(true)} disabled={withdrawableBalance < 50}
                   className="flex flex-col items-center gap-2 py-4 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-40"
                   style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}>
                   <span className="text-2xl">🎁</span>
@@ -1047,6 +1077,204 @@ export function WalletPage() {
                 </button>
               </div>
 
+              {/* ── Transfer to Friend ─────────────────────────────────────── */}
+              <div className="rounded-2xl overflow-hidden"
+                style={{ background: "rgba(16,24,40,0.7)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                <button onClick={() => setShowTransfer(t => !t)}
+                  className="w-full flex items-center justify-between px-4 py-3.5 transition-colors hover:bg-white/5"
+                  style={{ borderBottom: showTransfer ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                      style={{ background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                      💸
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-black text-white">Transfer to Friend</p>
+                      <p className="text-[10px] text-dark-muted">Send ₹1–₹100 from your wallet (deposits + winnings) · play-only gift</p>
+                    </div>
+                  </div>
+                  <span className="text-dark-muted text-xs flex-shrink-0"
+                    style={{ transform: showTransfer ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' }}>▼</span>
+                </button>
+
+                {showTransfer && (
+                  <div className="p-4 space-y-4">
+
+                    {/* Locked state — no qualifying deposit in last 24hrs */}
+                    {!transferEligible ? (
+                      <div className="text-center py-4 space-y-3">
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl mx-auto"
+                          style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                          🔒
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-white">Transfer Locked</p>
+                          <p className="text-xs text-dark-muted mt-1 leading-relaxed">
+                            Submit a ≥₹50 voucher and get admin approval within 24 hours to unlock transfers.
+                            Once unlocked, you can send ₹1–₹100 from your total wallet balance (deposited + winnings).
+                            After sending once, deposit again to send another.
+                          </p>
+                        </div>
+                        <button onClick={() => { setShowTransfer(false); setShowVoucherSubmit(true); }}
+                          className="px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                          style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}>
+                          Submit Voucher to Unlock
+                        </button>
+                      </div>
+                    ) : withdrawableBalance < 1 ? (
+                      <p className="text-center text-xs text-dark-muted py-3">
+                        You need at least ₹1 in your withdrawable balance to transfer.
+                      </p>
+                    ) : favorites.length === 0 ? (
+                      <div className="text-center py-4 space-y-3">
+                        <p className="text-3xl">👥</p>
+                        <div>
+                          <p className="text-sm font-black text-white">No favorites yet</p>
+                          <p className="text-xs text-dark-muted mt-1">You need to add a friend as favorite before you can transfer.</p>
+                        </div>
+                        <div className="text-left rounded-xl p-3 space-y-1.5"
+                          style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                          <p className="text-[10px] font-black text-indigo-300 uppercase tracking-wider">How to add a favorite</p>
+                          <p className="text-xs text-dark-muted">1. Go to <span className="text-white font-semibold">Leaderboard</span> or play a game</p>
+                          <p className="text-xs text-dark-muted">2. Tap any player's name to open their profile</p>
+                          <p className="text-xs text-dark-muted">3. Tap <span className="text-yellow-300 font-semibold">⭐ Add to Favorites</span> on their profile</p>
+                          <p className="text-xs text-dark-muted">4. Come back here to send balance</p>
+                        </div>
+                        <button
+                          onClick={() => navigate('/leaderboard')}
+                          className="px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                          style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}>
+                          Go to Leaderboard →
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Sender available balance */}
+                        <div className="flex items-center justify-between px-3 py-2 rounded-xl"
+                          style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                          <span className="text-xs text-dark-muted">Your transferable balance</span>
+                          <span className="text-sm font-black text-indigo-300">₹{withdrawableBalance.toLocaleString("en-IN")}</span>
+                        </div>
+
+                        {/* Friends list */}
+                        <div>
+                          <p className="text-[10px] text-dark-muted uppercase tracking-wider mb-2 font-semibold">Select Friend</p>
+                          <div className="space-y-2" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                            {[...favorites].sort((a: any, b: any) => Number(b.isOnline) - Number(a.isOnline)).map((fav: any) => {
+                              const isSelected = selectedFav?.userId?.toString() === fav.userId?.toString();
+                              return (
+                                <button key={fav.userId}
+                                  onClick={() => setSelectedFav(isSelected ? null : fav)}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left"
+                                  style={{
+                                    background: isSelected ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
+                                    border: `1px solid ${isSelected ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.09)"}`,
+                                  }}>
+                                  <div className="relative w-8 h-8 flex-shrink-0">
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                                      style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                                      {fav.avatar && fav.avatar.startsWith('http') ? (
+                                        <img src={fav.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                                      ) : (fav.username?.[0]?.toUpperCase() ?? "?")}
+                                    </div>
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+                                      style={{
+                                        background: fav.isOnline ? '#22c55e' : '#374151',
+                                        border: '1.5px solid rgba(16,24,40,0.9)',
+                                        boxShadow: fav.isOnline ? '0 0 4px rgba(34,197,94,0.7)' : 'none',
+                                      }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-white truncate">{fav.username}</p>
+                                    <p className="text-[10px]" style={{ color: fav.isOnline ? '#4ade80' : 'rgba(148,163,184,0.5)' }}>
+                                      {fav.isOnline ? '● Online' : '○ Offline'}
+                                    </p>
+                                  </div>
+                                  {isSelected && <span className="text-indigo-400 flex-shrink-0 text-base">✓</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Amount input */}
+                        {selectedFav && (
+                          <div>
+                            <label className="text-xs text-dark-muted block mb-1.5">
+                              Amount (₹1 – ₹{Math.min(100, Math.floor(withdrawableBalance))})
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={Math.min(100, Math.floor(withdrawableBalance))}
+                              value={transferAmt}
+                              onChange={e => setTransferAmt(e.target.value)}
+                              placeholder="Enter amount"
+                              className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2.5 text-dark-text text-sm focus:outline-none focus:border-yellow-500 transition-colors"
+                            />
+                            {(() => {
+                              const a = parseInt(transferAmt) || 0;
+                              if (a > 100)          return <p className="text-[11px] text-red-400 mt-1">Maximum ₹100</p>;
+                              if (a > withdrawableBalance) return <p className="text-[11px] text-red-400 mt-1">Insufficient withdrawable balance</p>;
+                              return null;
+                            })()}
+                          </div>
+                        )}
+
+                        {/* Rules notice */}
+                        {selectedFav && (parseInt(transferAmt) || 0) >= 1 && (parseInt(transferAmt) || 0) <= Math.min(100, withdrawableBalance) && (
+                          <div className="rounded-xl p-3 text-xs space-y-0.5"
+                            style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.22)" }}>
+                            <p className="font-semibold text-yellow-300 mb-1">⚠️ Transfer Rules</p>
+                            <p className="text-dark-muted">• Transferred amount <span className="text-white font-semibold">cannot be withdrawn</span> by recipient</p>
+                            <p className="text-dark-muted">• Can be used in games & AI tournaments</p>
+                            <p className="text-dark-muted">• After sending, your transfer ability locks — deposit ≥₹50 again to send another</p>
+                          </div>
+                        )}
+
+                        {/* Send button */}
+                        {selectedFav && (() => {
+                          const a = parseInt(transferAmt) || 0;
+                          const canSend = a >= 1 && a <= 100 && a <= withdrawableBalance;
+                          return (
+                            <button
+                              onClick={async () => {
+                                if (!canSend || transferring) return;
+                                setTransferring(true);
+                                try {
+                                  const { data } = await walletApi.transfer(selectedFav.userId, a);
+                                  notify.success(data.message ?? `₹${a} sent to ${selectedFav.username}! 🎉`, { duration: 6000 });
+                                  setTransferAmt('');
+                                  setSelectedFav(null);
+                                  setShowTransfer(false);
+                                  load(); // refreshes transferEligible → now false
+                                } catch (err: any) {
+                                  notify.error(err?.response?.data?.error ?? 'Transfer failed');
+                                } finally {
+                                  setTransferring(false);
+                                }
+                              }}
+                              disabled={transferring || !canSend}
+                              className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+                              style={{ background: canSend ? "linear-gradient(135deg,#d97706,#f59e0b)" : "rgba(255,255,255,0.06)", color: "#fff" }}>
+                              {transferring ? (
+                                <>
+                                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                                    className="w-4 h-4 rounded-full border-2 border-transparent flex-shrink-0"
+                                    style={{ borderTopColor: '#fff', borderRightColor: 'rgba(255,255,255,0.3)' }} />
+                                  Sending…
+                                </>
+                              ) : canSend
+                                ? `💸 Send ₹${a} to ${selectedFav.username}`
+                                : "Enter a valid amount above"}
+                            </button>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1382,8 +1610,8 @@ export function WalletPage() {
           <VoucherSubmitModal onClose={() => setShowVoucherSubmit(false)} onSuccess={load} />
         )}
         {showRedeem && (
-          <RedeemModal balance={balance} onClose={() => setShowRedeem(false)}
-            onSuccess={(b) => { setBalance(b); load(); }} />
+          <RedeemModal balance={withdrawableBalance} onClose={() => setShowRedeem(false)}
+            onSuccess={(_b) => { load(); }} />
         )}
       </AnimatePresence>
     </Layout>

@@ -7955,7 +7955,7 @@ function RoomTrackerSection() {
 
 // ── Email Campaign Section ────────────────────────────────────────────────────
 
-type EmailTemplateId = 'winback' | 'tournament' | 'bonus' | 'announcement' | 'withdrawal_approved' | 'withdrawal_rejected' | 'deposit_confirmed' | 'deposit_rejected' | 'welcome' | 'top_player';
+type EmailTemplateId = 'winback' | 'tournament' | 'bonus' | 'announcement' | 'withdrawal_approved' | 'withdrawal_rejected' | 'deposit_confirmed' | 'deposit_rejected' | 'welcome' | 'top_player' | 'voucher_submitted' | 'voucher_delivered';
 
 const EMAIL_TEMPLATES: {
   id: EmailTemplateId;
@@ -8025,10 +8025,9 @@ const EMAIL_TEMPLATES: {
     label: 'Withdrawal Approved',
     accent: '#10b981',
     bg: 'rgba(16,185,129,0.10)',
-    desc: 'Notify player their withdrawal has been approved.',
+    desc: 'Notify player their redemption is approved — voucher details will follow in a separate email.',
     fields: [
-      { key: 'amount', label: 'Amount (₹)',     type: 'number', placeholder: '500',             required: true },
-      { key: 'method', label: 'Payment Method', type: 'text',   placeholder: 'UPI / Bank Transfer', required: true },
+      { key: 'amount', label: 'Amount (₹)',     type: 'number', placeholder: '500',        required: true },
       { key: 'eta',    label: 'ETA (optional)', type: 'text',   placeholder: '24–48 hours' },
     ],
   },
@@ -8091,6 +8090,35 @@ const EMAIL_TEMPLATES: {
       { key: 'customMsg',    label: 'Custom Message (optional)', type: 'text',  placeholder: 'Keep up the amazing play!' },
     ],
   },
+  {
+    id: 'voucher_submitted',
+    icon: '🎟️',
+    label: 'Voucher Received',
+    accent: '#818cf8',
+    bg: 'rgba(99,102,241,0.10)',
+    desc: 'Confirm a player\'s voucher submission is received and under verification.',
+    fields: [
+      { key: 'brand',       label: 'Voucher Brand',   type: 'text',   placeholder: 'Amazon',   required: true },
+      { key: 'amount',      label: 'Amount (₹)',      type: 'number', placeholder: '100',       required: true },
+      { key: 'voucherCode', label: 'Voucher Code',    type: 'text',   placeholder: 'XXXX-XXXX-XXXX', required: true },
+    ],
+  },
+  {
+    id: 'voucher_delivered',
+    icon: '🎁',
+    label: 'Voucher Delivered',
+    accent: '#34d399',
+    bg: 'rgba(52,211,153,0.10)',
+    desc: 'Send a player their redeemed brand gift voucher with code, PIN and expiry.',
+    fields: [
+      { key: 'brand',         label: 'Brand',              type: 'text',   placeholder: 'Amazon',   required: true },
+      { key: 'amount',        label: 'Voucher Value (₹)',  type: 'number', placeholder: '500',       required: true },
+      { key: 'voucherNumber', label: 'Voucher Code',       type: 'text',   placeholder: 'AMZN-XXXX-XXXX', required: true },
+      { key: 'voucherPin',    label: 'PIN',                type: 'text',   placeholder: '1234',      required: true },
+      { key: 'voucherExpiry', label: 'Expiry Date',        type: 'text',   placeholder: '31 Dec 2025', required: true },
+      { key: 'adminMessage',  label: 'Message (optional)', type: 'text',   placeholder: 'Enjoy your reward!' },
+    ],
+  },
 ];
 
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -8098,6 +8126,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
   announcement: '📣 Announcement', withdrawal_approved: '✅ Withdrawal Approved',
   withdrawal_rejected: '🚫 Withdrawal Rejected', deposit_confirmed: '💚 Deposit Confirmed',
   deposit_rejected: '🔴 Deposit Rejected', welcome: '👋 Welcome', top_player: '🏆 VIP',
+  voucher_submitted: '🎟️ Voucher Received', voucher_delivered: '🎁 Voucher Delivered',
 };
 
 function EmailUnsubscribedTab() {
@@ -8317,12 +8346,14 @@ function EmailCampaignSection() {
     if (selectedTpl === 'winback') return { id: 'winback', bonusAmount: Number(fields.bonusAmount ?? 30), customNote: fields.customNote || undefined };
     if (selectedTpl === 'tournament') return { id: 'tournament', name: fields.name, prizePool: Number(fields.prizePool), entryFee: Number(fields.entryFee ?? 0), startTime: fields.startTime, description: fields.description || undefined };
     if (selectedTpl === 'bonus') return { id: 'bonus', amount: Number(fields.amount), occasion: fields.occasion };
-    if (selectedTpl === 'withdrawal_approved') return { id: 'withdrawal_approved', amount: Number(fields.amount), method: fields.method, eta: fields.eta || undefined };
+    if (selectedTpl === 'withdrawal_approved') return { id: 'withdrawal_approved', amount: Number(fields.amount), method: '', eta: fields.eta || undefined };
     if (selectedTpl === 'withdrawal_rejected') return { id: 'withdrawal_rejected', amount: Number(fields.amount), reason: fields.reason };
     if (selectedTpl === 'deposit_confirmed') return { id: 'deposit_confirmed', amount: Number(fields.amount) };
     if (selectedTpl === 'deposit_rejected') return { id: 'deposit_rejected', amount: Number(fields.amount), reason: fields.reason };
     if (selectedTpl === 'welcome') return { id: 'welcome', bonusAmount: Number(fields.bonusAmount ?? 20) };
     if (selectedTpl === 'top_player') return { id: 'top_player', rank: fields.rank, rewardAmount: Number(fields.rewardAmount), customMsg: fields.customMsg || undefined };
+    if (selectedTpl === 'voucher_submitted') return { id: 'voucher_submitted', brand: fields.brand, amount: Number(fields.amount), voucherCode: fields.voucherCode };
+    if (selectedTpl === 'voucher_delivered') return { id: 'voucher_delivered', brand: fields.brand, amount: Number(fields.amount), voucherNumber: fields.voucherNumber, voucherPin: fields.voucherPin, voucherExpiry: fields.voucherExpiry, adminMessage: fields.adminMessage || undefined };
     return { id: 'announcement', headline: fields.headline, body: fields.body, ctaText: fields.ctaText || undefined, ctaUrl: fields.ctaUrl || undefined };
   };
 

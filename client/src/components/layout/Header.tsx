@@ -176,7 +176,7 @@ export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const { unreadCount, historyUnread, addNotification } = useNotificationStore();
-  const { flags, load: loadConfig } = useConfigStore();
+  const { flags, load: loadConfig, update: updateFlags } = useConfigStore();
   const [bellOpen, setBellOpen] = useState(false);
   const [aiPoints, setAiPoints] = useState<number>((user as any)?.aiPoints ?? 0);
 
@@ -213,6 +213,14 @@ export function Header() {
     }
   }, [isAuthenticated, addNotification]);
 
+  // Keep feature flags in sync globally — header is mounted on every page
+  useEffect(() => {
+    loadConfig();
+    return on('admin:config_updated', (cfg: any) => {
+      if (cfg?.featureFlags) updateFlags(cfg.featureFlags);
+    });
+  }, [updateFlags, loadConfig]);
+
   const leaderboardEnabled = flags.leaderboardEnabled !== false;
   const eventsEnabled = flags.eventsEnabled !== false;
 
@@ -233,12 +241,12 @@ export function Header() {
       <header className="bg-dark-surface/90 backdrop-blur-md border-b border-dark-border sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity flex-shrink-0">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg"
               style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.2))', border: '1px solid rgba(99,102,241,0.4)' }}>
               ⚔️
             </div>
-            <div className="leading-tight">
+            <div className="hidden sm:block leading-tight">
               <span className="font-black text-base text-white tracking-tight">Arena of Sevens</span>
               <span className="hidden sm:block text-[9px] text-dark-muted tracking-widest uppercase font-semibold" style={{ color: 'rgba(99,102,241,0.8)' }}>Master the SHOW</span>
             </div>
@@ -279,14 +287,14 @@ export function Header() {
           </nav>
 
           {/* Right: bell + theme + user */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* AI Points pill — always visible, navigates to Spin & Win */}
             {isAuthenticated && !user?.isGuest && aiPoints > 0 && (
               <motion.button
                 whileTap={{ scale: 0.94 }}
                 onClick={() => navigate('/lobby')}
                 title="AI Points — click to spin"
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all hover:opacity-90"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all hover:opacity-90"
                 style={{
                   background: 'linear-gradient(135deg,rgba(16,185,129,0.18),rgba(6,182,212,0.12))',
                   border: '1px solid rgba(16,185,129,0.35)',
@@ -296,7 +304,7 @@ export function Header() {
                 <span>⭐</span>
                 <span>{aiPoints.toLocaleString()}</span>
                 {aiPoints >= 100 && (
-                  <span className="text-[9px] font-black px-1 py-0.5 rounded-full ml-0.5"
+                  <span className="hidden sm:inline text-[9px] font-black px-1 py-0.5 rounded-full ml-0.5"
                     style={{ background: 'rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
                     SPIN
                   </span>
@@ -346,7 +354,7 @@ export function Header() {
                 </button>
                 <button
                   onClick={logout}
-                  className="text-xs text-dark-muted hover:text-red-400 transition-colors px-2 py-1 rounded"
+                  className="hidden sm:block text-xs text-dark-muted hover:text-red-400 transition-colors px-2 py-1 rounded"
                 >
                   Logout
                 </button>
