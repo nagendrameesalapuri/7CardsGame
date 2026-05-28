@@ -11,7 +11,7 @@ import {
 } from '../../models/SurvivalTournament';
 import { SurvivalTeam } from '../../models/SurvivalTeam';
 import { handleTeamSurvivalMatchEnd } from './survivalTeamHandler';
-import { startRoomGame, getActiveGame, setBotPersonality, assignBotPersonalities } from './gameHandler';
+import { startRoomGame, getActiveGame, setBotPersonality, assignBotPersonalities, overrideGameDifficultyBoost } from './gameHandler';
 import { GameState } from '../../../../shared/src/types';
 import { getAdminConfig } from '../../models/AdminConfig';
 import { awardXp } from '../../utils/progressionService';
@@ -29,6 +29,35 @@ const POINTS_PER_RUPEE = 100;
 
 function pointsToRupees(points: number): number {
   return points / POINTS_PER_RUPEE;
+}
+
+// Per-stage difficulty boost — escalates with stage difficulty.
+// These values feed into BotPlayer.decide() to shift bot play quality without
+// giving bots hidden information or manipulating card draws.
+const STAGE_DIFFICULTY_BOOST: Record<number, number> = {
+  1: 0.00,  // Stage 1 (Iron Fist / safe): no boost — warmup
+  2: 0.08,  // Stage 2 (Blaze / aggressive): slight pressure
+  3: 0.14,  // Stage 3 (Phantom / bluff): moderate — deception needs confidence
+  4: 0.22,  // Stage 4 (Cipher + Raven / smart + aggressive): two bots, meaningful boost
+  5: 0.30,  // Stage 5 (Viper + Ghost + Specter): three bots, near-max boost
+};
+
+// Apply both personality and difficulty boost for a survival game.
+function applyStageBotSettings(roomCode: string, gameId: string, stage: number, bots: any[]): void {
+  const stageConfig = SURVIVAL_STAGES.find(s => s.stage === stage)!;
+  if (!stageConfig) return;
+
+  if (stageConfig.botCount > 1) {
+    assignBotPersonalities(gameId, bots.map((b: any, i: number) => ({
+      userId:      b.userId,
+      personality: stageConfig.personalities[i] ?? stageConfig.personalities[0],
+    })));
+  } else {
+    setBotPersonality(gameId, stageConfig.personalities[0]);
+  }
+
+  const boost = STAGE_DIFFICULTY_BOOST[stage] ?? 0;
+  overrideGameDifficultyBoost(roomCode, boost);
 }
 
 // Load effective tier config from DB, falling back to static TIER_CONFIG defaults
@@ -466,16 +495,12 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
               await startRoomGame(io, existing.currentRoomCode);
               const game = getActiveGame(existing.currentRoomCode);
               if (game) {
-                const stageConfig = SURVIVAL_STAGES.find(s => s.stage === existing.currentStage)!;
-                if (stageConfig.botCount > 1) {
-                  const bots = game.players.filter(p => p.isBot);
-                  assignBotPersonalities(game.id, bots.map((b, i) => ({
-                    userId: b.userId,
-                    personality: stageConfig.personalities[i] ?? stageConfig.personalities[0],
-                  })));
-                } else {
-                  setBotPersonality(game.id, stageConfig.personalities[0]);
-                }
+                applyStageBotSettings(
+                  existing.currentRoomCode!,
+                  game.id,
+                  existing.currentStage,
+                  game.players.filter((p: any) => p.isBot),
+                );
               }
             }
             emitGameState(socket, existing.currentRoomCode, userId);
@@ -540,6 +565,17 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
         await socket.join(roomCode);
         socket.data.roomCode = roomCode;
         await startRoomGame(io, roomCode);
+
+        // Apply stage 1 difficulty settings (stage 1 = no boost, safe personality)
+        const initialGame = getActiveGame(roomCode);
+        if (initialGame) {
+          applyStageBotSettings(
+            roomCode,
+            initialGame.id,
+            1,
+            initialGame.players.filter((p: any) => p.isBot),
+          );
+        }
 
         // ── ENTRY LOCK: game is now LIVE — convert hold to locked deduction ──
         const walletSnap = await User.findOneAndUpdate(
@@ -640,16 +676,12 @@ export function registerSurvivalHandlers(io: Server, socket: Socket) {
         await startRoomGame(io, survival.currentRoomCode);
         const game = getActiveGame(survival.currentRoomCode);
         if (game) {
-          const stageConfig = SURVIVAL_STAGES.find(s => s.stage === survival.currentStage)!;
-          if (stageConfig.botCount > 1) {
-            const bots = game.players.filter(p => p.isBot);
-            assignBotPersonalities(game.id, bots.map((b, i) => ({
-              userId: b.userId,
-              personality: stageConfig.personalities[i] ?? stageConfig.personalities[0],
-            })));
-          } else {
-            setBotPersonality(game.id, stageConfig.personalities[0]);
-          }
+          applyStageBotSettings(
+            survival.currentRoomCode!,
+            game.id,
+            survival.currentStage,
+            game.players.filter((p: any) => p.isBot),
+          );
         }
       }
 

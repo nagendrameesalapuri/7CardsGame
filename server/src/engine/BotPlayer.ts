@@ -45,6 +45,10 @@ export type PlayerArchetype =
   | "fast_show"
   | "trap"
   | "hold_7s"
+  | "panic_player"       // draws repeatedly, hand growing, never cuts — apply max pressure
+  | "sacrifice_player"   // deliberately grows hand to shield teammate — target their partner
+  | "recovery_baiter"    // fakes weakness to bait bot aggression, then surges — don't rush
+  | "defensive_grinder"  // grinds for very low hand targets, rarely shows early — use traps
   | "unknown";
 
 // ── NEW: Threat level ─────────────────────────────────────────────────────────
@@ -256,6 +260,16 @@ export interface BotMatchContext {
   pressureTurnsThisRound: number;
   lastImperfectionTurn: number; // last turn boss chose sub-optimal line
   farmingIndicator: number; // 0-1: suspicion the human is exploiting patterns
+  // v2: Anti-pattern detection
+  antiPatternMode: boolean;                              // true when farmingIndicator > 0.5
+  archetypeConsistency: Partial<Record<string, number>>; // userId → consecutive same-archetype turns
+  lastDetectedArchetype: Partial<Record<string, PlayerArchetype>>; // userId → last archetype
+  // v2: Recovery tracking
+  recoveryDetected: boolean;   // human is stabilizing after pressure
+  recoveryTurnStart: number;   // turnCount when recovery was first detected
+  // v2: Solo telemetry
+  pressureTurnsTotal: number;  // total pressure turns applied this match
+  showHandTotals: number[];    // hand totals when bot decided to show (for analysis)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +287,13 @@ export class BotPlayer {
       pressureTurnsThisRound: 0,
       lastImperfectionTurn: -10,
       farmingIndicator: 0,
+      antiPatternMode: false,
+      archetypeConsistency: {},
+      lastDetectedArchetype: {},
+      recoveryDetected: false,
+      recoveryTurnStart: 0,
+      pressureTurnsTotal: 0,
+      showHandTotals: [],
     });
   }
 
@@ -320,11 +341,18 @@ export class BotPlayer {
       delay += 400 + Math.random() * 500;
     }
 
-    // Context-aware: during cooldown phase boss slows down (bait passive play)
-    if (botPlayerId && (personality === "boss" || personality === "bluff")) {
+    // Context-aware timing adjustments
+    if (botPlayerId) {
       const ctx = BotPlayer.getCtx(botPlayerId);
-      if (ctx.emotionalPhase === "cooldown" || ctx.emotionalPhase === "bait") {
-        delay += 300 + Math.random() * 400; // deliberate slowdown during bait window
+      // Anti-pattern mode: random deep-think fake hesitation to mislead timing reads
+      if (ctx.antiPatternMode && Math.random() < 0.22) {
+        delay += 500 + Math.random() * 700;
+      }
+      // Boss/bluff: deliberate slowdown during bait/cooldown phases
+      if (personality === "boss" || personality === "bluff") {
+        if (ctx.emotionalPhase === "cooldown" || ctx.emotionalPhase === "bait") {
+          delay += 300 + Math.random() * 400;
+        }
       }
     }
 
@@ -807,7 +835,8 @@ export class BotPlayer {
         consecutivePressureTurns = 0;
         break;
       case "bait":
-        // One bait turn, then surge — maximum spike
+        // 30% chance to extend bait one more turn — unpredictable surge timing
+        if (Math.random() < 0.3) break;
         emotionalPhase = "surge";
         break;
       case "surge":
@@ -884,6 +913,120 @@ export class BotPlayer {
     return null;
   }
 
+  // ── NEW: Match-Variant Personality Config ────────────────────────────────────
+  // Returns a PersonalityConfig with match-seed-based adjustments so each match
+  // feels different without exposing a new BotPersonality enum value.
+  private static getVariantConfig(
+    personality: BotPersonality,
+    seed: number,
+  ): PersonalityConfig {
+    const base = { ...PERSONALITY[personality] };
+
+    if (personality === "aggressive") {
+      if (seed < 0.25)
+        return { ...base, pressureBias: Math.min(1, base.pressureBias + 0.1), attackAllAt: base.attackAllAt + 1, attackOneAt: base.attackOneAt + 1, killerInstinct: 0.95 };
+      if (seed < 0.5)
+        return { ...base, randomPlayChance: 0.28, tacticalVariance: 0.22, bluffFactor: 0.28, thinkJitterMs: 450 };
+      if (seed < 0.75)
+        return { ...base, jackUseBias: 0.88, sevenSaveThreshold: 7, skipAt: 4, denialWeight: 0.65 };
+      return { ...base, denialWeight: 0.78, showInterruptBias: 0.9, killerInstinct: 0.72 };
+    }
+
+    if (personality === "smart") {
+      if (seed < 0.25)
+        return { ...base, randomPlayChance: 0.01, tacticalVariance: 0.02, bluffFactor: 0.02, thinkBaseMs: base.thinkBaseMs + 200 };
+      if (seed < 0.5)
+        return { ...base, comboPreservation: 0.78, bluffFactor: 0.22, attackAllAt: 1, denialWeight: 0.72 };
+      if (seed < 0.75)
+        return { ...base, showBias: 0.3, riskTolerance: 0.3, pressureBias: 0.78, killerInstinct: 0.72 };
+      return { ...base, denialWeight: 0.88, killerInstinct: 0.72, showInterruptBias: 0.78 };
+    }
+
+    if (personality === "boss") {
+      if (seed < 0.25)
+        return { ...base, killerInstinct: 0.95, attackAllAt: 4, attackOneAt: 7, pressureBias: 0.95 };
+      if (seed < 0.5)
+        return { ...base, denialWeight: 0.92, jackUseBias: 0.88, comboPreservation: 0.75 };
+      if (seed < 0.75)
+        return { ...base, randomPlayChance: 0.03, showInterruptBias: 0.94, pressureBias: 0.92 };
+      return { ...base, randomPlayChance: 0.18, tacticalVariance: 0.25, bluffFactor: 0.22, thinkJitterMs: 350 };
+    }
+
+    return base;
+  }
+
+  // ── NEW: Farming Pattern Detection ────────────────────────────────────────────
+  // Tracks when an opponent uses the same archetype strategy for 3+ consecutive turns.
+  // Increments farmingIndicator → triggers antiPatternMode so the bot breaks its own
+  // predictable responses.
+  private static updateFarmingDetection(
+    opponents: OpponentProfile[] | undefined,
+    ctx: BotMatchContext,
+  ): Partial<BotMatchContext> {
+    if (!opponents || opponents.length === 0) {
+      return { farmingIndicator: Math.max(0, ctx.farmingIndicator - 0.02) };
+    }
+
+    const updatedConsistency = { ...ctx.archetypeConsistency };
+    const updatedLastArchetype = { ...ctx.lastDetectedArchetype };
+    let farmingIndicator = ctx.farmingIndicator;
+
+    for (const opp of opponents) {
+      if (!opp.archetype || opp.archetype === "unknown") continue;
+
+      const last = updatedLastArchetype[opp.userId];
+      if (last === opp.archetype) {
+        updatedConsistency[opp.userId] = (updatedConsistency[opp.userId] ?? 0) + 1;
+      } else {
+        updatedConsistency[opp.userId] = 1;
+        updatedLastArchetype[opp.userId] = opp.archetype;
+      }
+
+      const consistency = updatedConsistency[opp.userId] ?? 0;
+      if (consistency >= 3)
+        farmingIndicator = Math.min(1, farmingIndicator + 0.08);
+      else if (consistency < 2)
+        farmingIndicator = Math.max(0, farmingIndicator - 0.04);
+    }
+
+    farmingIndicator = Math.max(0, farmingIndicator - 0.02);
+
+    return {
+      farmingIndicator,
+      antiPatternMode: farmingIndicator > 0.5,
+      archetypeConsistency: updatedConsistency,
+      lastDetectedArchetype: updatedLastArchetype,
+    };
+  }
+
+  // ── NEW: Human Recovery Detection ─────────────────────────────────────────────
+  // Returns true when an opponent was under heavy pressure but is now stabilizing.
+  // Triggers an anti-recovery surge so they can't safely rebuild.
+  private static detectHumanRecovery(
+    opponents: OpponentProfile[] | undefined,
+  ): boolean {
+    if (!opponents || opponents.length === 0) return false;
+
+    for (const opp of opponents) {
+      const hist = opp.handCountHistory;
+      if (hist.length < 3) continue;
+
+      const current = hist[hist.length - 1];
+      const peak = Math.max(...hist);
+      const wasUnderPressure = peak >= 7;
+      const nowRecovering = peak - current >= 2;
+      const stillVulnerable = current >= 5;
+
+      if (wasUnderPressure && nowRecovering && stillVulnerable) return true;
+
+      if (opp.recentAttackTakes >= 1 && hist.length >= 2) {
+        const prev = hist[hist.length - 2];
+        if (prev > current && current >= 4) return true;
+      }
+    }
+    return false;
+  }
+
   // ── NEW: Variant-weighted Boss Mode ──────────────────────────────────────────
   // Each match has a random seed that biases boss toward certain styles,
   // ensuring the same strategy doesn't work every match.
@@ -892,19 +1035,33 @@ export class BotPlayer {
     seed: number,
     emotionalPhase: EmotionalPhase,
   ): BossSubpersonality {
-    // Cooldown / bait phases always force non-aggressive modes regardless of bias
-    if (emotionalPhase === "cooldown") return "defensive";
-    if (emotionalPhase === "bait") return "combo_preserve";
-    if (emotionalPhase === "surge") return baseMode; // surge: full gas
+    // Chaos boss (seed >= 0.75): 30% chance to pick a completely random mode.
+    // Creates genuine unpredictability — humans cannot pattern-match this boss.
+    if (seed >= 0.75 && Math.random() < 0.3) {
+      const allModes: BossSubpersonality[] = [
+        "aggressive", "defensive", "trap", "anti_show",
+        "pressure_mode", "killer", "combo_preserve", "tempo_control",
+      ];
+      return allModes[Math.floor(Math.random() * allModes.length)];
+    }
 
-    // Each match seed creates a "flavor" — boss leans toward certain modes
-    // seed 0.0-0.25: punisher — favors killer + anti_show
-    // seed 0.25-0.5: tactician — favors tempo_control + trap
-    // seed 0.5-0.75: pressurer — favors pressure_mode + aggressive
-    // seed 0.75-1.0: adapter — standard mode, no bias
+    // Cooldown: mostly defensive, but Punisher variant occasionally fake-cooldowns
+    if (emotionalPhase === "cooldown") {
+      return seed < 0.25 && Math.random() < 0.25 ? "killer" : "defensive";
+    }
+    // Bait: mostly passive, but Punisher can skip the bait and surge early (feint)
+    if (emotionalPhase === "bait") {
+      return seed < 0.25 && Math.random() < 0.35 ? "aggressive" : "combo_preserve";
+    }
+    if (emotionalPhase === "surge") return baseMode;
+
+    // Seed-flavored bias:
+    // 0.00-0.25: Punisher  — favors killer + anti_show
+    // 0.25-0.50: Tactician — favors tempo_control + trap
+    // 0.50-0.75: Pressurer — favors pressure_mode + aggressive
+    // 0.75-1.00: Chaos     — already handled above
     if (seed < 0.25) {
-      if (baseMode === "neutral" || baseMode === "pressure_mode")
-        return "killer";
+      if (baseMode === "neutral" || baseMode === "pressure_mode") return "killer";
       if (baseMode === "combo_preserve") return "anti_show";
     } else if (seed < 0.5) {
       if (baseMode === "killer") return "tempo_control";
@@ -939,6 +1096,23 @@ export class BotPlayer {
     // Cooldown / bait phases reduce aggression — creates pacing windows
     if (ctx.emotionalPhase === "cooldown") return "defensive";
     if (ctx.emotionalPhase === "bait") return "combo_preserve";
+
+    // Anti-farming: when human exploits the same strategy repeatedly, counter it
+    if (ctx.antiPatternMode) {
+      const dominantArch = Object.values(ctx.lastDetectedArchetype)[0];
+      if (dominantArch === "fast_show" || signals.fastShowSignal >= 0.4) {
+        return BotPlayer.variantBiasedMode("anti_show", ctx.matchVariantSeed, ctx.emotionalPhase);
+      }
+      if (dominantArch === "panic_player" || signals.weakSignal >= 0.5) {
+        return BotPlayer.variantBiasedMode("pressure_mode", ctx.matchVariantSeed, ctx.emotionalPhase);
+      }
+      if (dominantArch === "defensive_grinder" || dominantArch === "recovery_baiter") {
+        return BotPlayer.variantBiasedMode("trap", ctx.matchVariantSeed, ctx.emotionalPhase);
+      }
+      // Generic: cycle unpredictable modes so human can't exploit one pattern
+      const antiModes: BossSubpersonality[] = ["killer", "tempo_control", "anti_show", "trap", "aggressive"];
+      return antiModes[ctx.turnCount % antiModes.length];
+    }
 
     // Critical SHOW threat overrides everything (even surge)
     if (showThreat >= 0.7 || signals.fastShowSignal >= 0.5) {
@@ -1149,7 +1323,9 @@ export class BotPlayer {
   ): string[] {
     const bot = state.players.find((p) => p.id === botPlayerId)!;
     const hand = bot.hand;
-    const cfg = PERSONALITY[personality];
+    // Use match-variant config so each match has a different personality flavour
+    const _variantCtx = BotPlayer.getCtx(botPlayerId);
+    const cfg = BotPlayer.getVariantConfig(personality, _variantCtx.matchVariantSeed);
     const boost = BotPlayer.normalizeBoost(difficultyBoost);
 
     const isRealSeven = (c: Card) => c.rank === "7" && !c.isJoker;
@@ -1232,6 +1408,22 @@ export class BotPlayer {
       const ctx = BotPlayer.getCtx(botPlayerId);
       const bluffLine = BotPlayer.bluffTacticalLine(hand, discardOptions, ctx);
       if (bluffLine) return bluffLine;
+    }
+
+    // ── 3b. BOSS BAIT TRAP: deliberate weak play during bait phase ───────────────
+    // Boss plays a slightly sub-optimal card to make opponent think we're struggling,
+    // then surges hard in the following turn.
+    if (personality === "boss" && !isCritical) {
+      const baitCtx = BotPlayer.getCtx(botPlayerId);
+      if (baitCtx.emotionalPhase === "bait" && Math.random() < 0.4) {
+        const baitOption = discardOptions.find(
+          (opt) =>
+            opt.score > normalBestScore &&
+            opt.score <= normalBestScore + 5 &&
+            !opt.cards.some((c) => DENIAL_PRIORITY_RANKS.has(c.rank)),
+        );
+        if (baitOption) return baitOption.cards.map((c) => c.id);
+      }
     }
 
     // ── 4. TACTICAL RANDOMNESS / SMART ANTI-DETERMINISM (near-optimal) ────────
@@ -1345,6 +1537,40 @@ export class BotPlayer {
     // Sort by combined score (lower = better for us)
     scored.sort((a, b) => a.combinedScore - b.combinedScore);
 
+    // ── 7b. ANTI-PATTERN COUNTER: respond to human's exploited strategy ──────────
+    // When farmingIndicator > 0.5, the human is using the same archetype repeatedly.
+    // Switch to counter-play to break their rhythm.
+    {
+      const apCtx = BotPlayer.getCtx(botPlayerId);
+      if (apCtx.antiPatternMode && opponents && opponents.length > 0 && !isCritical) {
+        const dominantArch = Object.values(apCtx.lastDetectedArchetype)[0];
+        if (dominantArch === "fast_show") {
+          // Heavy show denial — skip their turn if possible
+          if (jacks.length > 0 && nextPlayerCards <= 7) {
+            const jScore = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
+            if (jScore <= normalBestScore + 4) return [jacks[0].id];
+          }
+        } else if (dominantArch === "panic_player") {
+          // Maximum pressure — throw 7s even at medium hand counts
+          if (sevens.length > 0 && minOpponentCards <= 8) {
+            return sevens.map((c) => c.id);
+          }
+        } else if (dominantArch === "defensive_grinder") {
+          // Bluff/trap plays to force mistakes
+          const bluffAnti = BotPlayer.bluffTacticalLine(hand, discardOptions, apCtx);
+          if (bluffAnti && Math.random() < 0.55) return bluffAnti;
+        } else if (dominantArch === "recovery_baiter") {
+          // Don't be fooled by fake weakness — save 7s until genuinely vulnerable
+          if (sevens.length > 0 && minOpponentCards >= 6) {
+            const noSeven = scored.find(
+              (s) => !s.cards.some((c) => c.rank === "7" && !c.isJoker),
+            );
+            if (noSeven) return noSeven.cards.map((c) => c.id);
+          }
+        }
+      }
+    }
+
     // ── 8. KILLER INSTINCT OVERRIDE: pick option that most denies recovery ────
     if (killer || pressureState.isPanicking) {
       // Prefer options that discard high-value cards (hurt us less) AND deny useful stuff
@@ -1354,6 +1580,31 @@ export class BotPlayer {
           s.selfScore <= normalBestScore + 3,
       );
       if (killerOption) return killerOption.cards.map((c) => c.id);
+    }
+
+    // ── 8b. ANTI-RECOVERY SURGE: deny stabilisation when human is rebuilding ──
+    // When we detect a human dropping from a high hand count (recovering), apply
+    // maximum resource pressure during the first 4 turns of their recovery window.
+    {
+      const recovCtx = BotPlayer.getCtx(botPlayerId);
+      if (recovCtx.recoveryDetected) {
+        const recovTurns = recovCtx.turnCount - recovCtx.recoveryTurnStart;
+        if (recovTurns <= 4) {
+          if (sevens.length > 0 && minOpponentCards <= 8)
+            return sevens.map((c) => c.id);
+          if (jacks.length > 0 && nextPlayerCards <= 8) {
+            const jScore2 = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
+            if (jScore2 <= normalBestScore + 6) return [jacks[0].id];
+          }
+          const denialPick = scored.find(
+            (s) =>
+              s.cards.every(
+                (c) => BotPlayer.opponentBenefitScore(c, opponents) < 1.5,
+              ) && s.selfScore <= normalBestScore + 3,
+          );
+          if (denialPick) return denialPick.cards.map((c) => c.id);
+        }
+      }
     }
 
     // ── 9. LOW-SCORE STABILITY PRESERVATION ──────────────────────────────────
@@ -1502,6 +1753,20 @@ export class BotPlayer {
     const ctx = BotPlayer.getCtx(botPlayerId);
     BotPlayer.updateCtx(botPlayerId, { turnCount: ctx.turnCount + 1 });
 
+    // Farming detection: track repeated human strategies and update counter-mode
+    const farmingUpdate = BotPlayer.updateFarmingDetection(opponents, ctx);
+    BotPlayer.updateCtx(botPlayerId, farmingUpdate);
+
+    // Recovery detection: spike pressure when human is stabilizing
+    const recoveryNow = BotPlayer.detectHumanRecovery(opponents);
+    const postFarmCtx = BotPlayer.getCtx(botPlayerId);
+    if (recoveryNow !== postFarmCtx.recoveryDetected) {
+      BotPlayer.updateCtx(botPlayerId, {
+        recoveryDetected: recoveryNow,
+        recoveryTurnStart: recoveryNow ? postFarmCtx.turnCount : 0,
+      });
+    }
+
     // Boss dynamically switches sub-personality every turn
     const bossMode =
       personality === "boss"
@@ -1519,6 +1784,16 @@ export class BotPlayer {
         bossMode,
       );
       BotPlayer.updateCtx(botPlayerId, phaseUpdate);
+    }
+
+    // Telemetry: track pressure turns applied this match
+    const isPressuringThisTurn =
+      personality === "boss"
+        ? bossMode === "pressure_mode" || bossMode === "killer" || bossMode === "anti_show"
+        : personality === "aggressive";
+    if (isPressuringThisTurn) {
+      const telCtx = BotPlayer.getCtx(botPlayerId);
+      BotPlayer.updateCtx(botPlayerId, { pressureTurnsTotal: telCtx.pressureTurnsTotal + 1 });
     }
 
     // ── Handle incoming 7-attack chain ───────────────────────────────────────

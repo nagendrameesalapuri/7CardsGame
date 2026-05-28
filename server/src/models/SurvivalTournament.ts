@@ -14,8 +14,8 @@ export const SURVIVAL_STAGES: Array<{
   { stage: 1, botCount: 1, personalities: ["safe"],                        botNames: ["Iron Fist"],                              name: "Warmup Duel",       description: "1v1 · Defensive AI"               },
   { stage: 2, botCount: 1, personalities: ["aggressive"],                  botNames: ["Blaze"],                                  name: "Tactical Pressure", description: "1v1 · Aggressive AI"              },
   { stage: 3, botCount: 1, personalities: ["bluff"],                       botNames: ["Phantom"],                                name: "Mind Games",        description: "1v1 · Deceptive AI"               },
-  { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Smart AI", "Aggressive AI"],              name: "Survival Clash",    description: "1v2 · Smart + Aggressive AI"       },
-  { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Boss AI", "Smart AI", "Aggressive AI"],   name: "Final Arena",       description: "1v3 · Boss + Smart + Aggressive AI" },
+  { stage: 4, botCount: 2, personalities: ["smart", "aggressive"],         botNames: ["Cipher", "Raven"],                         name: "Survival Clash",    description: "1v2 · Tactician + Striker"          },
+  { stage: 5, botCount: 3, personalities: ["boss", "smart", "aggressive"], botNames: ["Viper",  "Ghost",  "Specter"],            name: "Final Arena",       description: "1v3 · Overlord + Shadow + Striker"  },
 ];
 
 // Team-mode stages: always 2 opponent bots per stage — hardened personalities since team of 3 faces only 2 bots

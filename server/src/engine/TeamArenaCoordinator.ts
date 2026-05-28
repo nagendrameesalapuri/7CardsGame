@@ -68,6 +68,13 @@ export const TEAM_COORD_FLAGS = {
   ENABLE_HUMAN_HESITATION:       true,
   ENABLE_PRESSURE_VARIANCE:      true,
   ENABLE_COMEBACK_WINDOWS:       true,
+  // v3 flags
+  ENABLE_SACRIFICE_PUNISHMENT:   true,  // hard-focus non-tanking human when one sacrifices
+  ENABLE_TEAM_LEADER_TARGETING:  true,  // detect and suppress the coordinating human
+  ENABLE_FOCUS_FIRE:             true,  // all bot resources on one human
+  ENABLE_ANTI_RECOVERY_SURGE:    true,  // coordinated punishment when both humans recover
+  ENABLE_HIGH_SKILL_DETECTION:   true,  // detect skilled teams and tighten fairness windows
+  ENABLE_DOUBLE_BAIT_TRAP:       true,  // Bot A goes weak, Bot B ambushes (cap 2/match)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +101,13 @@ interface HumanMemory {
   // v2 additions
   flagConfirmations:    { hoards7s: number; rushesShow: number; recoversSlowly: number };
   lastUpdateTurn:       number;
+  // v3 additions
+  isSacrificing:        boolean;  // deliberately growing hand to protect teammate
+  sacrificeTurns:       number;   // consecutive sacrifice turns observed
+  winStreak:            number;   // consecutive show attempts (proxy for round wins)
+  leaderScore:          number;   // cumulative leadership signal strength
+  isLeader:             boolean;  // this human is the team coordinator
+  skillLevel:           'normal' | 'high' | 'expert';
 }
 
 /** Per-game coordination state — one entry per active team arena game. */
@@ -156,6 +170,26 @@ interface TeamArenaGameCtx {
 
   // v2: Telemetry
   telemetry:            TeamArenaTelemetry;
+
+  // v3: Focus fire
+  focusFireTarget:      string | null;  // userId being hard-focused by all bots
+  focusFireTurns:       number;
+
+  // v3: Double-bait trap
+  doubleBaitActive:       boolean;
+  doubleBaitInitiatorId:  string | null; // bot that goes "weak" as decoy
+  doubleBaitStartTurn:    number;
+  doubleBaitCyclesUsed:   number;        // cap at 2 per match
+
+  // v3: Anti-recovery coordinated surge
+  antiRecoverySurgeActive:    boolean;
+  antiRecoverySurgeStartTurn: number;
+
+  // v3: High-skill detection
+  highSkillDetected:    boolean;
+
+  // v3: Team leader
+  teamLeaderId:         string | null;
 }
 
 /** Exportable analytics snapshot for this match. */
@@ -217,6 +251,17 @@ export function initTeamArenaGame(gameId: string): void {
       maxDominanceScore:    0,
       humanMomentumCount:   0,
     },
+    // v3
+    focusFireTarget:            null,
+    focusFireTurns:             0,
+    doubleBaitActive:           false,
+    doubleBaitInitiatorId:      null,
+    doubleBaitStartTurn:        -99,
+    doubleBaitCyclesUsed:       0,
+    antiRecoverySurgeActive:    false,
+    antiRecoverySurgeStartTurn: -99,
+    highSkillDetected:          false,
+    teamLeaderId:               null,
   });
 }
 
@@ -497,6 +542,13 @@ function updateHumanMemory(ctx: TeamArenaGameCtx, profiles: OpponentProfile[]): 
       consecutiveLowHand:  0,
       flagConfirmations:   { hoards7s: 0, rushesShow: 0, recoversSlowly: 0 },
       lastUpdateTurn:      0,
+      // v3 defaults
+      isSacrificing:       false,
+      sacrificeTurns:      0,
+      winStreak:           0,
+      leaderScore:         0,
+      isLeader:            false,
+      skillLevel:          'normal',
     };
 
     existing.totalAttackThrows  += p.recentAttackThrows;
@@ -524,6 +576,39 @@ function updateHumanMemory(ctx: TeamArenaGameCtx, profiles: OpponentProfile[]): 
         existing.consecutiveHighHand = 0;
       }
       if (existing.consecutiveHighHand >= 3) existing.recoversSlowly = true;
+    }
+
+    // v3: Sacrifice detection — hand growing + taking attacks + no shows = protecting teammate
+    const currentHand = existing.handCountHistory[existing.handCountHistory.length - 1] ?? 0;
+    const prevHand    = existing.handCountHistory[existing.handCountHistory.length - 2] ?? currentHand;
+    const handGrowing = currentHand > prevHand;
+    if (handGrowing && p.recentAttackTakes >= 1 && existing.consecutiveHighHand >= 1) {
+      existing.sacrificeTurns = Math.min(5, existing.sacrificeTurns + 1);
+      if (existing.sacrificeTurns >= 2) existing.isSacrificing = true;
+    } else {
+      existing.sacrificeTurns = Math.max(0, existing.sacrificeTurns - 1);
+      if (existing.sacrificeTurns === 0) existing.isSacrificing = false;
+    }
+
+    // v3: Win streak — each show attempt is a proxy for round success
+    if (p.recentShows > 0) {
+      existing.winStreak = Math.min(10, existing.winStreak + 1);
+    } else if (existing.consecutiveHighHand >= 3) {
+      existing.winStreak = Math.max(0, existing.winStreak - 1);
+    }
+
+    // v3: Leader score — accumulates signals of strategic coordination
+    existing.leaderScore += p.recentAttackThrows * 0.4 + p.recentShows * 0.7
+      + (existing.hoards7s ? 0.3 : 0) + (existing.rushesShow ? 0.5 : 0);
+    if (existing.leaderScore >= 4) existing.isLeader = true;
+
+    // v3: Skill level classification
+    if (existing.winStreak >= 3 && existing.isLeader) {
+      existing.skillLevel = 'expert';
+    } else if (existing.winStreak >= 2 || (existing.hoards7s && existing.rushesShow)) {
+      existing.skillLevel = 'high';
+    } else {
+      existing.skillLevel = 'normal';
     }
 
     ctx.humanMemory.set(p.userId, existing);
@@ -839,6 +924,190 @@ function applyMomentumFatigue(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 30. Sacrifice Detection & Punishment (v3)
+// When one human is clearly tanking (sacrificing) to protect a rushing teammate,
+// hard-focus the non-tanking human with all bot resources.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectSacrificePunishTarget(
+  ctx:      TeamArenaGameCtx,
+  profiles: OpponentProfile[],
+): string | null {
+  if (!TEAM_COORD_FLAGS.ENABLE_SACRIFICE_PUNISHMENT) return null;
+
+  const mems = profiles
+    .map(p => ctx.humanMemory.get(p.userId))
+    .filter(Boolean) as HumanMemory[];
+  if (mems.length < 2) return null;
+
+  const sacrificer = mems.find(m => m.isSacrificing && m.consecutiveHighHand >= 2);
+  const rusher     = mems.find(m => m.rushesShow && m.consecutiveLowHand >= 1);
+
+  // One sacrificing, one rushing — hard-focus the rusher
+  if (sacrificer && rusher && sacrificer.userId !== rusher.userId) {
+    return rusher.userId;
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 31. Team Leader Targeting (v3)
+// Identify the human who is coordinating the team (most attacks, shows, and 7s).
+// Prioritize suppressing them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectTeamLeader(
+  ctx:      TeamArenaGameCtx,
+  profiles: OpponentProfile[],
+): string | null {
+  if (!TEAM_COORD_FLAGS.ENABLE_TEAM_LEADER_TARGETING) return null;
+
+  let bestScore = 2.0;  // minimum threshold — ignore weak signals
+  let leaderId: string | null = null;
+
+  for (const p of profiles) {
+    const mem = ctx.humanMemory.get(p.userId);
+    if (!mem) continue;
+    if (mem.leaderScore > bestScore) {
+      bestScore = mem.leaderScore;
+      leaderId  = p.userId;
+    }
+  }
+  return leaderId;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 32. Focus Fire (v3)
+// Augment the focus target's profile to trigger maximum bot aggression.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function applyFocusFire(
+  profiles:  OpponentProfile[],
+  targetId:  string | null,
+): OpponentProfile[] {
+  if (!TEAM_COORD_FLAGS.ENABLE_FOCUS_FIRE || !targetId) return profiles;
+
+  return profiles.map(p => {
+    if (p.userId !== targetId) return p;
+    return {
+      ...p,
+      archetype:   'fast_show' as const,
+      recentCuts:  Math.max(p.recentCuts,  3),
+      recentShows: Math.max(p.recentShows, 2),
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 33. Anti-Recovery Coordinated Surge (v3)
+// When both humans are simultaneously recovering from pressure, trigger a
+// coordinated punishment wave to deny their stabilisation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectBothHumansRecovering(
+  ctx:      TeamArenaGameCtx,
+  profiles: OpponentProfile[],
+): boolean {
+  if (!TEAM_COORD_FLAGS.ENABLE_ANTI_RECOVERY_SURGE) return false;
+
+  let recoveringCount = 0;
+  for (const p of profiles) {
+    const mem = ctx.humanMemory.get(p.userId);
+    if (!mem) continue;
+    const hist    = mem.handCountHistory;
+    if (hist.length < 3) continue;
+    const current = hist[hist.length - 1];
+    const peak    = Math.max(...hist);
+    if (peak >= 7 && (peak - current) >= 2 && current >= 4) recoveringCount++;
+  }
+  return recoveringCount >= 2;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 34. High-Skill Human Detection (v3)
+// Detect whether the human team is playing at a high/expert skill level.
+// Reduces fairness windows (comeback buffs) against skilled teams.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectHighSkillTeam(
+  ctx:      TeamArenaGameCtx,
+  profiles: OpponentProfile[],
+): boolean {
+  if (!TEAM_COORD_FLAGS.ENABLE_HIGH_SKILL_DETECTION) return false;
+
+  const mems = profiles
+    .map(p => ctx.humanMemory.get(p.userId))
+    .filter(Boolean) as HumanMemory[];
+
+  return mems.some(m => m.skillLevel === 'expert' || m.skillLevel === 'high');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 35. Double-Bait Team Trap (v3)
+// Bot A deliberately plays weak (decoy) while Bot B waits in ambush.
+// After 2 passive turns, both bots surge hard. Cap: 2 per match.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DoubleBaitResult {
+  active:      boolean;
+  boost:       number;
+  personality: BotPersonality;
+}
+
+function applyDoubleBaitTrap(
+  ctx:        TeamArenaGameCtx,
+  botPlayerId: string,
+  boost:      number,
+  personality: BotPersonality,
+  teamEval:   TeamEval,
+): DoubleBaitResult {
+  const noResult: DoubleBaitResult = { active: false, boost, personality };
+  if (!TEAM_COORD_FLAGS.ENABLE_DOUBLE_BAIT_TRAP) return noResult;
+
+  // Trigger: cooldown phase, at least 1 surge done, not in show threat, cap 2/match
+  const canTrigger =
+    !ctx.doubleBaitActive &&
+    ctx.doubleBaitCyclesUsed < 2 &&
+    ctx.wavePhase === 'cooldown' &&
+    ctx.surgeCount >= 1 &&
+    !teamEval.humanShowDanger &&
+    teamEval.scoreDelta > -8 &&       // don't use when losing badly
+    ctx.globalTurn - ctx.doubleBaitStartTurn >= 8 &&
+    Math.random() < 0.12;
+
+  if (canTrigger) {
+    ctx.doubleBaitActive      = true;
+    ctx.doubleBaitInitiatorId = botPlayerId;  // this bot is the decoy
+    ctx.doubleBaitStartTurn   = ctx.globalTurn;
+    ctx.doubleBaitCyclesUsed++;
+  }
+
+  if (!ctx.doubleBaitActive) return noResult;
+
+  const baitTurns    = ctx.globalTurn - ctx.doubleBaitStartTurn;
+  const isInitiator  = ctx.doubleBaitInitiatorId === botPlayerId;
+
+  if (baitTurns >= 3) {
+    // Bait window over — reset
+    ctx.doubleBaitActive      = false;
+    ctx.doubleBaitInitiatorId = null;
+  }
+
+  if (baitTurns >= 2) {
+    // Ambush turn — both bots surge hard
+    return { active: true, boost: Math.min(0.35, boost + 0.08), personality: 'boss' };
+  }
+
+  if (isInitiator) {
+    // Decoy: deliberately passive to bait human overcommit
+    return { active: true, boost: Math.max(0.18, boost - 0.10), personality: 'safe' };
+  }
+
+  // Ambush bot: stays near-normal, ready to pounce
+  return { active: true, boost: Math.min(0.33, boost + 0.02), personality };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 18. Comeback Window System (v2)
 // Deliberately reduce pressure when bots have a significant score lead,
 // giving humans a real chance to recover and making the game feel fair.
@@ -856,19 +1125,23 @@ function applyCombackWindow(
 
   const lead = teamEval.scoreDelta;
 
-  // Big lead (>20 pts): meaningful reduction
-  if (lead > 20) {
+  // v3: High-skill teams get tighter (smaller) comeback windows
+  // so they can't exploit the fairness mechanic to cheese victories.
+  const isHighSkill = ctx.highSkillDetected;
+  const bigThreshold   = isHighSkill ? 12 : 20;
+  const smallThreshold = isHighSkill ? 7  : 12;
+
+  if (lead > bigThreshold) {
     ctx.telemetry.humanMomentumCount++;
     return {
-      boost:       Math.max(0.22, boost - 0.08),
+      boost:       Math.max(0.24, boost - (isHighSkill ? 0.06 : 0.08)),
       personality: personality === 'boss' ? 'smart' : personality,
     };
   }
 
-  // Moderate lead (>12 pts): slight easing
-  if (lead > 12) {
+  if (lead > smallThreshold) {
     return {
-      boost:       Math.max(0.24, boost - 0.04),
+      boost:       Math.max(0.26, boost - (isHighSkill ? 0.02 : 0.04)),
       personality,
     };
   }
@@ -1010,11 +1283,10 @@ function applyRecoveryBait(
     return { active: false, boost, personality };
   }
 
-  // Enter bait mode: 8% chance, minimum 8-turn gap, hard cap 1 per match.
-  // Rare enough that players won't pattern-match it as a scripted trap.
+  // Enter bait mode: 8% chance, minimum 8-turn gap, cap 2 per match.
   const baitGapOk = ctx.globalTurn - ctx.baitModeStartTurn >= 8;
   if (!ctx.baitMode &&
-      ctx.baitCyclesUsed < 1 &&
+      ctx.baitCyclesUsed < 2 &&
       baitGapOk &&
       ctx.wavePhase === 'cooldown' &&
       ctx.surgeCount > 0 &&
@@ -1254,6 +1526,45 @@ export function teamArenaAugment(
     }
   }
 
+  // ── v3 Systems ──────────────────────────────────────────────────────────────
+
+  // 34. High-skill detection — must run before comeback window to adjust thresholds
+  ctx.highSkillDetected = detectHighSkillTeam(ctx, baseOpponents);
+
+  // 30. Sacrifice detection — find focus target
+  const sacrificePunishId = detectSacrificePunishTarget(ctx, baseOpponents);
+
+  // 31. Team leader targeting — fallback focus target
+  ctx.teamLeaderId = detectTeamLeader(ctx, baseOpponents);
+  ctx.focusFireTarget = sacrificePunishId ?? ctx.teamLeaderId;
+
+  // 32. Focus fire — augment target profile for max aggression
+  const focusFiredOpponents = applyFocusFire(augmentedOpponents, ctx.focusFireTarget);
+
+  // 33. Anti-recovery coordinated surge
+  if (detectBothHumansRecovering(ctx, baseOpponents) && !ctx.antiRecoverySurgeActive) {
+    ctx.antiRecoverySurgeActive    = true;
+    ctx.antiRecoverySurgeStartTurn = ctx.globalTurn;
+  }
+  if (ctx.antiRecoverySurgeActive) {
+    const surgeTurns = ctx.globalTurn - ctx.antiRecoverySurgeStartTurn;
+    if (surgeTurns <= 3) {
+      effectiveBoost = Math.min(0.35, effectiveBoost + 0.06);
+      if (effectivePersonality !== 'boss') effectivePersonality = 'aggressive';
+    } else {
+      ctx.antiRecoverySurgeActive = false;
+    }
+  }
+
+  // 35. Double-bait team trap (independent of single-bot bait mode)
+  if (!bait.active) {
+    const doubleBait = applyDoubleBaitTrap(ctx, botPlayerId, effectiveBoost, effectivePersonality, teamEval);
+    if (doubleBait.active) {
+      effectiveBoost       = doubleBait.boost;
+      effectivePersonality = doubleBait.personality;
+    }
+  }
+
   // Record aggressor for cross-bot coordination
   ctx.lastAggressorId    = botPlayerId;
   ctx.lastAggressionTurn = ctx.globalTurn;
@@ -1261,6 +1572,6 @@ export function teamArenaAugment(
   return {
     effectivePersonality,
     effectiveBoost,
-    augmentedOpponents,
+    augmentedOpponents: focusFiredOpponents,
   };
 }
