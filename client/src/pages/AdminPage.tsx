@@ -55,7 +55,8 @@ type Section =
   | "referrals"
   | "scheduledtournaments"
   | "email"
-  | "transfers";
+  | "transfers"
+  | "inactiveusers";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -7111,6 +7112,377 @@ function ReferralsSection() {
   );
 }
 
+// ── Inactive Players ─────────────────────────────────────────────────────────
+
+const INACTIVE_TEMPLATES: { id: string; label: string; icon: string; desc: string; fields: { key: string; label: string; type: string; placeholder: string; required?: boolean }[] }[] = [
+  {
+    id: 'winback', icon: '🎁', label: 'Win-back Bonus',
+    desc: 'Credit a ₹ bonus to their wallet + email them to come back.',
+    fields: [
+      { key: 'bonusAmount', label: 'Bonus Amount (₹)', type: 'number', placeholder: '30', required: true },
+      { key: 'customNote',  label: 'Custom Note (optional)', type: 'text', placeholder: 'We miss you!' },
+    ],
+  },
+  {
+    id: 'announcement', icon: '📣', label: 'Announcement',
+    desc: 'Send a custom message or announcement.',
+    fields: [
+      { key: 'headline', label: 'Headline', type: 'text', placeholder: 'Big news!', required: true },
+      { key: 'body',     label: 'Message body', type: 'text', placeholder: 'Details…', required: true },
+      { key: 'ctaText',  label: 'Button text (optional)', type: 'text', placeholder: 'Play Now' },
+      { key: 'ctaUrl',   label: 'Button URL (optional)',  type: 'text', placeholder: 'https://…' },
+    ],
+  },
+  {
+    id: 'tournament', icon: '⚔️', label: 'Tournament Alert',
+    desc: 'Invite them to an upcoming tournament.',
+    fields: [
+      { key: 'name',        label: 'Tournament Name',    type: 'text',   placeholder: 'Grand Arena', required: true },
+      { key: 'prizePool',   label: 'Prize Pool (₹)',     type: 'number', placeholder: '1000',         required: true },
+      { key: 'entryFee',    label: 'Entry Fee (₹, 0=free)', type: 'number', placeholder: '0' },
+      { key: 'startTime',   label: 'Start Time',         type: 'text',   placeholder: 'Tonight 8PM', required: true },
+      { key: 'description', label: 'Description (optional)', type: 'text', placeholder: '5 rounds…' },
+    ],
+  },
+];
+
+function buildInactiveTemplate(id: string, fields: Record<string, string>): any {
+  if (id === 'winback')      return { id, bonusAmount: Number(fields.bonusAmount ?? 30), customNote: fields.customNote || undefined };
+  if (id === 'announcement') return { id, headline: fields.headline, body: fields.body, ctaText: fields.ctaText || undefined, ctaUrl: fields.ctaUrl || undefined };
+  if (id === 'tournament')   return { id, name: fields.name, prizePool: Number(fields.prizePool), entryFee: Number(fields.entryFee ?? 0), startTime: fields.startTime, description: fields.description || undefined };
+  return { id: 'announcement', headline: '', body: '' };
+}
+
+function InactiveUsersSection() {
+  const [days,     setDays]     = React.useState(7);
+  const [daysInput, setDaysInput] = React.useState('7');
+  const [users,    setUsers]    = React.useState<any[]>([]);
+  const [total,    setTotal]    = React.useState(0);
+  const [page,     setPage]     = React.useState(1);
+  const [pages,    setPages]    = React.useState(1);
+  const [loading,  setLoading]  = React.useState(true);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [tplId,    setTplId]    = React.useState('winback');
+  const [tplFields, setTplFields] = React.useState<Record<string, string>>({ bonusAmount: '30' });
+  const [sending,  setSending]  = React.useState(false);
+  const [sendResult, setSendResult] = React.useState<{ sent: number; failed: number } | null>(null);
+
+  const tpl = INACTIVE_TEMPLATES.find(t => t.id === tplId)!;
+
+  const load = React.useCallback(async (p = 1, d = days) => {
+    setLoading(true);
+    setSendResult(null);
+    try {
+      const { data } = await admin.getInactiveUsers(d, p);
+      setUsers(data.users);
+      setTotal(data.total);
+      setPage(data.page);
+      setPages(data.pages);
+      setSelected(new Set());
+    } catch { /* silent */ } finally { setLoading(false); }
+  }, [days]);
+
+  React.useEffect(() => { load(1, days); }, [load]);
+
+  const toggleAll = () => {
+    if (selected.size === users.length) setSelected(new Set());
+    else setSelected(new Set(users.map((u: any) => u.userId)));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+
+  const handleSend = async () => {
+    if (selected.size === 0) return;
+    const selectedUsers = users.filter((u: any) => selected.has(u.userId));
+    const emails = selectedUsers.map((u: any) => u.email).filter(Boolean);
+    if (emails.length === 0) return;
+
+    // Validate required fields
+    for (const f of tpl.fields) {
+      if (f.required && !tplFields[f.key]) {
+        alert(`Please fill in "${f.label}"`);
+        return;
+      }
+    }
+
+    setSending(true);
+    setSendResult(null);
+    try {
+      const template = buildInactiveTemplate(tplId, tplFields);
+      const { data } = await admin.sendEmail({ target: 'specific', targetEmails: emails, template });
+      setSendResult({ sent: data.sent, failed: data.failed });
+      setSelected(new Set());
+    } catch (err: any) {
+      alert(err?.response?.data?.error ?? 'Failed to send');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const fmtDate = (d: string | null) => {
+    if (!d) return 'Never';
+    const dt = new Date(d);
+    const diff = Date.now() - dt.getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    return `${days}d ago`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black text-white">😴 Inactive Players</h2>
+          <p className="text-xs text-dark-muted mt-0.5">
+            Auto-emails are <span className="text-red-400 font-bold">disabled</span> — send manually below
+          </p>
+        </div>
+        {/* Days filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-dark-muted">Inactive for ≥</label>
+          <input type="number" min={1} max={365} value={daysInput}
+            onChange={e => setDaysInput(e.target.value)}
+            onBlur={() => {
+              const d = Math.max(1, parseInt(daysInput) || 7);
+              setDaysInput(String(d));
+              setDays(d);
+              load(1, d);
+            }}
+            className="w-16 bg-dark-bg border border-dark-border rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+          />
+          <span className="text-xs text-dark-muted">days</span>
+          <button onClick={() => load(1, days)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc' }}>
+            ↺ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Stats chip */}
+      {!loading && (
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-2xl px-4 py-3 flex items-center gap-2" style={cardStyle}>
+            <span className="text-xl">😴</span>
+            <div>
+              <p className="text-[10px] text-dark-muted uppercase tracking-wider">Inactive ≥{days}d</p>
+              <p className="text-lg font-black text-indigo-300">{total}</p>
+            </div>
+          </div>
+          {selected.size > 0 && (
+            <div className="rounded-2xl px-4 py-3 flex items-center gap-2"
+              style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)' }}>
+              <span className="text-xl">✅</span>
+              <div>
+                <p className="text-[10px] text-yellow-400 uppercase tracking-wider">Selected</p>
+                <p className="text-lg font-black text-yellow-300">{selected.size}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+        {/* ── User list (3/5 width) ── */}
+        <div className="lg:col-span-3 space-y-3">
+          {loading ? (
+            <div className="text-center py-12 text-dark-muted text-sm animate-pulse">Loading inactive players…</div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-14 rounded-2xl" style={cardStyle}>
+              <p className="text-4xl mb-3">🎉</p>
+              <p className="text-sm font-bold text-white">No inactive players</p>
+              <p className="text-xs text-dark-muted mt-1">All players were active within the last {days} days.</p>
+            </div>
+          ) : (
+            <>
+              {/* Select all row */}
+              <div className="flex items-center justify-between px-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox"
+                    checked={selected.size === users.length && users.length > 0}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded accent-indigo-500"
+                  />
+                  <span className="text-xs text-dark-muted font-semibold">
+                    {selected.size === users.length && users.length > 0 ? 'Deselect all' : `Select all ${users.length} on page`}
+                  </span>
+                </label>
+                <span className="text-[10px] text-dark-muted">{total} total · sorted by longest inactive first</span>
+              </div>
+
+              {users.map((u: any) => (
+                <div key={u.userId}
+                  onClick={() => toggleOne(u.userId)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition-all"
+                  style={{
+                    background:  selected.has(u.userId) ? 'rgba(99,102,241,0.12)' : 'rgba(12,14,18,0.95)',
+                    border:     `1px solid ${selected.has(u.userId) ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.06)'}`,
+                  }}>
+                  <input type="checkbox" checked={selected.has(u.userId)} onChange={() => toggleOne(u.userId)}
+                    onClick={e => e.stopPropagation()}
+                    className="w-4 h-4 rounded accent-indigo-500 flex-shrink-0" />
+
+                  {/* Avatar */}
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                    style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                    {u.avatar?.startsWith('http')
+                      ? <img src={u.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                      : (u.username?.[0]?.toUpperCase() ?? '?')}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-black text-white truncate">{u.username}</span>
+                      {u.emailUnsubscribed && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
+                          style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+                          Unsubscribed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-dark-muted truncate">{u.email}</p>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="hidden sm:flex items-center gap-4 flex-shrink-0">
+                    <div className="text-right">
+                      <p className="text-[9px] text-dark-muted uppercase tracking-wider">Last seen</p>
+                      <p className="text-xs font-bold text-orange-400">{fmtDate(u.lastSeenAt)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] text-dark-muted uppercase tracking-wider">Balance</p>
+                      <p className="text-xs font-bold text-emerald-400">₹{u.walletBalance}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] text-dark-muted uppercase tracking-wider">Games</p>
+                      <p className="text-xs font-bold text-indigo-300">{u.gamesPlayed}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Pagination */}
+              {pages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button disabled={page <= 1} onClick={() => load(page - 1, days)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#e2e8f0' }}>
+                    ← Prev
+                  </button>
+                  <span className="text-xs text-dark-muted">Page {page} / {pages}</span>
+                  <button disabled={page >= pages} onClick={() => load(page + 1, days)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#e2e8f0' }}>
+                    Next →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ── Template panel (2/5 width) ── */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="rounded-2xl p-5 space-y-4 sticky top-4" style={cardStyle}>
+            <div>
+              <p className="text-sm font-black text-white mb-1">Email Template</p>
+              <p className="text-[10px] text-dark-muted">Choose what to send to the selected players</p>
+            </div>
+
+            {/* Template selector */}
+            <div className="space-y-2">
+              {INACTIVE_TEMPLATES.map(t => (
+                <button key={t.id} onClick={() => { setTplId(t.id); setTplFields({}); setSendResult(null); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                  style={{
+                    background: tplId === t.id ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${tplId === t.id ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.07)'}`,
+                  }}>
+                  <span className="text-xl flex-shrink-0">{t.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white">{t.label}</p>
+                    <p className="text-[10px] text-dark-muted leading-snug">{t.desc}</p>
+                  </div>
+                  {tplId === t.id && <span className="text-indigo-400 flex-shrink-0">✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Template fields */}
+            <div className="space-y-3 pt-1 border-t border-white/5">
+              {tpl.fields.map(f => (
+                <div key={f.key}>
+                  <label className="text-[10px] text-dark-muted uppercase tracking-wider block mb-1">
+                    {f.label}{f.required && <span className="text-red-400 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type={f.type}
+                    value={tplFields[f.key] ?? ''}
+                    onChange={e => setTplFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="w-full bg-dark-bg border border-dark-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Send result */}
+            {sendResult && (
+              <div className="rounded-xl px-4 py-3 text-sm"
+                style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                <p className="font-black text-green-400">✅ Sent!</p>
+                <p className="text-xs text-dark-muted mt-0.5">{sendResult.sent} delivered · {sendResult.failed} failed</p>
+              </div>
+            )}
+
+            {/* Send button */}
+            <button
+              onClick={handleSend}
+              disabled={sending || selected.size === 0}
+              className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+              style={{
+                background: selected.size > 0
+                  ? 'linear-gradient(135deg,#6366f1,#a855f7)'
+                  : 'rgba(255,255,255,0.06)',
+                color: '#fff',
+              }}>
+              {sending ? (
+                <>
+                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                    className="w-4 h-4 rounded-full border-2 border-transparent flex-shrink-0"
+                    style={{ borderTopColor: '#fff', borderRightColor: 'rgba(255,255,255,0.3)' }} />
+                  Sending…
+                </>
+              ) : selected.size === 0
+                ? 'Select players first'
+                : `✉️ Send to ${selected.size} player${selected.size !== 1 ? 's' : ''}`}
+            </button>
+
+            {selected.size > 0 && (
+              <p className="text-[10px] text-dark-muted text-center -mt-2">
+                {users.filter((u: any) => selected.has(u.userId) && u.emailUnsubscribed).length > 0
+                  ? `⚠️ ${users.filter((u: any) => selected.has(u.userId) && u.emailUnsubscribed).length} selected have unsubscribed — they won't receive the email`
+                  : 'All selected players will receive this email'}
+              </p>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── Transfer Tracker ─────────────────────────────────────────────────────────
 
 function TransferTrackerSection() {
@@ -8871,6 +9243,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "support",       icon: "🎧", label: "Support" },
       { key: "notify",        icon: "📢", label: "Notify Players" },
       { key: "email",         icon: "✉️",  label: "Email Campaigns" },
+      { key: "inactiveusers", icon: "😴", label: "Inactive Players" },
       { key: "announcements", icon: "📣", label: "Announcements" },
     ],
   },
@@ -9137,6 +9510,7 @@ export function AdminPage() {
               {section === "referrals" && <ReferralsSection />}
               {section === "scheduledtournaments" && <ScheduledTournamentsSection />}
               {section === "transfers" && <TransferTrackerSection />}
+              {section === "inactiveusers" && <InactiveUsersSection />}
             </motion.div>
           </AnimatePresence>
         </div>

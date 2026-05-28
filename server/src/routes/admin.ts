@@ -2923,6 +2923,60 @@ export default function createAdminRouter(io: Server) {
     }
   });
 
+  // ── GET /api/admin/inactive-users — list inactive players for manual winback ──
+  router.get('/inactive-users', requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const days  = Math.max(1, parseInt(String(req.query.days  ?? 7)));
+      const page  = Math.max(1, parseInt(String(req.query.page  ?? 1)));
+      const limit = Math.min(200, parseInt(String(req.query.limit ?? 50)));
+      const skip  = (page - 1) * limit;
+
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const filter: any = {
+        isGuest: false,
+        isBanned: { $ne: true },
+        email: { $exists: true, $nin: [null, ''] },
+        $or: [
+          { lastSeenAt: { $lte: cutoff } },
+          { lastSeenAt: { $exists: false } },
+        ],
+      };
+
+      const [users, total] = await Promise.all([
+        User.find(filter)
+          .select('_id username email avatar walletBalance lastSeenAt emailUnsubscribed lastReengagementEmailAt stats')
+          .sort({ lastSeenAt: 1 })   // longest inactive first
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        User.countDocuments(filter),
+      ]);
+
+      const now = Date.now();
+      const enriched = users.map((u: any) => ({
+        userId:          String(u._id),
+        username:        u.username,
+        email:           u.email,
+        avatar:          u.avatar ?? null,
+        walletBalance:   Math.round((u.walletBalance ?? 0) * 100) / 100,
+        lastSeenAt:      u.lastSeenAt ?? null,
+        daysSinceActive: u.lastSeenAt
+          ? Math.floor((now - new Date(u.lastSeenAt).getTime()) / (1000 * 60 * 60 * 24))
+          : null,
+        emailUnsubscribed:         u.emailUnsubscribed ?? false,
+        lastReengagementEmailAt:   u.lastReengagementEmailAt ?? null,
+        gamesPlayed:               u.stats?.gamesPlayed ?? 0,
+        gamesWon:                  u.stats?.gamesWon    ?? 0,
+      }));
+
+      res.json({ users: enriched, total, page, pages: Math.ceil(total / limit), days });
+    } catch (err) {
+      console.error('[Admin] Inactive users error:', err);
+      res.status(500).json({ error: 'Failed to load inactive users' });
+    }
+  });
+
   // ── GET /api/admin/transfers — paginated friend-transfer log ─────────────
   router.get('/transfers', requireAdmin, async (req: Request, res: Response) => {
     try {

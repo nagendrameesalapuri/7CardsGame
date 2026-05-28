@@ -485,6 +485,11 @@ export const admin = {
     adminApi.get<{ transfers: any[]; total: number; page: number; pages: number }>(
       `/transfers?page=${page}`,
     ),
+
+  getInactiveUsers: (days = 7, page = 1, limit = 50) =>
+    adminApi.get<{ users: any[]; total: number; page: number; pages: number; days: number }>(
+      `/inactive-users?days=${days}&page=${page}&limit=${limit}`,
+    ),
 };
 
 export const announcementsApi = {

@@ -32,7 +32,7 @@ import tournamentRoutes from './routes/tournaments';
 import progressionRoutes from './routes/progression';
 import notificationRoutes from './routes/notifications';
 import { startTournamentScheduler } from './utils/tournamentScheduler';
-import { startReengagementScheduler } from './utils/reengagementScheduler';
+// import { startReengagementScheduler } from './utils/reengagementScheduler'; // disabled — admin sends manually
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -179,7 +179,7 @@ async function bootstrap() {
 
   initSocketIO(io);
   startTournamentScheduler(io);
-  startReengagementScheduler();
+  // startReengagementScheduler(); // disabled — admin sends winback emails manually
 
   // ── Startup: refund games orphaned by previous crash/deployment ─────────────
   // Uses atomic claim (status: 'playing' → 'finished') to prevent double-refund
