@@ -200,17 +200,25 @@ export type AdminEmailTemplate =
 
 const BACKEND_URL = process.env.SERVER_URL ?? 'http://localhost:5000';
 
-const BRAND_CONFIG: Record<string, { color: string; headerBg: string; logo: string }> = {
-  amazon:   { color: '#FF9900', headerBg: 'linear-gradient(135deg,#232f3e 0%,#131921 100%)', logo: 'https://logo.clearbit.com/amazon.com' },
-  flipkart: { color: '#2874F0', headerBg: 'linear-gradient(135deg,#172337 0%,#0d1526 100%)', logo: 'https://logo.clearbit.com/flipkart.com' },
-  myntra:   { color: '#FF3F6C', headerBg: 'linear-gradient(135deg,#2d0a18 0%,#1a0610 100%)', logo: 'https://logo.clearbit.com/myntra.com' },
-  ajio:     { color: '#FF4E50', headerBg: 'linear-gradient(135deg,#2d1210 0%,#1a0b0a 100%)', logo: 'https://logo.clearbit.com/ajio.com' },
-  swiggy:   { color: '#FC8019', headerBg: 'linear-gradient(135deg,#2d1e0a 0%,#1a1205 100%)', logo: 'https://logo.clearbit.com/swiggy.com' },
-  zomato:   { color: '#E23744', headerBg: 'linear-gradient(135deg,#2d0f13 0%,#1a080b 100%)', logo: 'https://logo.clearbit.com/zomato.com' },
+const BRAND_CONFIG: Record<string, { color: string; headerBg: string; emoji: string }> = {
+  amazon:   { color: '#FF9900', headerBg: 'linear-gradient(135deg,#232f3e 0%,#131921 100%)', emoji: '📦' },
+  flipkart: { color: '#2874F0', headerBg: 'linear-gradient(135deg,#172337 0%,#0d1526 100%)', emoji: '🛒' },
+  myntra:   { color: '#FF3F6C', headerBg: 'linear-gradient(135deg,#2d0a18 0%,#1a0610 100%)', emoji: '👗' },
+  ajio:     { color: '#FF4E50', headerBg: 'linear-gradient(135deg,#2d1210 0%,#1a0b0a 100%)', emoji: '🛍️' },
+  swiggy:   { color: '#FC8019', headerBg: 'linear-gradient(135deg,#2d1e0a 0%,#1a1205 100%)', emoji: '🍔' },
+  zomato:   { color: '#E23744', headerBg: 'linear-gradient(135deg,#2d0f13 0%,#1a080b 100%)', emoji: '🍕' },
 };
 
 function getBrand(name: string) {
-  return BRAND_CONFIG[name.toLowerCase()] ?? { color: '#6366f1', headerBg: 'linear-gradient(135deg,#1e1b4b,#312e81)', logo: '' };
+  return BRAND_CONFIG[name.toLowerCase()] ?? { color: '#6366f1', headerBg: 'linear-gradient(135deg,#1e1b4b,#312e81)', emoji: '🎁' };
+}
+
+// Email-safe brand logo block — no external images, works in all clients
+function brandLogoBlock(name: string, bCfg: { color: string; emoji: string }) {
+  return `<div style="display:inline-block;background:${bCfg.color}20;border:2px solid ${bCfg.color}55;border-radius:16px;padding:14px 28px;margin-bottom:18px;text-align:center;">
+    <div style="font-size:32px;line-height:1;margin-bottom:6px;">${bCfg.emoji}</div>
+    <div style="font-size:13px;font-weight:900;color:${bCfg.color};letter-spacing:2.5px;text-transform:uppercase;">${name.toUpperCase()}</div>
+  </div>`;
 }
 
 function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, trackingPixel = '', unsubscribeToken = ''): { subject: string; html: string } {
@@ -237,9 +245,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `⚔️ ${username}, a ₹${tpl.bonusAmount} gift is waiting for you!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:rgba(168,85,247,0.15);filter:blur(40px);"></div>
-          <div style="position:absolute;bottom:-20px;left:-20px;width:140px;height:140px;border-radius:50%;background:rgba(99,102,241,0.12);filter:blur(30px);"></div>
+        `<div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">🎁</div>
           <div style="display:inline-block;background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:#c4b5fd;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Exclusive Offer</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;line-height:1.2;">We Miss You, ${username}!</h1>
@@ -267,8 +273,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `⚔️ Tournament Alert: ${tpl.name} — ₹${tpl.prizePool} Prize Pool!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#1e1240 0%,#312e81 50%,#2d1760 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(99,102,241,0.2);filter:blur(50px);"></div>
+        `<div style="background:linear-gradient(135deg,#1e1240 0%,#312e81 50%,#2d1760 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:50px;margin-bottom:12px;">⚔️</div>
           <div style="display:inline-block;background:rgba(99,102,241,0.25);border:1px solid rgba(99,102,241,0.5);color:#a5b4fc;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Tournament Alert</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:26px;font-weight:900;">${tpl.name}</h1>
@@ -302,8 +307,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `🎉 ${username}, ₹${tpl.amount} bonus added to your wallet!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#052e16 0%,#064e3b 60%,#065f46 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:rgba(16,185,129,0.2);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#052e16 0%,#064e3b 60%,#065f46 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">💰</div>
           <div style="display:inline-block;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#6ee7b7;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Bonus Credited</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;">Money in Your Wallet!</h1>
@@ -329,8 +333,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `✅ Your ₹${tpl.amount} redemption is approved — voucher incoming!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#052e16 0%,#064e3b 60%,#065f46 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:rgba(16,185,129,0.2);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#052e16 0%,#064e3b 60%,#065f46 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">✅</div>
           <div style="display:inline-block;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.45);color:#6ee7b7;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Redemption Approved</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;">Great News, ${username}!</h1>
@@ -366,8 +369,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `❌ Update on your ₹${tpl.amount} redemption request`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#2d0a0a 0%,#450a0a 60%,#7f1d1d 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:rgba(239,68,68,0.2);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#2d0a0a 0%,#450a0a 60%,#7f1d1d 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">⚠️</div>
           <div style="display:inline-block;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Action Required</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:26px;font-weight:900;">Redemption Not Processed</h1>
@@ -397,8 +399,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `💚 ₹${tpl.amount} deposit confirmed — wallet credited!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#052e16 0%,#14532d 60%,#166534 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:rgba(74,222,128,0.15);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#052e16 0%,#14532d 60%,#166534 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">💚</div>
           <div style="display:inline-block;background:rgba(74,222,128,0.2);border:1px solid rgba(74,222,128,0.4);color:#86efac;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Deposit Confirmed</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;">Wallet Topped Up!</h1>
@@ -423,8 +424,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `⚠️ Your ₹${tpl.amount} deposit could not be verified`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#2d1007 0%,#431407 60%,#7c2d12 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:rgba(249,115,22,0.2);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#2d1007 0%,#431407 60%,#7c2d12 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">⚠️</div>
           <div style="display:inline-block;background:rgba(249,115,22,0.2);border:1px solid rgba(249,115,22,0.4);color:#fdba74;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Action Required</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:26px;font-weight:900;">Deposit Not Verified</h1>
@@ -448,9 +448,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `👋 Welcome to Arena of Sevens, ${username}! Here's ₹${tpl.bonusAmount} to start`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#1e1240 0%,#312e81 50%,#4c1d95 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(168,85,247,0.2);filter:blur(50px);"></div>
-          <div style="position:absolute;bottom:-30px;left:-30px;width:160px;height:160px;border-radius:50%;background:rgba(99,102,241,0.15);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#1e1240 0%,#312e81 50%,#4c1d95 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">⚔️</div>
           <div style="display:inline-block;background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:#c4b5fd;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">Welcome Gift</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:30px;font-weight:900;">Welcome, ${username}!</h1>
@@ -489,8 +487,7 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `🏆 ${username}, you're one of our top players!`,
       html: wrap(
-        `<div style="background:linear-gradient(135deg,#3d1c02 0%,#78350f 50%,#92400e 100%);padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:rgba(251,191,36,0.2);filter:blur(40px);"></div>
+        `<div style="background:linear-gradient(135deg,#3d1c02 0%,#78350f 50%,#92400e 100%);padding:44px 32px;text-align:center;">
           <div style="font-size:52px;margin-bottom:14px;">🏆</div>
           <div style="display:inline-block;background:rgba(251,191,36,0.2);border:1px solid rgba(251,191,36,0.5);color:#fde047;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">VIP Recognition</div>
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;">You're a Legend, ${username}!</h1>
@@ -517,10 +514,8 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `🎟️ ${tpl.brand} voucher received — verifying ₹${tpl.amount}`,
       html: wrap(
-        `<div style="background:${bCfg.headerBg};padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;background:${bCfg.color}25;filter:blur(40px);"></div>
-          ${bCfg.logo ? `<img src="${bCfg.logo}" alt="${tpl.brand}" width="48" height="48" style="border-radius:10px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" onerror="this.style.display='none'"/>` : `<div style="font-size:48px;margin-bottom:14px;">🎟️</div>`}
-          <div style="display:inline-block;background:${bCfg.color}30;border:1px solid ${bCfg.color}60;color:${bCfg.color};font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">${tpl.brand} · Voucher</div>
+        `<div style="background:${bCfg.headerBg};padding:44px 32px;text-align:center;">
+          ${brandLogoBlock(tpl.brand, bCfg)}
           <h1 style="color:#fff;margin:0 0 10px;font-size:26px;font-weight:900;">Voucher Received!</h1>
           <p style="color:rgba(255,255,255,0.65);margin:0;font-size:15px;">Hey ${username}, we've got your submission</p>
         </div>`,
@@ -552,11 +547,8 @@ function buildAdminEmailHtml(username: string, tpl: AdminEmailTemplate, tracking
     return {
       subject: `🎁 Your ${tpl.brand} voucher (₹${tpl.amount}) is ready!`,
       html: wrap(
-        `<div style="background:${bCfg.headerBg};padding:44px 32px;text-align:center;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:${bCfg.color}20;filter:blur(50px);"></div>
-          <div style="position:absolute;bottom:-20px;left:-20px;width:140px;height:140px;border-radius:50%;background:${bCfg.color}15;filter:blur(35px);"></div>
-          ${bCfg.logo ? `<img src="${bCfg.logo}" alt="${tpl.brand}" width="56" height="56" style="border-radius:12px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;box-shadow:0 4px 16px rgba(0,0,0,0.4);" onerror="this.style.display='none'"/>` : `<div style="font-size:52px;margin-bottom:16px;">🎁</div>`}
-          <div style="display:inline-block;background:${bCfg.color}30;border:1px solid ${bCfg.color}60;color:${bCfg.color};font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:14px;">🎁 ${tpl.brand} Gift Voucher</div>
+        `<div style="background:${bCfg.headerBg};padding:44px 32px;text-align:center;">
+          ${brandLogoBlock(tpl.brand, bCfg)}
           <h1 style="color:#fff;margin:0 0 10px;font-size:28px;font-weight:900;">Your Reward is Here!</h1>
           <p style="color:rgba(255,255,255,0.65);margin:0;font-size:15px;">Hey ${username}, your ${tpl.brand} gift voucher is ready to use</p>
         </div>`,
