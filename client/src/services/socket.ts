@@ -234,7 +234,9 @@ type EventMap = {
   'tournament:game_result':   { gameNumber: number; playerWins: number; botWins: number; draws: number; isDraw: boolean; playerWon: boolean; playerScore: number; botScore: number; tournamentOver: boolean; won?: boolean; overallDraw?: boolean; prizeAmount?: number; totalReturn?: number; nextGameNumber?: number; nextRoomCode?: string };
   'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
   'tournament:cancelled':     { refunded: boolean; amount: number };
+  'tournament:room_ready':    { roomCode: string };
   'tournament:error':         string;
+  'game:ai_intro':            { text: string; personality: string };
   // Survival Championship
   'survival:started':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; roomCode: string; botName: string; personality: string };
   'survival:resumed':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; totalPointsEarned: number; stageResults: any[]; currentRoomCode: string | null };
