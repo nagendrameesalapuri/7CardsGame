@@ -252,6 +252,56 @@ export type EmotionalPhase =
   | "bait"
   | "surge";
 
+// ── Emotional AI State ────────────────────────────────────────────────────────
+// Psychological state that influences aggression, pacing, and decision style.
+// Computed each turn from game signals — feels like a living opponent.
+export type EmotionalAIState =
+  | "confident"   // winning cleanly — slight overconfidence risk
+  | "pressured"   // opponent threatening — heightened denial and defense
+  | "baiting"     // deliberately passive to lure opponent into overcommitting
+  | "frustrated"  // plans have failed repeatedly — aggression spike risk
+  | "dominant"    // crushing the opponent — ego pressure + overconfidence
+  | "cautious"    // early game or uncertain — safe, measured play
+  | "chaotic";    // tilted or chaos-seeded — unpredictable, wide swings
+
+// ── Dynamic Match Modifier ────────────────────────────────────────────────────
+// Per-match overlay that subtly alters AI behaviour for replayability.
+export type MatchModifier =
+  | "none"
+  | "chaos_storm"     // frequent random mode switches, wide hesitation swings
+  | "slow_pressure"   // extended build phases, pressure arrives late but hard
+  | "double_surge"    // surge phases doubled, cooldown shortened
+  | "recovery_lock"   // anti-recovery surge windows are permanent
+  | "hidden_tempo"    // think delay completely randomised (hard to read)
+  | "anti_show_arena"; // heightened show-interruption throughout entire match
+
+// ── Cross-Match Memory ────────────────────────────────────────────────────────
+// Persists across games for the server lifetime (in-memory, reset on restart).
+export interface CrossMatchProfile {
+  userId:            string;
+  matchesPlayed:     number;
+  matchesWon:        number;            // matches this human won vs bots
+  favoriteArchetype: PlayerArchetype | null;
+  archetypeHistory:  PlayerArchetype[];  // last 5 archetypes seen
+  recoveryStyle:     "fast" | "slow" | "unknown";
+  showTiming:        "early" | "late"  | "balanced";
+  lossStreak:        number;            // consecutive losses (human losing)
+  winStreak:         number;            // consecutive wins (human winning)
+  timesBeatenBoss:   number;            // how many times this human defeated a boss
+  totalBaitTrapsFired:    number;       // how many bait traps were used against them
+  totalConditioningCycles: number;
+  lastSeen:          number;            // Date.now()
+}
+
+// ── Rivalry Record ────────────────────────────────────────────────────────────
+export interface RivalryRecord {
+  opponentUserId: string;
+  humanWins:      number;  // human beat a bot with this botPlayerId's personality
+  botWins:        number;
+  revengePressure: boolean; // active when humanWins >= 2
+  lastMatchResult: "human_won" | "bot_won" | "unknown";
+}
+
 export interface BotMatchContext {
   consecutivePressureTurns: number; // turns in a row at high aggression
   emotionalPhase: EmotionalPhase;
@@ -261,15 +311,36 @@ export interface BotMatchContext {
   lastImperfectionTurn: number; // last turn boss chose sub-optimal line
   farmingIndicator: number; // 0-1: suspicion the human is exploiting patterns
   // v2: Anti-pattern detection
-  antiPatternMode: boolean;                              // true when farmingIndicator > 0.5
-  archetypeConsistency: Partial<Record<string, number>>; // userId → consecutive same-archetype turns
-  lastDetectedArchetype: Partial<Record<string, PlayerArchetype>>; // userId → last archetype
+  antiPatternMode: boolean;
+  archetypeConsistency: Partial<Record<string, number>>;
+  lastDetectedArchetype: Partial<Record<string, PlayerArchetype>>;
   // v2: Recovery tracking
-  recoveryDetected: boolean;   // human is stabilizing after pressure
-  recoveryTurnStart: number;   // turnCount when recovery was first detected
+  recoveryDetected: boolean;
+  recoveryTurnStart: number;
   // v2: Solo telemetry
-  pressureTurnsTotal: number;  // total pressure turns applied this match
-  showHandTotals: number[];    // hand totals when bot decided to show (for analysis)
+  pressureTurnsTotal: number;
+  showHandTotals: number[];
+  // v3: Emotional AI State
+  emotionalState: EmotionalAIState;
+  emotionalStateAge: number;        // turns in current emotional state
+  frustrationLevel: number;         // 0-1: accumulates when plays fail
+  egoScore: number;                 // 0-1: confidence after winning streaks
+  dominanceScore: number;           // 0-1: how much bot is winning right now
+  // v3: Dynamic match modifier
+  matchModifier: MatchModifier;
+  // v3: Human conditioning
+  conditioningState: "off" | "allowing" | "punishing";
+  conditioningAllowTurns: number;   // turns we've let human recover safely
+  conditioningBehavior: PlayerArchetype | null; // behavior we're conditioning against
+  conditioningPunishArmed: boolean;
+  // v3: Rivalry & revenge
+  revengeModeActive: boolean;
+  revengeTargetId: string | null;
+  // v3: Personality quirk state
+  quirk_egoStreak: number;          // aggressive: turns winning in a row
+  quirk_fakeWeakArmed: boolean;     // bluff: fake weakness trap is ready
+  quirk_patienceCounter: number;    // smart: turns accumulating before striking
+  quirk_intimidationReady: boolean; // boss: long pause before decisive play
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,12 +348,15 @@ export interface BotMatchContext {
 export class BotPlayer {
   // ── Per-bot Match Context (keyed by botPlayerId) ──────────────────────────
   private static readonly ctxMap = new Map<string, BotMatchContext>();
+  private static readonly crossMatchProfiles = new Map<string, CrossMatchProfile>();
+  private static readonly rivalryMap = new Map<string, RivalryRecord>();
 
   static initBotContext(botPlayerId: string): void {
+    const seed = Math.random();
     BotPlayer.ctxMap.set(botPlayerId, {
       consecutivePressureTurns: 0,
       emotionalPhase: "building",
-      matchVariantSeed: Math.random(),
+      matchVariantSeed: seed,
       turnCount: 0,
       pressureTurnsThisRound: 0,
       lastImperfectionTurn: -10,
@@ -294,6 +368,27 @@ export class BotPlayer {
       recoveryTurnStart: 0,
       pressureTurnsTotal: 0,
       showHandTotals: [],
+      // v3: Emotional AI State
+      emotionalState: "cautious",
+      emotionalStateAge: 0,
+      frustrationLevel: 0,
+      egoScore: 0,
+      dominanceScore: 0,
+      // v3: Dynamic match modifier
+      matchModifier: BotPlayer.selectMatchModifier(seed),
+      // v3: Human conditioning
+      conditioningState: "off",
+      conditioningAllowTurns: 0,
+      conditioningBehavior: null,
+      conditioningPunishArmed: false,
+      // v3: Rivalry & revenge
+      revengeModeActive: false,
+      revengeTargetId: null,
+      // v3: Personality quirk state
+      quirk_egoStreak: 0,
+      quirk_fakeWeakArmed: false,
+      quirk_patienceCounter: 0,
+      quirk_intimidationReady: false,
     });
   }
 
@@ -353,6 +448,18 @@ export class BotPlayer {
         if (ctx.emotionalPhase === "cooldown" || ctx.emotionalPhase === "bait") {
           delay += 300 + Math.random() * 400;
         }
+      }
+      // v3: hidden_tempo modifier — completely randomise delay (unreadable rhythm)
+      if (ctx.matchModifier === "hidden_tempo") {
+        delay = 200 + Math.random() * 2000;
+      }
+      // v3: Boss intimidation quirk — long pause before decisive play
+      if (personality === "boss" && ctx.quirk_intimidationReady) {
+        delay += 800 + Math.random() * 1200;
+      }
+      // v3: Frustrated emotional state — faster, more erratic
+      if (ctx.emotionalState === "frustrated") {
+        delay = Math.max(180, delay - 200 + Math.random() * 400);
       }
     }
 
@@ -1325,7 +1432,40 @@ export class BotPlayer {
     const hand = bot.hand;
     // Use match-variant config so each match has a different personality flavour
     const _variantCtx = BotPlayer.getCtx(botPlayerId);
-    const cfg = BotPlayer.getVariantConfig(personality, _variantCtx.matchVariantSeed);
+    const rawCfg = BotPlayer.getVariantConfig(personality, _variantCtx.matchVariantSeed);
+    const eDelta = BotPlayer.emotionalStateDelta(_variantCtx.emotionalState);
+    // Merge emotional bias into personality config
+    const cfg: PersonalityConfig = {
+      ...rawCfg,
+      thinkJitterMs: rawCfg.thinkJitterMs + (eDelta.thinkJitterMs ?? 0),
+      showBias: rawCfg.showBias + (eDelta.showBias ?? 0),
+      riskTolerance: rawCfg.riskTolerance + (eDelta.riskTolerance ?? 0),
+      bluffFactor: rawCfg.bluffFactor + (eDelta.bluffFactor ?? 0),
+      pressureBias: Math.min(1, rawCfg.pressureBias + (eDelta.pressureBias ?? 0)),
+      killerInstinct: Math.min(1, rawCfg.killerInstinct + (eDelta.killerInstinct ?? 0)),
+      denialWeight: Math.min(1, rawCfg.denialWeight + (eDelta.denialWeight ?? 0)),
+      showInterruptBias: Math.min(1, rawCfg.showInterruptBias + (eDelta.showInterruptBias ?? 0)),
+      randomPlayChance: Math.min(0.35, rawCfg.randomPlayChance + (eDelta.randomPlayChance ?? 0)),
+      tacticalVariance: Math.min(0.4, rawCfg.tacticalVariance + (eDelta.tacticalVariance ?? 0)),
+    };
+    // v3: Aggressive ego quirk — overcommit after 3+ dominant turns
+    if (personality === "aggressive" && _variantCtx.quirk_egoStreak >= 3) {
+      cfg.attackAllAt = Math.min(8, cfg.attackAllAt + 2);
+      cfg.attackOneAt = Math.min(10, cfg.attackOneAt + 2);
+      cfg.killerInstinct = 0.95;
+    }
+    // v3: Smart patience quirk — delayed aggression burst after accumulation
+    if (personality === "smart" && _variantCtx.quirk_patienceCounter >= 5) {
+      cfg.pressureBias = Math.min(1, cfg.pressureBias + 0.25);
+      cfg.killerInstinct = Math.min(1, cfg.killerInstinct + 0.2);
+      cfg.denialWeight = Math.min(1, cfg.denialWeight + 0.15);
+    }
+    // v3: Revenge pressure — amplify all aggression when bot is getting back at repeat winner
+    if (_variantCtx.revengeModeActive) {
+      cfg.pressureBias = Math.min(1, cfg.pressureBias + 0.15);
+      cfg.killerInstinct = Math.min(1, cfg.killerInstinct + 0.12);
+      cfg.denialWeight = Math.min(1, cfg.denialWeight + 0.1);
+    }
     const boost = BotPlayer.normalizeBoost(difficultyBoost);
 
     const isRealSeven = (c: Card) => c.rank === "7" && !c.isJoker;
@@ -1424,6 +1564,28 @@ export class BotPlayer {
         );
         if (baitOption) return baitOption.cards.map((c) => c.id);
       }
+    }
+
+    // ── 3c. CONDITIONING PUNISH: fire precisely when armed ───────────────────────
+    if (_variantCtx.conditioningState === "punishing" && _variantCtx.conditioningPunishArmed && !isCritical) {
+      const target = _variantCtx.conditioningBehavior;
+      if (target === "fast_show" && jacks.length > 0) {
+        const jScoreC = BotPlayer.scoreAfterDiscard(hand, [jacks[0]]);
+        if (jScoreC <= normalBestScore + 5) return [jacks[0].id];
+      }
+      if ((target === "panic_player" || target === "aggressive") && sevens.length > 0) {
+        return sevens.map((c) => c.id);
+      }
+      if (target === "recovery_baiter" || target === "defensive_grinder") {
+        const bluffPunish = BotPlayer.bluffTacticalLine(hand, discardOptions, _variantCtx);
+        if (bluffPunish) return bluffPunish;
+      }
+    }
+
+    // ── 3d. HUMAN-LIKE MISJUDGMENT: emotional errors that feel real ──────────────
+    if (!isCritical) {
+      const misjudge = BotPlayer.humanLikeMisjudgment(_variantCtx, personality, hand, opponents);
+      if (misjudge) return misjudge;
     }
 
     // ── 4. TACTICAL RANDOMNESS / SMART ANTI-DETERMINISM (near-optimal) ────────
@@ -1724,6 +1886,297 @@ export class BotPlayer {
     return decision;
   }
 
+  // ── v3: Match Modifier Selection ─────────────────────────────────────────────
+  // Assigns a per-match behavioural overlay so every match feels different.
+  private static selectMatchModifier(seed: number): MatchModifier {
+    if (seed < 0.12) return "chaos_storm";
+    if (seed < 0.24) return "slow_pressure";
+    if (seed < 0.36) return "double_surge";
+    if (seed < 0.48) return "recovery_lock";
+    if (seed < 0.60) return "hidden_tempo";
+    if (seed < 0.72) return "anti_show_arena";
+    return "none";
+  }
+
+  // ── v3: Emotional State Computation ──────────────────────────────────────────
+  private static computeEmotionalState(
+    ctx: BotMatchContext,
+    botTotal: number,
+    opponents: OpponentProfile[] | undefined,
+    showThreat: number,
+    threatLevel: ThreatLevel,
+  ): EmotionalAIState {
+    const minOppCards = opponents && opponents.length > 0
+      ? Math.min(...opponents.map((o) => o.handCount ?? 10))
+      : 10;
+
+    if (botTotal <= 4 && minOppCards >= 6) return "dominant";
+    if (threatLevel === "critical" || showThreat >= 0.7) return "pressured";
+    if (ctx.frustrationLevel >= 0.65) return "frustrated";
+    if (botTotal <= 7 && threatLevel === "low") return "confident";
+    if (ctx.emotionalPhase === "bait") return "baiting";
+    if (ctx.matchModifier === "chaos_storm" && Math.random() < 0.28) return "chaotic";
+    if (ctx.frustrationLevel >= 0.4 && Math.random() < 0.22) return "chaotic";
+    if (ctx.turnCount <= 5) return "cautious";
+    return "cautious";
+  }
+
+  // ── v3: Emotional State Bias ──────────────────────────────────────────────────
+  // Additive deltas applied on top of the personality config each turn.
+  private static emotionalStateDelta(
+    emotionalState: EmotionalAIState,
+  ): Partial<PersonalityConfig> {
+    switch (emotionalState) {
+      case "dominant":
+        return { pressureBias: 0.1, killerInstinct: 0.1, showBias: 0.05 };
+      case "pressured":
+        return { denialWeight: 0.15, riskTolerance: 0.1, showInterruptBias: 0.12 };
+      case "frustrated":
+        return { pressureBias: 0.18, killerInstinct: 0.12, randomPlayChance: 0.04 };
+      case "confident":
+        return { showBias: 0.04, pressureBias: 0.06, tacticalVariance: -0.02 };
+      case "baiting":
+        return { pressureBias: -0.12, bluffFactor: 0.15, denialWeight: 0.05 };
+      case "chaotic":
+        return { randomPlayChance: 0.12, thinkJitterMs: 300, tacticalVariance: 0.18 };
+      default:
+        return {};
+    }
+  }
+
+  // ── v3: Cross-Match Memory ────────────────────────────────────────────────────
+  static getOrCreateCrossMatch(userId: string): CrossMatchProfile {
+    if (!BotPlayer.crossMatchProfiles.has(userId)) {
+      BotPlayer.crossMatchProfiles.set(userId, {
+        userId,
+        matchesPlayed: 0,
+        matchesWon: 0,
+        favoriteArchetype: null,
+        archetypeHistory: [],
+        recoveryStyle: "unknown",
+        showTiming: "balanced",
+        lossStreak: 0,
+        winStreak: 0,
+        timesBeatenBoss: 0,
+        totalBaitTrapsFired: 0,
+        totalConditioningCycles: 0,
+        lastSeen: Date.now(),
+      });
+    }
+    return BotPlayer.crossMatchProfiles.get(userId)!;
+  }
+
+  // Called at match end to update cross-match profile and rivalry record.
+  static finalizeMatchMemory(
+    userId: string,
+    playerWon: boolean,
+    archetype: PlayerArchetype | null,
+    showTiming: "early" | "late" | "balanced",
+    personality: BotPersonality,
+  ): void {
+    const profile = BotPlayer.getOrCreateCrossMatch(userId);
+    profile.matchesPlayed++;
+    if (playerWon) {
+      profile.matchesWon++;
+      profile.winStreak++;
+      profile.lossStreak = 0;
+      if (personality === "boss") profile.timesBeatenBoss++;
+    } else {
+      profile.lossStreak++;
+      profile.winStreak = 0;
+    }
+    if (archetype && archetype !== "unknown") {
+      profile.archetypeHistory = [...profile.archetypeHistory.slice(-4), archetype];
+      const counts: Partial<Record<string, number>> = {};
+      for (const a of profile.archetypeHistory) counts[a] = (counts[a] ?? 0) + 1;
+      profile.favoriteArchetype =
+        (Object.entries(counts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] as PlayerArchetype) ?? null;
+    }
+    profile.showTiming = showTiming;
+    profile.lastSeen = Date.now();
+
+    const rivalKey = `${personality}:${userId}`;
+    const existing: RivalryRecord = BotPlayer.rivalryMap.get(rivalKey) ?? {
+      opponentUserId: userId,
+      humanWins: 0,
+      botWins: 0,
+      revengePressure: false,
+      lastMatchResult: "unknown",
+    };
+    if (playerWon) {
+      existing.humanWins++;
+      existing.lastMatchResult = "human_won";
+    } else {
+      existing.botWins++;
+      existing.lastMatchResult = "bot_won";
+    }
+    existing.revengePressure =
+      existing.humanWins >= 2 && existing.humanWins > existing.botWins;
+    BotPlayer.rivalryMap.set(rivalKey, existing);
+  }
+
+  // ── v3: Revenge Check ─────────────────────────────────────────────────────────
+  static checkRevengePressure(userId: string, personality: BotPersonality): boolean {
+    return BotPlayer.rivalryMap.get(`${personality}:${userId}`)?.revengePressure ?? false;
+  }
+
+  // ── v3: Conditioning Cycle ────────────────────────────────────────────────────
+  // Allow recovery N turns → punish the exact strategy the human uses to recover.
+  private static advanceConditioningCycle(
+    ctx: BotMatchContext,
+    opponents: OpponentProfile[] | undefined,
+  ): Partial<BotMatchContext> {
+    if (!opponents || opponents.length === 0) return {};
+    const archetype = opponents[0].archetype ?? "unknown";
+
+    if (ctx.conditioningState === "off") {
+      if (archetype !== "unknown" && ctx.turnCount >= 4) {
+        return {
+          conditioningState: "allowing",
+          conditioningAllowTurns: 0,
+          conditioningBehavior: archetype as PlayerArchetype,
+        };
+      }
+      return {};
+    }
+
+    if (ctx.conditioningState === "allowing") {
+      const newAllow = ctx.conditioningAllowTurns + 1;
+      const threshold = 3 + Math.floor(ctx.matchVariantSeed * 3);
+      if (newAllow >= threshold) {
+        return {
+          conditioningState: "punishing",
+          conditioningAllowTurns: newAllow,
+          conditioningPunishArmed: true,
+        };
+      }
+      return { conditioningAllowTurns: newAllow };
+    }
+
+    if (ctx.conditioningState === "punishing") {
+      if (ctx.conditioningPunishArmed) return { conditioningPunishArmed: false };
+      return { conditioningState: "allowing", conditioningAllowTurns: 0 };
+    }
+
+    return {};
+  }
+
+  // ── v3: Human-Like Misjudgment ────────────────────────────────────────────────
+  // Aggressive/boss occasionally overcommit or misread, creating believable errors.
+  private static humanLikeMisjudgment(
+    ctx: BotMatchContext,
+    personality: BotPersonality,
+    hand: Card[],
+    opponents: OpponentProfile[] | undefined,
+  ): string[] | null {
+    if (personality !== "boss" && personality !== "aggressive") return null;
+    if (ctx.emotionalState !== "frustrated" && ctx.emotionalState !== "dominant") return null;
+    if (Math.random() >= 0.08) return null;
+
+    const isRealSeven = (c: Card) => c.rank === "7" && !c.isJoker;
+    const sevens = hand.filter(isRealSeven);
+    const minOppCards = opponents && opponents.length > 0
+      ? Math.min(...opponents.map((o) => o.handCount ?? 10))
+      : 10;
+
+    if (sevens.length > 0 && minOppCards >= 8 && ctx.emotionalState === "dominant") {
+      return sevens.map((c) => c.id);
+    }
+    const byValue = [...hand].sort(
+      (a, b) => DeckManager.getCardValue(b) - DeckManager.getCardValue(a),
+    );
+    const third = byValue[2];
+    if (third && ctx.emotionalState === "frustrated") return [third.id];
+
+    return null;
+  }
+
+  // ── v3: Match Intro Flavor Text ───────────────────────────────────────────────
+  static getMatchIntroText(
+    personality: BotPersonality,
+    modifier: MatchModifier,
+    _tier?: string,
+  ): string {
+    const intros: Record<BotPersonality, string[]> = {
+      safe: [
+        "Slow and steady. Don't rush me.",
+        "I've seen every trick. Go ahead, try.",
+        "Patience is its own weapon.",
+      ],
+      aggressive: [
+        "I don't wait. I attack.",
+        "Your hand is already mine.",
+        "Move fast or get crushed.",
+      ],
+      bluff: [
+        "Am I winning? Hard to tell, isn't it.",
+        "Everything I show you is a lie.",
+        "You'll second-guess every card I play.",
+      ],
+      smart: [
+        "I've already calculated your next three moves.",
+        "Every mistake you make, I remember.",
+        "Strategy first. Aggression when the moment is right.",
+      ],
+      boss: [
+        "You've come a long way. It ends here.",
+        "Champions are made in moments like this.",
+        "I've broken better players than you.",
+      ],
+      care: [
+        "I build slowly. You won't see it coming.",
+        "Perfection takes time.",
+        "The lowest hand wins. Remember that.",
+      ],
+    };
+    const modifierSuffix: Partial<Record<MatchModifier, string>> = {
+      chaos_storm: " Tonight, chaos reigns.",
+      slow_pressure: " The pressure will come — slowly.",
+      double_surge: " Expect two surges. You won't survive both.",
+      recovery_lock: " Try to recover. I dare you.",
+      anti_show_arena: " No one shows early in this arena.",
+      hidden_tempo: " You won't be able to read my rhythm.",
+    };
+    const lines = intros[personality] ?? intros.smart;
+    const base = lines[Math.floor(Math.random() * lines.length)];
+    return base + (modifierSuffix[modifier] ?? "");
+  }
+
+  // Convenience wrapper: init context if needed, return intro for this bot's modifier.
+  static getMatchIntroForBot(botPlayerId: string, personality: BotPersonality): string {
+    if (!BotPlayer.ctxMap.has(botPlayerId)) BotPlayer.initBotContext(botPlayerId);
+    const ctx = BotPlayer.ctxMap.get(botPlayerId)!;
+    return BotPlayer.getMatchIntroText(personality, ctx.matchModifier);
+  }
+
+  // ── Telemetry Snapshot ────────────────────────────────────────────────────────
+  // Returns a lightweight analytics snapshot of the current bot context.
+  static getBotContextSnapshot(botPlayerId: string): {
+    emotionalState: EmotionalAIState;
+    frustrationLevel: number;
+    egoScore: number;
+    dominanceScore: number;
+    matchModifier: MatchModifier;
+    revengeModeActive: boolean;
+    conditioningState: string;
+    turnCount: number;
+    pressureTurnsTotal: number;
+  } | null {
+    const ctx = BotPlayer.ctxMap.get(botPlayerId);
+    if (!ctx) return null;
+    return {
+      emotionalState:    ctx.emotionalState,
+      frustrationLevel:  ctx.frustrationLevel,
+      egoScore:          ctx.egoScore,
+      dominanceScore:    ctx.dominanceScore,
+      matchModifier:     ctx.matchModifier,
+      revengeModeActive: ctx.revengeModeActive,
+      conditioningState: ctx.conditioningState,
+      turnCount:         ctx.turnCount,
+      pressureTurnsTotal: ctx.pressureTurnsTotal,
+    };
+  }
+
   // ── Attack Response ───────────────────────────────────────────────────────────
 
   static decideAttackResponse(
@@ -1766,6 +2219,82 @@ export class BotPlayer {
         recoveryTurnStart: recoveryNow ? postFarmCtx.turnCount : 0,
       });
     }
+
+    // v3: Compute emotional state from game signals
+    const botForEmotion = state.players.find((p) => p.id === botPlayerId)!;
+    const botTotalForEmotion = DeckManager.calculateHandTotal(botForEmotion.hand);
+    const showThreatForEmotion = BotPlayer.detectShowThreat(state, botPlayerId, opponents);
+    const threatForEmotion = BotPlayer.computeThreatLevel(state, botPlayerId, opponents);
+    const emotionCtx = BotPlayer.getCtx(botPlayerId);
+    const newEmotionalState = BotPlayer.computeEmotionalState(
+      emotionCtx,
+      botTotalForEmotion,
+      opponents,
+      showThreatForEmotion,
+      threatForEmotion,
+    );
+    const newEmotionalAge =
+      emotionCtx.emotionalState === newEmotionalState
+        ? emotionCtx.emotionalStateAge + 1
+        : 0;
+    const frustrationDelta =
+      emotionCtx.emotionalState === "pressured" && newEmotionalState !== "dominant" ? 0.08 : -0.04;
+    const dominanceDelta = newEmotionalState === "dominant" ? 0.06 : -0.03;
+    BotPlayer.updateCtx(botPlayerId, {
+      emotionalState: newEmotionalState,
+      emotionalStateAge: newEmotionalAge,
+      frustrationLevel: Math.min(1, Math.max(0, emotionCtx.frustrationLevel + frustrationDelta)),
+      dominanceScore: Math.min(1, Math.max(0, emotionCtx.dominanceScore + dominanceDelta)),
+    });
+
+    // v3: Update personality quirk counters
+    const quirksCtx = BotPlayer.getCtx(botPlayerId);
+    const quirkUpdate: Partial<BotMatchContext> = {};
+    if (personality === "aggressive") {
+      quirkUpdate.quirk_egoStreak =
+        newEmotionalState === "dominant" || newEmotionalState === "confident"
+          ? (quirksCtx.quirk_egoStreak ?? 0) + 1
+          : 0;
+    }
+    if (personality === "bluff") {
+      if (!quirksCtx.quirk_fakeWeakArmed &&
+          (newEmotionalAge >= 2 || quirksCtx.emotionalPhase === "bait")) {
+        quirkUpdate.quirk_fakeWeakArmed = true;
+      } else if (quirksCtx.quirk_fakeWeakArmed && Math.random() < 0.4) {
+        quirkUpdate.quirk_fakeWeakArmed = false;
+      }
+    }
+    if (personality === "smart") {
+      if (quirksCtx.emotionalPhase === "building" || quirksCtx.emotionalPhase === "cooldown") {
+        quirkUpdate.quirk_patienceCounter = Math.min(8, (quirksCtx.quirk_patienceCounter ?? 0) + 1);
+      } else if (quirksCtx.emotionalPhase === "surge") {
+        quirkUpdate.quirk_patienceCounter = 0;
+      }
+    }
+    if (personality === "boss") {
+      if (quirksCtx.emotionalPhase === "surge" && !quirksCtx.quirk_intimidationReady) {
+        quirkUpdate.quirk_intimidationReady = true;
+      } else if (quirksCtx.quirk_intimidationReady) {
+        quirkUpdate.quirk_intimidationReady = false;
+      }
+    }
+    if (Object.keys(quirkUpdate).length > 0) BotPlayer.updateCtx(botPlayerId, quirkUpdate);
+
+    // v3: Revenge check
+    if (opponents && opponents.length > 0 && opponents[0].userId) {
+      const revCtx = BotPlayer.getCtx(botPlayerId);
+      const revengeNow = BotPlayer.checkRevengePressure(opponents[0].userId, personality);
+      if (revengeNow !== revCtx.revengeModeActive) {
+        BotPlayer.updateCtx(botPlayerId, {
+          revengeModeActive: revengeNow,
+          revengeTargetId: revengeNow ? opponents[0].userId : null,
+        });
+      }
+    }
+
+    // v3: Advance conditioning cycle
+    const condUpdate = BotPlayer.advanceConditioningCycle(BotPlayer.getCtx(botPlayerId), opponents);
+    if (Object.keys(condUpdate).length > 0) BotPlayer.updateCtx(botPlayerId, condUpdate);
 
     // Boss dynamically switches sub-personality every turn
     const bossMode =

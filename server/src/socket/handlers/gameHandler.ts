@@ -429,7 +429,19 @@ export async function startRoomGame(
     difficultyBoost: gameDifficultyBoost.get(gameState.id) ?? 0,
   });
 
+  // v3: Eagerly initialise bot contexts so match modifier is ready for the intro
+  const gameBots = gameState.players.filter((p) => p.isBot);
+  for (const bot of gameBots) BotPlayer.initBotContext(bot.id);
+
   broadcastGameState(io, gameState);
+
+  // v3: Emit AI intro flavor text after game state so the UI can display it
+  if (gameBots.length > 0) {
+    const introPersonality = gameBotPersonality.get(gameState.id) ?? "smart";
+    const introText = BotPlayer.getMatchIntroForBot(gameBots[0].id, introPersonality as BotPersonality);
+    io.to(room.code).emit("game:ai_intro", { text: introText, personality: introPersonality });
+  }
+
   startTurnTimer(io, gameState.id);
   scheduleBotTurnIfNeeded(io, gameState);
 }
@@ -1210,6 +1222,18 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   gameBotPersonality.delete(state.id);
   gameBotPersonalitiesMap.delete(state.id);
+
+  // v3: Finalize cross-match memory so rivalry/conditioning persists across matches
+  if (hasBots) {
+    const endPersonality = (botPersonality ?? "smart") as BotPersonality;
+    for (const p of humanPlayers) {
+      const playerWon =
+        p.id === matchResult.winnerId ||
+        ((matchResult as any).winnerIds ?? []).includes(p.id);
+      BotPlayer.finalizeMatchMemory(p.userId, playerWon, null, "balanced", endPersonality);
+    }
+  }
+
   state.players.filter(p => p.isBot).forEach(b => BotPlayer.cleanupBotContext(b.id));
 
   // Tournament hooks — run async, non-blocking
