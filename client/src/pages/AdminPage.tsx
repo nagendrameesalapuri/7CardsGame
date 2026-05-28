@@ -1247,6 +1247,18 @@ function FeaturesSection({
         </div>
       </div>
 
+      <div className="pt-2">
+        <p className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-3">Events</p>
+        <div className="rounded-xl p-4" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.18)' }}>
+          <Toggle
+            label="Events Tab"
+            desc="Show the Events nav item and tournament pages to all players"
+            value={flags.eventsEnabled ?? true}
+            onChange={(v) => setFlags((f: any) => ({ ...f, eventsEnabled: v }))}
+          />
+        </div>
+      </div>
+
       <button
         onClick={save}
         disabled={saving}

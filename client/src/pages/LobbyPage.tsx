@@ -18,6 +18,7 @@ import { DailyLoginModal } from '../components/DailyLoginModal';
 import { PlayVsAIModal } from '../components/lobby/PlayVsAIModal';
 import { GameGuideModal } from '../components/lobby/GameGuideModal';
 import { useProgressionStore, RANK_CONFIG } from '../store/progressionStore';
+import { useConfigStore } from '../store/configStore';
 import { SpinWheelModal } from '../components/wallet/SpinWheelModal';
 import { PointsSpinModal } from '../components/wallet/PointsSpinModal';
 import { LaunchBonusModal } from '../components/wallet/LaunchBonusModal';
@@ -61,6 +62,7 @@ function RankRing({ pct, color, icon, level }: { pct: number; color: string; ico
 export function LobbyPage() {
   const { room, game, subscribeToEvents, createRoom, resumeRoomCodes, clearResume, joinRoom, resumeGame } = useGameStore();
   const { isAuthenticated, user, comebackBonus, clearComebackBonus } = useAuthStore();
+  const { update: updateConfigFlags } = useConfigStore();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -84,7 +86,7 @@ export function LobbyPage() {
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
   const [upcomingTournament, setUpcomingTournament] = useState<any>(null);
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
-    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '' },
+    featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '', eventsEnabled: true, leaderboardEnabled: true },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
     walletConfig: { depositEnabled: true, withdrawEnabled: true, upiId: '', upiName: '', qrEnabled: true, qrCodeUrl: '' },
     survivalConfig: {
@@ -138,6 +140,7 @@ export function LobbyPage() {
       setAdminConfig(cfg as PublicAdminConfig);
       setSpectatorModeEnabled(cfg.featureFlags.spectatorModeEnabled);
       if (!cfg.featureFlags.publicRoomsEnabled) setPublicRooms([]);
+      updateConfigFlags(cfg.featureFlags as any);
     });
 
     if (!user?.isGuest) {
@@ -157,10 +160,20 @@ export function LobbyPage() {
     // Load wallet balance and AI points on mount
     if (!user?.isGuest) {
       walletApi.get().then(r => {
+        const pts = (r.data as any).aiPoints ?? 0;
         setWalletBalance(r.data.balance);
-        setAiPoints((r.data as any).aiPoints ?? 0);
+        setAiPoints(pts);
         if (!(r.data as any).launchBonusClaimed) {
           setShowLaunchBonus(true);
+        }
+        // Prompt users who have accumulated points but haven't spun today
+        const today = new Date().toISOString().slice(0, 10);
+        const promptedKey = `spin_pts_prompted_${today}`;
+        if (pts >= 100 && !localStorage.getItem(promptedKey)) {
+          localStorage.setItem(promptedKey, '1');
+          setTimeout(() => {
+            notify.success(`⭐ You have ${pts.toLocaleString()} AI points! Scroll down to spin and win real ₹.`, { duration: 7000 });
+          }, 2500);
         }
       }).catch(() => {});
       tournamentsApi.list().then(r => {
@@ -169,13 +182,15 @@ export function LobbyPage() {
       }).catch(() => {});
     }
 
-    // Daily spin unlock notification
+    // Daily spin unlock notification (guarded to prevent double-fire in React StrictMode)
     const lastExhaustedDate = localStorage.getItem('spin_exhausted_date');
-    const today = new Date().toISOString().slice(0, 10);
-    if (lastExhaustedDate && lastExhaustedDate < today) {
+    const today2 = new Date().toISOString().slice(0, 10);
+    const spinResetKey = `spin_reset_notified_${today2}`;
+    if (lastExhaustedDate && lastExhaustedDate < today2 && !localStorage.getItem(spinResetKey)) {
+      localStorage.setItem(spinResetKey, '1');
+      localStorage.removeItem('spin_exhausted_date');
       walletApi.spinStatus().then(r => {
         if (r.data.spinsLeft > 0) {
-          localStorage.removeItem('spin_exhausted_date');
           notify.success(`🎰 Daily spins reset! You have ${r.data.spinsLeft} free spins. Win up to ₹100!`, { duration: 8000 });
           if (typeof window.Notification !== 'undefined' && window.Notification.permission === 'granted') {
             new window.Notification('🎰 Money Spin Unlocked!', { body: 'Your daily spins are ready! Win up to ₹100 today.' });
@@ -384,110 +399,118 @@ export function LobbyPage() {
         {activeTab === 'play' && (
           <div className="space-y-3 pb-8">
 
-            {/* AI Survival Championship */}
-            {adminConfig.featureFlags.survivalEnabled !== false && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}
-                onClick={() => navigate('/survival')}
-                className="relative overflow-hidden rounded-2xl cursor-pointer"
-                style={{
-                  background: 'linear-gradient(135deg,rgba(5,20,15,0.98),rgba(4,18,14,0.96))',
-                  border: '1px solid rgba(16,185,129,0.3)',
-                  boxShadow: '0 4px 32px rgba(16,185,129,0.08)',
-                }}>
-                <Shimmer />
-                <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.2),transparent 70%)', filter: 'blur(24px)' }} />
-                <div className="flex items-center gap-4 px-4 py-4 relative">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0 relative"
-                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,182,212,0.12))', border: '1px solid rgba(16,185,129,0.3)' }}>
-                    🏆
-                    <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                      {[1,2,3,4,5].map(s => (
-                        <div key={s} className="w-1 h-1 rounded-full" style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
-                      ))}
+            {/* ── Game Modes: 2-column grid ── */}
+            {(adminConfig.featureFlags.survivalEnabled !== false || botOptions.length > 0) && (
+              <div className={`grid gap-3 ${
+                adminConfig.featureFlags.survivalEnabled !== false && botOptions.length > 0
+                  ? 'grid-cols-2' : 'grid-cols-1'
+              }`}>
+
+                {/* AI Survival Championship */}
+                {adminConfig.featureFlags.survivalEnabled !== false && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate('/survival')}
+                    className="relative overflow-hidden rounded-2xl cursor-pointer flex flex-col p-4"
+                    style={{
+                      background: 'linear-gradient(135deg,rgba(5,20,15,0.98),rgba(4,18,14,0.96))',
+                      border: '1px solid rgba(16,185,129,0.3)',
+                      boxShadow: '0 4px 32px rgba(16,185,129,0.08)',
+                      minHeight: '188px',
+                    }}>
+                    <Shimmer />
+                    <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full pointer-events-none"
+                      style={{ background: 'radial-gradient(circle,rgba(16,185,129,0.22),transparent 70%)', filter: 'blur(18px)' }} />
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl mb-3 relative flex-shrink-0"
+                      style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,182,212,0.12))', border: '1px solid rgba(16,185,129,0.3)' }}>
+                      🏆
+                      <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                        {[1,2,3,4,5].map(s => (
+                          <div key={s} className="w-1 h-1 rounded-full"
+                            style={{ background: s <= 2 ? '#10b981' : 'rgba(255,255,255,0.15)' }} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-base font-black text-white">AI Survival Championship</p>
-                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.28)' }}>
-                        5 STAGES
-                      </span>
-                    </div>
-                    <p className="text-xs text-dark-muted mb-2">Beat 5 AI personalities · Earn points · 4 tiers</p>
-                    <div className="flex flex-wrap gap-1">
-                      {['🛡 Safe','⚡ Aggr.','🎭 Bluff','🧠 Smart','💀 Boss'].map((p, i) => (
-                        <span key={p} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: 'rgba(255,255,255,0.05)', color: i < 2 ? '#6ee7b7' : 'rgba(199,210,254,0.65)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full self-start mb-1.5"
+                      style={{ background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.28)' }}>
+                      5 STAGES
+                    </span>
+                    <p className="text-sm font-black text-white leading-tight">AI Survival</p>
+                    <p className="text-[10px] text-dark-muted mt-0.5 mb-auto">4 tiers · Earn points</p>
+                    <div className="flex flex-wrap gap-1 mt-2 mb-3">
+                      {['🛡','⚡','🎭','🧠','💀'].map(p => (
+                        <span key={p} className="text-[11px] px-1 py-0.5 rounded-full"
+                          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(110,231,183,0.75)', border: '1px solid rgba(255,255,255,0.07)' }}>
                           {p}
                         </span>
                       ))}
                     </div>
-                  </div>
-                  <motion.div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
-                    animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
-                    style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontSize: 16 }}>
-                    →
-                  </motion.div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Play vs AI */}
-            {botOptions.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}>
-                <button
-                  onClick={() => setShowPlayVsAI(true)}
-                  disabled={aiLoading}
-                  className="w-full relative overflow-hidden rounded-2xl text-left disabled:opacity-60"
-                  style={{
-                    background: 'linear-gradient(135deg,rgba(10,8,32,0.98),rgba(14,10,40,0.96))',
-                    border: '1px solid rgba(99,102,241,0.32)',
-                    boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
-                  }}>
-                  <Shimmer />
-                  <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full" style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)', filter: 'blur(24px)' }} />
-                  <div className="flex items-center gap-4 px-4 py-4 relative">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0 relative"
-                      style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.35)' }}>
-                      🤖
-                      <motion.div
-                        animate={{ scale: [1, 1.8, 1], opacity: [0.9, 0, 0.9] }}
-                        transition={{ repeat: Infinity, duration: 2 }}
-                        className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full"
-                        style={{ background: '#22c55e' }} />
+                    <div className="flex justify-end">
+                      <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 2 }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
+                        style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff' }}>
+                        →
+                      </motion.div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-base font-black text-white">Play vs AI</p>
+                  </motion.div>
+                )}
+
+                {/* Play vs AI */}
+                {botOptions.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
+                    <button
+                      onClick={() => setShowPlayVsAI(true)}
+                      disabled={aiLoading}
+                      className="w-full relative overflow-hidden rounded-2xl text-left flex flex-col p-4 disabled:opacity-60"
+                      style={{
+                        background: 'linear-gradient(135deg,rgba(10,8,32,0.98),rgba(14,10,40,0.96))',
+                        border: '1px solid rgba(99,102,241,0.32)',
+                        boxShadow: '0 4px 32px rgba(99,102,241,0.08)',
+                        minHeight: '188px',
+                      }}>
+                      <Shimmer />
+                      <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full pointer-events-none"
+                        style={{ background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)', filter: 'blur(18px)' }} />
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl mb-3 relative flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.35)' }}>
+                        🤖
+                        <motion.div
+                          animate={{ scale: [1, 1.8, 1], opacity: [0.9, 0, 0.9] }}
+                          transition={{ repeat: Infinity, duration: 2 }}
+                          className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full"
+                          style={{ background: '#22c55e' }} />
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                           style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
                           4 MODES
                         </span>
-                        {aiLoading && <span className="text-[9px] text-emerald-400 font-bold animate-pulse">Starting…</span>}
+                        {aiLoading && <span className="text-[9px] text-emerald-400 animate-pulse">…</span>}
                       </div>
-                      <p className="text-xs text-dark-muted mb-2">Casual Duel · Survival Clash · Chaos Arena · Boss Rush</p>
-                      <div className="flex flex-wrap gap-1">
-                        {['🛡 Safe','⚡ Aggressive','🎭 Bluff','🧠 Smart','💀 Boss'].map((p, i) => (
-                          <span key={p} className="text-[9px] px-1.5 py-0.5 rounded-full"
+                      <p className="text-sm font-black text-white leading-tight">Play vs AI</p>
+                      <p className="text-[10px] text-dark-muted mt-0.5 mb-auto">Clash · Chaos · Boss Rush</p>
+                      <div className="flex flex-wrap gap-1 mt-2 mb-3">
+                        {['🛡','⚡','🎭','🧠','💀'].map((p, i) => (
+                          <span key={p} className="text-[11px] px-1 py-0.5 rounded-full"
                             style={{ background: 'rgba(255,255,255,0.04)', color: ['rgba(34,197,94,0.8)','rgba(245,158,11,0.8)','rgba(168,85,247,0.8)','rgba(96,165,250,0.8)','rgba(239,68,68,0.8)'][i], border: '1px solid rgba(255,255,255,0.06)' }}>
                             {p}
                           </span>
                         ))}
                       </div>
-                    </div>
-                    <motion.div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
-                      animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
-                      style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 16 }}>
-                      →
-                    </motion.div>
-                  </div>
-                </button>
-              </motion.div>
+                      <div className="flex justify-end">
+                        <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}
+                          className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
+                          style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc' }}>
+                          →
+                        </motion.div>
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </div>
             )}
 
             {/* Spin & Win */}
@@ -546,7 +569,20 @@ export function LobbyPage() {
                     whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
                     onClick={() => setShowPointsSpin(true)}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl relative overflow-hidden"
-                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.14),rgba(6,182,212,0.08))', border: '1px solid rgba(16,185,129,0.32)' }}>
+                    style={{
+                      background: 'linear-gradient(135deg,rgba(16,185,129,0.14),rgba(6,182,212,0.08))',
+                      border: aiPoints >= 100 ? '1px solid rgba(52,211,153,0.7)' : '1px solid rgba(16,185,129,0.32)',
+                      boxShadow: aiPoints >= 100 ? '0 0 12px rgba(52,211,153,0.25)' : undefined,
+                    }}>
+                    {/* Pulsing ring when spins available */}
+                    {aiPoints >= 100 && (
+                      <motion.span
+                        className="absolute inset-0 rounded-xl pointer-events-none"
+                        animate={{ opacity: [0.4, 0, 0.4] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        style={{ border: '2px solid rgba(52,211,153,0.5)' }}
+                      />
+                    )}
                     <Shimmer />
                     <span className="text-xl relative z-10 flex-shrink-0">⭐</span>
                     <div className="flex-1 text-left relative z-10">
@@ -554,10 +590,20 @@ export function LobbyPage() {
                       <div className="text-[9px] leading-tight" style={{ color: 'rgba(52,211,153,0.7)' }}>100 pts/spin · 10/day</div>
                     </div>
                     <div className="flex items-center gap-1.5 relative z-10 flex-shrink-0">
-                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(16,185,129,0.25)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.32)' }}>
-                        WIN REAL ₹
-                      </span>
+                      {aiPoints >= 100 ? (
+                        <motion.span
+                          animate={{ scale: [1, 1.06, 1] }}
+                          transition={{ duration: 1.8, repeat: Infinity }}
+                          className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(52,211,153,0.3)', color: '#6ee7b7', border: '1px solid rgba(52,211,153,0.55)' }}>
+                          READY!
+                        </motion.span>
+                      ) : (
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(16,185,129,0.25)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.32)' }}>
+                          WIN REAL ₹
+                        </span>
+                      )}
                       <span className="text-[9px] font-bold" style={{ color: '#34d399' }}>
                         ⭐ {aiPoints.toLocaleString()}
                       </span>
@@ -727,7 +773,7 @@ export function LobbyPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Waiting rooms */}
+                  {/* Waiting rooms — 2-col grid */}
                   {waitingRooms.length > 0 && (
                     <div>
                       <p className="text-[10px] uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5 px-1"
@@ -735,29 +781,28 @@ export function LobbyPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
                         Open · Waiting
                       </p>
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
                         {waitingRooms.map((r, i) => (
                           <motion.div key={r.code}
-                            initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                            className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                            className="flex flex-col gap-2 p-3 rounded-2xl"
                             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                <p className="font-bold text-white text-sm truncate">{r.name}</p>
+                              <p className="font-bold text-white text-xs truncate">{r.name}</p>
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                <p className="text-[10px]" style={{ color: 'rgba(148,163,184,0.6)' }}>
+                                  {r.playerCount}/{r.maxPlayers} · {r.roundCount}R
+                                </p>
                                 {r.entryFee > 0 && (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                  <span className="text-[9px] font-bold px-1 py-0.5 rounded-full"
                                     style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.22)' }}>
                                     ₹{r.entryFee}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                                {r.playerCount}/{r.maxPlayers} players · {r.roundCount}R
-                                {r.entryFee > 0 && ` · Pot ₹${r.entryFee * r.playerCount}`}
-                              </p>
                             </div>
                             <motion.button
-                              whileHover={{ scale: joiningRoomCode ? 1 : 1.05 }} whileTap={{ scale: 0.96 }}
+                              whileHover={{ scale: joiningRoomCode ? 1 : 1.04 }} whileTap={{ scale: 0.96 }}
                               disabled={!!joiningRoomCode}
                               onClick={() => {
                                 if (joiningRoomCode) return;
@@ -765,8 +810,8 @@ export function LobbyPage() {
                                 joinRoom(r.code);
                                 setTimeout(() => setJoiningRoomCode(null), 4000);
                               }}
-                              className="flex-shrink-0 text-xs font-black px-4 py-2 rounded-xl disabled:opacity-50"
-                              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 3px 12px rgba(16,185,129,0.28)' }}>
+                              className="w-full text-xs font-black py-1.5 rounded-xl disabled:opacity-50"
+                              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 3px 10px rgba(16,185,129,0.25)' }}>
                               {joiningRoomCode === r.code ? '…' : 'Join'}
                             </motion.button>
                           </motion.div>
@@ -775,7 +820,7 @@ export function LobbyPage() {
                     </div>
                   )}
 
-                  {/* Live rooms */}
+                  {/* Live rooms — 2-col grid */}
                   {liveRooms.length > 0 && spectatorModeEnabled && (
                     <div>
                       <p className="text-[10px] uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5 px-1"
@@ -784,29 +829,29 @@ export function LobbyPage() {
                           animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
                         Live Matches
                       </p>
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <AnimatePresence>
                           {liveRooms.map((r, i) => (
                             <motion.div key={r.code}
-                              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                               transition={{ delay: i * 0.04 }}
-                              className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                              className="flex flex-col gap-2 p-3 rounded-2xl"
                               style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.18)' }}>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <p className="font-bold text-white text-sm truncate">{r.name}</p>
+                                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                  <p className="font-bold text-white text-xs truncate">{r.name}</p>
                                   <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}
-                                    className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                    className="text-[9px] font-black px-1 py-0.5 rounded-full flex-shrink-0"
                                     style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>LIVE</motion.span>
                                 </div>
-                                <p className="text-xs" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                                  {r.playerCount} players{r.spectatorCount > 0 && ` · 👁 ${r.spectatorCount}`}
+                                <p className="text-[10px]" style={{ color: 'rgba(148,163,184,0.6)' }}>
+                                  {r.playerCount}p{r.spectatorCount > 0 && ` · 👁${r.spectatorCount}`}
                                 </p>
                               </div>
                               <motion.button
-                                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
+                                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                                 onClick={() => navigate(`/spectate/${r.code}`)}
-                                className="flex-shrink-0 text-xs font-black px-3 py-2 rounded-xl"
+                                className="w-full text-xs font-black py-1.5 rounded-xl"
                                 style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}>
                                 👁 Watch
                               </motion.button>

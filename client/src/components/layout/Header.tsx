@@ -59,11 +59,15 @@ function BellPanel({ onClose }: { onClose: () => void }) {
   ].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()).slice(0, 30);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handler = (e: MouseEvent | TouchEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler as EventListener);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler as EventListener);
+    };
   }, [onClose]);
 
   useEffect(() => {
@@ -79,7 +83,7 @@ function BellPanel({ onClose }: { onClose: () => void }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -6, scale: 0.97 }}
       transition={{ duration: 0.15 }}
-      className="absolute right-0 top-11 w-80 max-w-[calc(100vw-16px)] rounded-2xl shadow-2xl z-50 flex flex-col"
+      className="fixed sm:absolute left-2 right-2 sm:left-auto sm:right-0 top-16 sm:top-11 sm:w-80 rounded-2xl shadow-2xl z-50 flex flex-col"
       style={{
         background: 'rgba(8,6,24,0.98)',
         border: '1px solid rgba(99,102,241,0.25)',
@@ -174,8 +178,23 @@ export function Header() {
   const { unreadCount, historyUnread, addNotification } = useNotificationStore();
   const { flags, load: loadConfig } = useConfigStore();
   const [bellOpen, setBellOpen] = useState(false);
+  const [aiPoints, setAiPoints] = useState<number>((user as any)?.aiPoints ?? 0);
 
   const totalUnread = unreadCount + historyUnread;
+
+  // Keep AI points in sync with user object and live socket events
+  useEffect(() => {
+    setAiPoints((user as any)?.aiPoints ?? 0);
+  }, [user]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      return on('ai:points_earned', (d: any) => {
+        if (typeof d?.total === 'number') setAiPoints(d.total);
+      });
+    } catch { return () => {}; }
+  }, [isAuthenticated]);
 
   useEffect(() => { loadConfig(); }, []); // eslint-disable-line
 
@@ -195,11 +214,12 @@ export function Header() {
   }, [isAuthenticated, addNotification]);
 
   const leaderboardEnabled = flags.leaderboardEnabled !== false;
+  const eventsEnabled = flags.eventsEnabled !== false;
 
   const navItems = [
     { to: '/lobby',         label: 'Play',    icon: '⚔️' },
     ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Board', icon: '🏆' }] : []),
-    { to: '/tournaments',           label: 'Events',  icon: '🎯' },
+    ...(eventsEnabled ? [{ to: '/tournaments', label: 'Events', icon: '🎯' }] : []),
     { to: '/wallet',                label: 'Rewards', icon: '🎁' },
     { to: '/notifications',         label: 'Alerts',  icon: '🔔' },
     { to: '/profile?tab=referral',  label: 'Refer',   icon: '🤝' },
@@ -229,7 +249,7 @@ export function Header() {
             {[
               { to: '/lobby',              label: 'Play' },
               ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Leaderboard' }] : []),
-              { to: '/tournaments',        label: 'Events' },
+              ...(eventsEnabled ? [{ to: '/tournaments', label: 'Events' }] : []),
               { to: '/wallet',             label: 'Rewards' },
               { to: '/notifications',      label: 'Alerts' },
               { to: '/profile',            label: 'Profile' },
@@ -260,6 +280,30 @@ export function Header() {
 
           {/* Right: bell + theme + user */}
           <div className="flex items-center gap-3">
+            {/* AI Points pill — always visible, navigates to Spin & Win */}
+            {isAuthenticated && !user?.isGuest && aiPoints > 0 && (
+              <motion.button
+                whileTap={{ scale: 0.94 }}
+                onClick={() => navigate('/lobby')}
+                title="AI Points — click to spin"
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all hover:opacity-90"
+                style={{
+                  background: 'linear-gradient(135deg,rgba(16,185,129,0.18),rgba(6,182,212,0.12))',
+                  border: '1px solid rgba(16,185,129,0.35)',
+                  color: '#34d399',
+                }}
+              >
+                <span>⭐</span>
+                <span>{aiPoints.toLocaleString()}</span>
+                {aiPoints >= 100 && (
+                  <span className="text-[9px] font-black px-1 py-0.5 rounded-full ml-0.5"
+                    style={{ background: 'rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
+                    SPIN
+                  </span>
+                )}
+              </motion.button>
+            )}
+
             {isAuthenticated && (
               <div className="relative">
                 <motion.button
@@ -341,6 +385,14 @@ export function Header() {
                       style={{ background: '#6366f1', color: '#fff' }}>
                       {totalUnread > 9 ? '9+' : totalUnread}
                     </span>
+                  )}
+                  {to === '/wallet' && aiPoints >= 100 && !user?.isGuest && (
+                    <motion.span
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                      className="absolute -top-0.5 right-1 w-2 h-2 rounded-full"
+                      style={{ background: '#34d399' }}
+                    />
                   )}
                 </Link>
               );

@@ -303,6 +303,8 @@ export interface AdminFeatureFlags {
   };
   teamArenaEnabled: boolean;
   teamArenaDisabledReason: string; // shown to users when disabled, e.g. "Maintenance"
+  eventsEnabled: boolean;
+  leaderboardEnabled: boolean;
 }
 
 export interface AdminGameConfig {

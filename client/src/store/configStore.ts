@@ -7,6 +7,7 @@ interface FeatureFlags {
   publicRoomsEnabled: boolean;
   survivalEnabled: boolean;
   teamArenaEnabled: boolean;
+  eventsEnabled: boolean;
   [key: string]: boolean | any;
 }
 
@@ -14,6 +15,7 @@ interface ConfigStore {
   flags: FeatureFlags;
   loaded: boolean;
   load: () => Promise<void>;
+  update: (featureFlags: Partial<FeatureFlags>) => void;
 }
 
 const DEFAULTS: FeatureFlags = {
@@ -22,6 +24,7 @@ const DEFAULTS: FeatureFlags = {
   publicRoomsEnabled: true,
   survivalEnabled: true,
   teamArenaEnabled: true,
+  eventsEnabled: true,
 };
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
@@ -35,5 +38,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     } catch {
       set({ loaded: true });
     }
+  },
+  update: (featureFlags) => {
+    set(s => ({ flags: { ...s.flags, ...featureFlags } }));
   },
 }));
