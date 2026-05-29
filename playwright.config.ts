@@ -12,10 +12,11 @@ export default defineConfig({
   // Cap at 2 workers locally to prevent guest-login rate limiting (server allows 15/15min per IP)
   workers: CI ? 2 : 2,
   timeout: 120_000,        // per-test default; long tests call test.setTimeout()
-  reporter: [
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
-    ...(CI ? [['github'] as any] : [['list'] as any]),
-  ],
+  reporter: CI
+    // Sharded CI runs: blob reporter enables merge-reports; github reporter gives inline PR annotations
+    ? [['blob'], ['github'] as any]
+    // Local runs: human-readable list + HTML report
+    : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',

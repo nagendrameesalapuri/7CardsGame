@@ -35,11 +35,20 @@ function Orb({ x, y, size, color, delay }: { x: string; y: string; size: number;
   );
 }
 
+function formatLastSeen(iso: string | null): string {
+  if (!iso) return 'Last seen: unknown';
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60)   return 'Last seen: just now';
+  if (diff < 3600) return `Last seen: ${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `Last seen: ${Math.floor(diff / 3600)}h ago`;
+  return `Last seen: ${Math.floor(diff / 86400)}d ago`;
+}
+
 export function RoomLobby() {
   const { room, toggleReady, startGame, leaveRoom, subscribeToEvents, setBots } = useGameStore();
   const { user } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
-  const [favorites, setFavorites] = useState<Array<{ userId: string; username: string; avatar: string; isOnline: boolean }>>([]);
+  const [favorites, setFavorites] = useState<Array<{ userId: string; username: string; avatar: string; isOnline: boolean; lastSeenAt: string | null }>>([]);
   const [inviteSent, setInviteSent] = useState<Set<string>>(new Set());
   const [loadingFavs, setLoadingFavs] = useState(false);
 
@@ -51,11 +60,14 @@ export function RoomLobby() {
   // Real-time friend online/offline status
   useEffect(() => {
     try {
-      const unsubOn = on('friend:online', ({ userId }) => {
+      const unsubOn = on('friend:online', ({ userId }: { userId: string }) => {
         setFavorites(prev => prev.map(f => f.userId === userId ? { ...f, isOnline: true } : f));
       });
-      const unsubOff = on('friend:offline', ({ userId }) => {
-        setFavorites(prev => prev.map(f => f.userId === userId ? { ...f, isOnline: false } : f));
+      const unsubOff = on('friend:offline', ({ userId }: { userId: string }) => {
+        // Update lastSeenAt to now so "last seen" shows the correct time immediately
+        setFavorites(prev => prev.map(f =>
+          f.userId === userId ? { ...f, isOnline: false, lastSeenAt: new Date().toISOString() } : f
+        ));
       });
       return () => { unsubOn(); unsubOff(); };
     } catch { return () => {}; }
@@ -66,7 +78,7 @@ export function RoomLobby() {
     setLoadingFavs(true);
     try {
       const r = await usersApi.getFavorites();
-      setFavorites(r.data.favorites.map(f => ({ userId: f.userId, username: f.username, avatar: f.avatar, isOnline: f.isOnline ?? false })));
+      setFavorites(r.data.favorites.map(f => ({ userId: f.userId, username: f.username, avatar: f.avatar, isOnline: f.isOnline ?? false, lastSeenAt: f.lastSeenAt ?? null })));
     } catch {}
     setLoadingFavs(false);
   }, []);
@@ -442,7 +454,7 @@ export function RoomLobby() {
                             <p className="text-xs font-black text-white truncate">{fav.username}</p>
                             <p className="text-[9px] font-semibold"
                               style={{ color: fav.isOnline ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
-                              {fav.isOnline ? '● Online' : '○ Offline'}
+                              {fav.isOnline ? '● Online' : `○ ${formatLastSeen(fav.lastSeenAt)}`}
                             </p>
                           </div>
                           {alreadyJoined ? (

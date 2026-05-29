@@ -103,6 +103,9 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
+// Index for efficient reverse-favorites lookup (who has favorited a given userId)
+UserSchema.index({ 'favorites.userId': 1 });
+
 UserSchema.virtual('availableBalance').get(function () {
   return Math.max(0, this.walletBalance - this.heldBalance);
 });

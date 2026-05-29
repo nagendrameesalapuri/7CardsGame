@@ -266,44 +266,30 @@ export function WinnerCelebration({ result, onClose }: { result: MatchResult; on
       {/* ── Confetti ── */}
       {showConfetti && isWinner && <Confetti gold={hasPrize} />}
 
-      {/* ── Backdrop ── */}
+      {/* ── Backdrop — scrollable so CTA button is reachable on iPhone Safari ── */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="fixed inset-0 flex items-center justify-center p-3 sm:p-6"
+        className="fixed inset-0 overflow-y-auto flex flex-col items-center"
         style={{
           zIndex: 50,
           background: isWinner
             ? `radial-gradient(ellipse 90% 70% at 50% 30%, ${accentDim}0.12) 0%, rgba(0,0,0,0.97) 70%)`
             : 'radial-gradient(ellipse 80% 60% at 50% 40%, rgba(88,28,135,0.12) 0%, rgba(0,0,0,0.97) 70%)',
           backdropFilter: 'blur(24px)',
+          WebkitOverflowScrolling: 'touch',
+          padding: '16px',
+          // Respect iPhone home-indicator safe area
+          paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
         }}
       >
-        {/* ── Outer glow halo for winners ── */}
-        {isWinner && (
-          <motion.div
-            animate={{ opacity: [0.4, 0.8, 0.4], scale: [0.97, 1.02, 0.97] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              position: 'absolute',
-              inset: '-2px',
-              borderRadius: 36,
-              background: 'transparent',
-              boxShadow: `0 0 80px 20px ${accentGlow}, 0 0 160px 40px ${accentDim}0.12)`,
-              pointerEvents: 'none',
-              maxWidth: 520,
-              margin: 'auto',
-              alignSelf: 'center',
-            }}
-          />
-        )}
-
         {/* ── Card ── */}
         <motion.div
           initial={{ scale: 0.4, opacity: 0, y: 80, rotateX: 15 }}
           animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0 }}
           transition={{ type: 'spring', stiffness: 180, damping: 20, delay: 0.05 }}
-          className="w-full overflow-hidden relative"
+          // my-auto centers vertically when the content fits; scrolls from top when it overflows
+          className="w-full my-auto relative"
           style={{
             maxWidth: 480,
             borderRadius: 32,
