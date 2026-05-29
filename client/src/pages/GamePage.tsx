@@ -55,13 +55,6 @@ export function GamePage() {
     }
   }, [forceEndedMsg, navigate, reset]);
 
-  // Tournament round transition: when a new tournament room is ready, auto-join it
-  useEffect(() => {
-    const tCode = resumeRoomCodes.find((c) => c.startsWith('T'));
-    if (tCode && !game) {
-      resumeGame(tCode);
-    }
-  }, [resumeRoomCodes, game, resumeGame]);
 
   // When a survival tiebreaker is triggered, set tiebreaker state and go to /survival
   useEffect(() => {
@@ -141,15 +134,11 @@ export function GamePage() {
   if (!isAuthenticated) return null;
 
   if (!game && !room && !isSurvival) {
-    const hasTournamentRoom = resumeRoomCodes.some((c) => c.startsWith('T'));
-    if (hasTournamentRoom || connecting) {
-      // Auto-join in progress or still waiting for reconnect response
+    if (connecting) {
       return (
         <div className="min-h-screen bg-dark-bg flex flex-col items-center justify-center gap-3">
           <div className="text-4xl animate-pulse">⚔️</div>
-          <p className="text-white font-bold text-lg">
-            {hasTournamentRoom ? 'Joining tournament room…' : 'Connecting to game…'}
-          </p>
+          <p className="text-white font-bold text-lg">Connecting to game…</p>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Please wait</p>
         </div>
       );

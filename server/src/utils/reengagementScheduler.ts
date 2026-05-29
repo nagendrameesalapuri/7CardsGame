@@ -44,7 +44,7 @@ async function runReengagementJob(): Promise<void> {
 
       // Get total wallet winnings from winning transactions
       const winningTxns = await Transaction.aggregate([
-        { $match: { userId: String(user._id), type: { $in: ['winning', 'match_settlement', 'tournament_prize'] }, status: 'completed' } },
+        { $match: { userId: String(user._id), type: { $in: ['winning', 'match_settlement'] }, status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]);
       const totalWinnings = winningTxns[0]?.total ?? 0;
