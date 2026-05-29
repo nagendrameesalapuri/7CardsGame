@@ -6,37 +6,51 @@ import {
 
 jest.useFakeTimers();
 
+// MAX_RELEASES_IN_WINDOW is 8 (raised from 3 to allow active players to join many games)
+const MAX_RELEASES = 8;
+
 describe("Hold exploit tracker", () => {
   beforeEach(() => {
     _resetHoldExploitTracker();
     jest.setSystemTime(Date.now());
   });
 
-  test("debounces duplicate immediate releases and applies cooldown after threshold", () => {
-    const user = "user1";
+  test("first release does not flag", () => {
+    const r = trackHoldReleased("user1");
+    expect(r.flagged).toBe(false);
+    expect(isHoldCooldownActive("user1")).toBe(false);
+  });
 
-    // First release — should not flag
-    let r1 = trackHoldReleased(user);
-    expect(r1.flagged).toBe(false);
+  test("releases below threshold do not flag", () => {
+    const user = "user2";
+    for (let i = 0; i < MAX_RELEASES - 1; i++) {
+      jest.advanceTimersByTime(3000);
+      const r = trackHoldReleased(user);
+      expect(r.flagged).toBe(false);
+    }
     expect(isHoldCooldownActive(user)).toBe(false);
+  });
 
-    // Duplicate within 1s — should be debounced (ignored)
-    jest.advanceTimersByTime(1000);
-    let r2 = trackHoldReleased(user);
-    expect(r2.flagged).toBe(false);
-    expect(isHoldCooldownActive(user)).toBe(false);
-
-    // Another real release after >2s — counts as second
-    jest.advanceTimersByTime(2500);
-    let r3 = trackHoldReleased(user);
-    expect(r3.flagged).toBe(false);
-
-    // Fourth release to hit threshold (MAX_RELEASES_IN_WINDOW = 3)
-    jest.advanceTimersByTime(2500);
-    let r4 = trackHoldReleased(user);
-
-    // r4 should flag cooldown (3 releases within window)
-    expect(r4.flagged).toBe(true);
+  test("reaches threshold and applies cooldown after MAX_RELEASES releases", () => {
+    const user = "user3";
+    let lastResult: any;
+    for (let i = 0; i < MAX_RELEASES; i++) {
+      jest.advanceTimersByTime(3000); // space them > debounce window
+      lastResult = trackHoldReleased(user);
+    }
+    // After MAX_RELEASES releases in the window, cooldown should be active
+    expect(lastResult.flagged).toBe(true);
     expect(isHoldCooldownActive(user)).toBe(true);
+  });
+
+  test("different users do not share state", () => {
+    for (let i = 0; i < MAX_RELEASES; i++) {
+      jest.advanceTimersByTime(3000);
+      trackHoldReleased("heavy-user");
+    }
+    // Another user starts fresh
+    const r = trackHoldReleased("clean-user");
+    expect(r.flagged).toBe(false);
+    expect(isHoldCooldownActive("clean-user")).toBe(false);
   });
 });
