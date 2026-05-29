@@ -31,7 +31,6 @@ import {
   handleSurvivalMatchEnd,
   handleSurvivalForceEnd,
 } from "./survivalHandler";
-import { handleElimTournamentMatchEnd } from "../../utils/tournamentScheduler";
 import { awardXp } from "../../utils/progressionService";
 import {
   XP_REWARDS,
@@ -473,12 +472,19 @@ export function registerGameHandlers(io: Server, socket: Socket) {
   // Host starts the game
   socket.on("room:start", async () => {
     try {
-      const room = await Room.findOne({ code: socket.data.roomCode });
-      if (!room) return socket.emit("room:error", "Room not found");
-      if (room.hostId !== userId)
-        return socket.emit("game:error", "Only the host can start");
-      if (room.status !== "waiting")
+      // Atomic claim: transition waiting→starting so concurrent events can't double-start
+      const room = await Room.findOneAndUpdate(
+        { code: socket.data.roomCode, hostId: userId, status: "waiting" },
+        { $set: { status: "starting" } },
+        { new: true },
+      );
+      if (!room) {
+        // Either not found, not host, or already started/starting
+        const existing = await Room.findOne({ code: socket.data.roomCode }).select('hostId status').lean() as any;
+        if (!existing) return socket.emit("room:error", "Room not found");
+        if (existing.hostId !== userId) return socket.emit("game:error", "Only the host can start");
         return socket.emit("game:error", "Game already started");
+      }
 
       const humans = room.players.filter((p) => !p.isBot);
       if (humans.length < 2 && room.config.botCount === 0) {
@@ -1239,9 +1245,6 @@ async function handleMatchEnd(io: Server, state: GameState) {
   // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
 
-  // Elimination tournament: pass ALL player IDs so bot tournament registrations are also scored/eliminated
-  const allTournamentPlayerIds = state.players.map((p) => p.userId);
-  handleElimTournamentMatchEnd(io, allTournamentPlayerIds, playerScoreUpdates, timeoutCounts, state.roomId).catch(console.error);
 }
 
 

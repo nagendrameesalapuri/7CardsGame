@@ -524,21 +524,5 @@ export const survivalApi = {
   active:  () => api.get<{ battles: any[] }>('/survival/active'),
 };
 
-export const tournamentsApi = {
-  list:       () => api.get<{ tournaments: any[] }>('/tournaments'),
-  get:        (id: string) => api.get<{ tournament: any }>(`/tournaments/${id}`),
-  register:   (id: string) => api.post<{ success: boolean; message: string }>(`/tournaments/${id}/register`, {}),
-  unregister: (id: string) => api.delete<{ success: boolean; message: string }>(`/tournaments/${id}/register`),
-};
-
-export const adminTournamentsApi = {
-  list:      () => adminApi.get<{ tournaments: any[] }>('/scheduled-tournaments'),
-  create:    (data: any) => adminApi.post<{ success: boolean; tournament: any }>('/scheduled-tournaments', data),
-  update:    (id: string, data: any) => adminApi.patch<{ success: boolean; tournament: any }>(`/scheduled-tournaments/${id}`, data),
-  cancel:    (id: string, reason?: string) => adminApi.delete(`/scheduled-tournaments/${id}`, { data: { reason } }),
-  complete:  (id: string) => adminApi.post(`/scheduled-tournaments/${id}/complete`, {}),
-  deleteAll: (status?: string) => adminApi.delete('/scheduled-tournaments', { params: status ? { status } : undefined }),
-  fillBots:  (id: string, count: number) => adminApi.post(`/scheduled-tournaments/${id}/fill-bots`, { count }),
-};
 
 export default api;

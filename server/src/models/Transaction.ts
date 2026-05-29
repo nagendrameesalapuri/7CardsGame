@@ -10,8 +10,6 @@ export type TransactionType =
   | 'match_settlement'    // Prize credited after match completion
   | 'abandoned_resolution'// Match abandoned — holds released, noted in history
   | 'system_rollback'     // Admin/system rollback entry
-  | 'tournament_prize'    // Scheduled tournament prize payout
-  | 'tournament_entry'    // Scheduled tournament entry fee
   | 'transfer_sent'       // Sender debited for friend transfer
   | 'transfer_received';  // Recipient credited from friend transfer (non-withdrawable)
 
@@ -41,7 +39,6 @@ export interface ITransaction extends Document {
     rollbackId?: string;
     linkedTransactionId?: string;
     exploitFlag?: boolean;
-    scheduledTournamentId?: string;
   };
   createdAt: Date;
 }
@@ -56,7 +53,6 @@ const TransactionSchema = new Schema<ITransaction>(
         'referral_bonus',
         'entry_hold', 'entry_released', 'entry_locked', 'match_settlement',
         'abandoned_resolution', 'system_rollback',
-        'tournament_prize', 'tournament_entry',
         'transfer_sent', 'transfer_received',
       ],
       required: true,

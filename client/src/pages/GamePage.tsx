@@ -63,14 +63,6 @@ export function GamePage() {
     }
   }, [resumeRoomCodes, game, resumeGame]);
 
-  // Also catch tournament:room_ready directly (fires when user is still on this page between rounds)
-  useEffect(() => {
-    const unsub = on('tournament:room_ready', (data: any) => {
-      if (data?.roomCode) useGameStore.getState().resumeGame(data.roomCode);
-    });
-    return unsub;
-  }, []);
-
   // When a survival tiebreaker is triggered, set tiebreaker state and go to /survival
   useEffect(() => {
     const unsub = on("survival:tiebreaker", (result: any) => {

@@ -227,7 +227,6 @@ export function Header() {
   const navItems = [
     { to: '/lobby',         label: 'Play',    icon: '⚔️' },
     ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Board', icon: '🏆' }] : []),
-    ...(eventsEnabled ? [{ to: '/tournaments', label: 'Events', icon: '🎯' }] : []),
     { to: '/wallet',                label: 'Rewards', icon: '🎁' },
     { to: '/notifications',         label: 'Alerts',  icon: '🔔' },
     { to: '/profile?tab=referral',  label: 'Refer',   icon: '🤝' },
@@ -257,7 +256,6 @@ export function Header() {
             {[
               { to: '/lobby',              label: 'Play' },
               ...(leaderboardEnabled ? [{ to: '/leaderboard', label: 'Leaderboard' }] : []),
-              ...(eventsEnabled ? [{ to: '/tournaments', label: 'Events' }] : []),
               { to: '/wallet',             label: 'Rewards' },
               { to: '/notifications',      label: 'Alerts' },
               { to: '/profile',            label: 'Profile' },

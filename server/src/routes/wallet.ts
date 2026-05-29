@@ -73,33 +73,8 @@ router.get('/', async (req: Request, res: Response) => {
     const availableBalance = Math.max(0, totalBalance - heldBalance);
     const withdrawableBalance = Math.max(0, totalBalance - giftBalance);
 
-    // Compute transferEligible dynamically:
-    // Eligible = has an approved deposit ≥₹50 within the last 24 hours
-    //            AND has NOT sent a transfer after that deposit's approval time.
-    // Always recomputed so the 24-hr window expires automatically.
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const lastQualifyingDeposit = await DepositRequest.findOne({
-      userId: req.user!.id,
-      status: 'approved',
-      amount: { $gte: 50 },
-      updatedAt: { $gte: twentyFourHoursAgo },
-    }).sort({ updatedAt: -1 }).select('updatedAt').lean();
-
-    let transferEligible = false;
-    if (lastQualifyingDeposit) {
-      const lastTransferSent = await Transaction.findOne({
-        userId: req.user!.id,
-        type: 'transfer_sent',
-        createdAt: { $gt: (lastQualifyingDeposit as any).updatedAt },
-      }).select('_id').lean();
-      transferEligible = !lastTransferSent;
-    }
-
-    // Sync stored flag if it drifted (e.g. window expired while user was offline)
-    const storedEligible = (user as any).transferEligible ?? false;
-    if (storedEligible !== transferEligible) {
-      await User.updateOne({ _id: req.user!.id }, { $set: { transferEligible } });
-    }
+    // Read stored flag — updated by deposit approval and transfer endpoints, not recomputed here
+    const transferEligible = (user as any).transferEligible ?? false;
 
     res.json({
       balance: totalBalance,

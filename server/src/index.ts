@@ -28,10 +28,8 @@ import walletRoutes from './routes/wallet';
 import supportRoutes from './routes/support';
 import createAdminRouter from './routes/admin';
 import survivalRoutes from './routes/survival';
-import tournamentRoutes from './routes/tournaments';
 import progressionRoutes from './routes/progression';
 import notificationRoutes from './routes/notifications';
-import { startTournamentScheduler } from './utils/tournamentScheduler';
 // import { startReengagementScheduler } from './utils/reengagementScheduler'; // disabled — admin sends manually
 
 const PORT = parseInt(process.env.PORT ?? '5000', 10);
@@ -111,7 +109,6 @@ async function bootstrap() {
   app.use('/api/games', gameRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/survival', survivalRoutes);
-  app.use('/api/tournaments', tournamentRoutes);
   app.use('/api/support', supportRoutes);
   app.use('/api/progression', progressionRoutes);
   app.use('/api/notifications', notificationRoutes);
@@ -178,7 +175,6 @@ async function bootstrap() {
   app.use('/api/admin', createAdminRouter(io));
 
   initSocketIO(io);
-  startTournamentScheduler(io);
   // startReengagementScheduler(); // disabled — admin sends winback emails manually
 
   // ── Startup: refund games orphaned by previous crash/deployment ─────────────

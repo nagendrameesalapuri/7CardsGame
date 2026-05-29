@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { roomsApi, configApi, walletApi, tournamentsApi } from '../services/api';
+import { roomsApi, configApi, walletApi } from '../services/api';
 import { notify } from '../services/notify';
 import { on } from '../services/socket';
 import { Layout } from '../components/layout/Layout';
@@ -84,7 +84,6 @@ export function LobbyPage() {
   const [showPlayVsAI, setShowPlayVsAI] = useState(false);
   const [spectatorModeEnabled, setSpectatorModeEnabled] = useState(true);
   const [roomMeta, setRoomMeta] = useState<Record<string, any>>({});
-  const [upcomingTournament, setUpcomingTournament] = useState<any>(null);
   const [adminConfig, setAdminConfig] = useState<PublicAdminConfig>({
     featureFlags: { spectatorModeEnabled: true, publicRoomsEnabled: true, tournamentBannerEnabled: false, survivalEnabled: true, survivalTiers: { beginner: true, pro: true, elite: true, boss_arena: true }, teamArenaEnabled: true, teamArenaDisabledReason: '', eventsEnabled: true, leaderboardEnabled: true },
     gameConfig: { minPlayers: 2, maxPlayers: 6, minRounds: 1, maxRounds: 20, maxSpectators: 10, maxBots: 4 },
@@ -175,10 +174,6 @@ export function LobbyPage() {
             notify.success(`⭐ You have ${pts.toLocaleString()} AI points! Scroll down to spin and win real ₹.`, { duration: 7000 });
           }, 2500);
         }
-      }).catch(() => {});
-      tournamentsApi.list().then(r => {
-        const active = r.data.tournaments.find((t: any) => t.status === 'live') ?? r.data.tournaments.find((t: any) => t.status === 'upcoming');
-        setUpcomingTournament(active ?? null);
       }).catch(() => {});
     }
 
@@ -604,84 +599,6 @@ export function LobbyPage() {
             )}
 
 
-            {/* Tournaments */}
-            {upcomingTournament && (() => {
-              const userId = String((user as any)?.id ?? (user as any)?._id ?? '');
-              const isRegistered = userId
-                ? upcomingTournament.registrations?.some((r: any) => String(r.userId) === userId)
-                : false;
-              const isLive = upcomingTournament.status === 'live';
-
-              // Registered + live → show active tournament banner
-              if (isRegistered && isLive) {
-                return (
-                  <motion.div
-                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-                    className="relative overflow-hidden rounded-2xl"
-                    style={{ background: 'linear-gradient(135deg,rgba(34,197,94,0.2),rgba(16,185,129,0.12))', border: '1px solid rgba(34,197,94,0.45)' }}
-                  >
-                    <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full animate-pulse" style={{ background: 'radial-gradient(circle,rgba(34,197,94,0.25),transparent 70%)', filter: 'blur(18px)' }} />
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-2 py-0.5 text-[9px] font-bold rounded-full animate-pulse" style={{ background: 'rgba(34,197,94,0.25)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.5)' }}>🔴 TOURNAMENT LIVE</span>
-                        <span className="text-[9px] font-bold" style={{ color: 'rgba(255,255,255,0.4)' }}>You're competing!</span>
-                      </div>
-                      <p className="text-sm font-black text-white mb-1">{upcomingTournament.name}</p>
-                      <p className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                        Every point you win right now counts toward your tournament score. Play any game below!
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 rounded-xl px-3 py-1.5 text-center text-xs font-bold" style={{ background: 'rgba(0,0,0,0.25)', color: '#4ade80' }}>
-                          🏆 Prize Pool: {upcomingTournament.prizePool.toLocaleString()} pts
-                        </div>
-                        <button
-                          onClick={() => navigate('/tournaments')}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold"
-                          style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
-                        >
-                          Standings →
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
-
-              // Default: teaser card for non-registered or upcoming
-              return (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-                  className="relative overflow-hidden rounded-2xl cursor-pointer"
-                  style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.25),rgba(168,85,247,0.15))', border: '1px solid rgba(99,102,241,0.4)' }}
-                  onClick={() => navigate('/tournaments')}
-                >
-                  <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full" style={{ background: 'radial-gradient(circle,rgba(168,85,247,0.25),transparent 70%)', filter: 'blur(20px)' }} />
-                  <div className="p-5">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {isLive
-                            ? <span className="px-2 py-0.5 text-[9px] font-bold rounded-full animate-pulse" style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.4)' }}>🔴 LIVE</span>
-                            : <span className="px-2 py-0.5 text-[9px] font-bold rounded-full" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>⏳ Upcoming</span>
-                          }
-                        </div>
-                        <p className="text-base font-black text-white leading-tight">{upcomingTournament.name}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-lg font-black" style={{ color: '#a5b4fc' }}>{upcomingTournament.prizePool.toLocaleString()}</div>
-                        <div className="text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>Prize Pool pts</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                        {upcomingTournament.registrations?.length ?? 0} players · {upcomingTournament.entryFee === 0 ? 'Free Entry' : `${upcomingTournament.entryFee} pts`}
-                      </div>
-                      <span className="text-xs font-bold" style={{ color: '#a5b4fc' }}>View & Register →</span>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })()}
 
             {/* Multiplayer */}
             <motion.div

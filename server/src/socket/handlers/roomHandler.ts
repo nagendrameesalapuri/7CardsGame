@@ -630,6 +630,17 @@ export async function lockEntryHold(
 ): Promise<boolean> {
   if (entryFee <= 0) return true;
 
+  // Idempotency guard — prevent double-charge if called twice for same room
+  const alreadyLocked = await Transaction.findOne({
+    userId,
+    type: 'entry_locked',
+    'metadata.roomCode': roomCode,
+  }).select('_id').lean();
+  if (alreadyLocked) {
+    console.log(`[Hold] Entry already locked for ${userId} in room ${roomCode} — skipping duplicate`);
+    return true;
+  }
+
   const userBefore = (await User.findById(userId)
     .select("walletBalance heldBalance")
     .lean()) as any;

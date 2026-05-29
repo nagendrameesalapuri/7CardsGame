@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../models/User';
 import { Transaction } from '../models/Transaction';
-import { ScheduledTournament } from '../models/ScheduledTournament';
 import { sendReengagementEmail } from '../services/mailer';
 
 const COMEBACK_BONUS = 30;
@@ -33,12 +32,6 @@ async function runReengagementJob(): Promise<void> {
   }
 
   console.log(`[Reengagement] Found ${inactiveUsers.length} inactive users — sending emails...`);
-
-  // Find the nearest upcoming tournament to mention in emails
-  const upcomingTournament = await ScheduledTournament.findOne({
-    status: { $in: ['upcoming', 'live'] },
-    startTime: { $gte: now },
-  }).sort({ startTime: 1 }).lean();
 
   let sent = 0;
   let failed = 0;
@@ -72,14 +65,7 @@ async function runReengagementJob(): Promise<void> {
         gamesPlayed:       user.stats?.gamesPlayed ?? 0,
         comebackBonus:     COMEBACK_BONUS,
         unsubscribeToken:  unsubToken,
-        upcomingTournament: upcomingTournament
-          ? {
-              name:      upcomingTournament.name,
-              prizePool: upcomingTournament.prizePool,
-              startTime: upcomingTournament.startTime,
-              entryFee:  upcomingTournament.entryFee,
-            }
-          : null,
+        upcomingTournament: null,
       });
 
       // Mark email sent so we don't spam
