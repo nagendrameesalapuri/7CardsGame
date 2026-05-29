@@ -126,8 +126,8 @@ describe('Round Result Scoring', () => {
     s.attackChain = null;
 
     const r = GameEngine.processShow(s, s.players[0].id);
-    if (!r.error && r.roundResult) {
-      const caller = r.roundResult.scores.find(sc => sc.playerId === s.players[0].id);
+    if (!r.error && (r as any).roundResult) {
+      const caller = (r as any).roundResult.scores?.find((sc: any) => sc.playerId === s.players[0].id);
       expect(caller?.score).toBe(0); // Winner pays 0
     }
   });
@@ -142,8 +142,8 @@ describe('Round Result Scoring', () => {
     s.attackChain = null;
 
     const r = GameEngine.processShow(s, s.players[0].id);
-    if (!r.error && r.roundResult) {
-      const loser = r.roundResult.scores.find(sc => sc.playerId === s.players[1].id);
+    if (!r.error && (r as any).roundResult) {
+      const loser = (r as any).roundResult.scores?.find((sc: any) => sc.playerId === s.players[1].id);
       if (loser) {
         expect(loser.score).toBe(handValue(loserHand));
       }

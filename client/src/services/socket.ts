@@ -235,6 +235,7 @@ type EventMap = {
   'tournament:status_result': { tournamentId: string; gameNumber: number; playerWins: number; botWins: number; entryFee: number; prizeAmount: number; currentRoomCode: string | null } | null;
   'tournament:cancelled':     { refunded: boolean; amount: number };
   'tournament:error':         string;
+  'challenge:completed':      { challengeId: string; title: string; pointsReward: number; xpReward: number };
   'game:ai_intro':            { text: string; personality: string };
   // Survival Championship
   'survival:started':         { survivalId: string; tier: string; currentStage: number; totalStages: number; entryPoints: number; roomCode: string; botName: string; personality: string };

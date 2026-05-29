@@ -32,6 +32,7 @@ import {
   handleSurvivalForceEnd,
 } from "./survivalHandler";
 import { awardXp } from "../../utils/progressionService";
+import { incrementChallenge, resetIfNewWeek, challengesForWeek, currentWeekIST } from "../../utils/weeklyChallenges";
 import {
   XP_REWARDS,
   calculateBotDifficultyBoost,
@@ -747,6 +748,29 @@ export function registerGameHandlers(io: Server, socket: Socket) {
           success: showSuccess,
           personality: gameBotPersonality.get(resultState.id),
         });
+
+        // Weekly challenge: show_low_pts — SHOW with ≤3 pts and win
+        if (showSuccess && handTotalBefore <= 3) {
+          PlayerProgress.findOne({ userId }).then(async prog => {
+            if (!prog) return;
+            const week = currentWeekIST();
+            const challenges = challengesForWeek(week);
+            if (!challenges.find(c => c.id === 'show_low_pts')) return;
+            resetIfNewWeek(prog);
+            const completed = incrementChallenge(prog, 'show_low_pts', 1);
+            if (completed) {
+              await User.findByIdAndUpdate(userId, { $inc: { aiPoints: completed.pointsReward } });
+              prog.xp = (prog.xp ?? 0) + completed.xpReward;
+              io.to(`user:${userId}`).emit('challenge:completed', {
+                challengeId: completed.id,
+                title: completed.title,
+                pointsReward: completed.pointsReward,
+                xpReward: completed.xpReward,
+              });
+            }
+            await prog.save();
+          }).catch(console.error);
+        }
       },
     );
   });
@@ -1073,13 +1097,16 @@ async function handleMatchEnd(io: Server, state: GameState) {
     ? ((roomForPrize.config as any).entryFee ?? 0)
     : 0;
   const capturedPaidIds: string[] = (roomForPrize as any)?.paidPlayerIds ?? [];
-  const prizePoolForResult = entryFeeForResult * capturedPaidIds.length;
+  const grossPrizePool      = entryFeeForResult * capturedPaidIds.length;
+  const rakeForResult       = Math.floor(grossPrizePool * 0.05);
+  const prizePoolForResult  = grossPrizePool - rakeForResult;
   const winnerCountForResult = (matchResult.winnerIds ?? [matchResult.winnerId]).length;
   const matchResultWithPrize = {
     ...matchResult,
     ...(prizePoolForResult > 0
       ? {
-          prizePool: prizePoolForResult,
+          prizePool: prizePoolForResult,          // post-rake prize pool shown to players
+          rake: rakeForResult,                    // platform fee (informational)
           prizePerWinner: Math.floor(
             prizePoolForResult / Math.max(1, winnerCountForResult),
           ),
@@ -1242,11 +1269,81 @@ async function handleMatchEnd(io: Server, state: GameState) {
 
   state.players.filter(p => p.isBot).forEach(b => BotPlayer.cleanupBotContext(b.id));
 
+  // Weekly challenge progress — non-blocking
+  updateWeeklyChallenges(io, state, matchResult, entryFeeForResult > 0).catch(console.error);
+
   // Tournament hooks — run async, non-blocking
   handleSurvivalMatchEnd(io, state, matchResult).catch(console.error);
 
 }
 
+
+// ── Weekly Challenge Updater ─────────────────────────────────────────────────
+
+async function updateWeeklyChallenges(
+  io: Server,
+  state: GameState,
+  matchResult: any,
+  isWager: boolean,
+) {
+  const humanPlayers = state.players.filter(p => !p.isBot);
+  if (humanPlayers.length === 0) return;
+
+  const winnerIds: string[] = matchResult.winnerIds ?? (matchResult.winnerId ? [matchResult.winnerId] : []);
+
+  for (const player of humanPlayers) {
+    try {
+      const p = await PlayerProgress.findOne({ userId: player.userId });
+      if (!p) continue;
+
+      resetIfNewWeek(p);
+      const week = currentWeekIST();
+      const activeChallenges = challengesForWeek(week);
+      const newlyCompleted: any[] = [];
+
+      // play_5_games — every game counts
+      if (activeChallenges.find(c => c.id === 'play_5_games')) {
+        const done = incrementChallenge(p, 'play_5_games', 1);
+        if (done) newlyCompleted.push(done);
+      }
+
+      // win_3_games
+      const isWinner = winnerIds.some(wid => {
+        const wp = state.players.find(pl => pl.id === wid);
+        return wp?.userId === player.userId;
+      });
+      if (isWinner && activeChallenges.find(c => c.id === 'win_3_games')) {
+        const done = incrementChallenge(p, 'win_3_games', 1);
+        if (done) newlyCompleted.push(done);
+      }
+
+      // play_wager — wager games only
+      if (isWager && activeChallenges.find(c => c.id === 'play_wager')) {
+        const done = incrementChallenge(p, 'play_wager', 1);
+        if (done) newlyCompleted.push(done);
+      }
+
+      // Award points/XP for newly completed challenges
+      for (const challenge of newlyCompleted) {
+        if (challenge.pointsReward > 0) {
+          await User.findByIdAndUpdate(player.userId, { $inc: { aiPoints: challenge.pointsReward } });
+        }
+        p.xp = (p.xp ?? 0) + (challenge.xpReward ?? 0);
+        // Notify player
+        io.to(`user:${player.userId}`).emit('challenge:completed', {
+          challengeId: challenge.id,
+          title:        challenge.title,
+          pointsReward: challenge.pointsReward,
+          xpReward:     challenge.xpReward,
+        });
+      }
+
+      await p.save();
+    } catch (err) {
+      console.error(`[WeeklyChallenge] Error for ${player.userId}:`, err);
+    }
+  }
+}
 
 // ── Prize Distribution ────────────────────────────────────────────────────────
 
@@ -1261,8 +1358,15 @@ async function distributePrize(
     // entryFee and paidIds were atomically captured (and cleared in DB) in handleMatchEnd,
     // so this function is immune to the room-deletion race in handleLeave.
     if (entryFee <= 0) return;
-    const pot = entryFee * paidIds.length;
-    if (pot <= 0) return;
+    const grossPot = entryFee * paidIds.length;
+    if (grossPot <= 0) return;
+
+    // Platform rake: 5% of gross pot, floored to nearest rupee
+    const RAKE_PERCENT = 0.05;
+    const rake = Math.floor(grossPot * RAKE_PERCENT);
+    const pot  = grossPot - rake;
+
+    console.log(`[Prize] Room ${state.roomId}: gross ₹${grossPot}, rake ₹${rake} (5%), prize pot ₹${pot}`);
 
     // Collect all winner IDs (supports ties). Filter to human paid players only —
     // bots never receive prize money regardless of whether they won or tied.

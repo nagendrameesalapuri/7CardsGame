@@ -232,7 +232,7 @@ describe('Attack Chain — 7 Power', () => {
   it('accepting attack: target draws penalty cards, chain clears', () => {
     const s = attackedState(1);
     const before = s.players[1].hand.length;
-    const r = GameEngine.processAttackResponse(s, s.players[1].id, 'accept');
+    const r = GameEngine.processAttackResponse(s, s.players[1].id, 'take');
     if (!r.error) {
       expect(r.state!.players[1].hand.length).toBe(before + 2);
       expect(r.state!.attackChain).toBeNull();
@@ -243,7 +243,7 @@ describe('Attack Chain — 7 Power', () => {
     const s = attackedState(1);
     const seven = makeCard('7');
     s.players[1].hand[0] = seven;
-    const r = GameEngine.processAttackResponse(s, s.players[1].id, 'counter', [seven.id]);
+    const r = GameEngine.processAttackResponse(s, s.players[1].id, 'throw', [seven.id]);
     if (!r.error && r.state?.attackChain) {
       expect(r.state.attackChain.sevensCount).toBe(2);
       expect(r.state.attackChain.penaltyCards).toBe(4);
@@ -279,7 +279,7 @@ describe('SHOW Validation', () => {
     const s = showState(hand);
     const r = GameEngine.processShow(s, s.players[0].id);
     expect(r.error).toBeUndefined();
-    expect(r.roundResult).not.toBeNull();
+    expect((r as any).roundResult).not.toBeNull();
   });
 
   it('invalid SHOW: hand > 5 pts', () => {

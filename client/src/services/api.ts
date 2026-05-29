@@ -249,8 +249,8 @@ export const admin = {
 
   // existing admin methods below
 
-  login: (password: string) =>
-    adminApi.post<{ token: string }>("/login", { password }),
+  login: (password: string, totpCode?: string) =>
+    adminApi.post<{ token: string; requires2FA: boolean }>("/login", { password, totpCode }),
 
   getConfig: () => adminApi.get<any>("/config"),
   updateConfig: (data: any) => adminApi.patch("/config", data),
@@ -502,6 +502,7 @@ export const progressionApi = {
   luckySpin: () => api.post<{ outcome: any; progress: any }>('/progression/lucky-spin'),
   leaderboard: (category: 'xp' | 'streak' | 'survival') =>
     api.get<{ leaderboard: any[]; category: string }>(`/progression/leaderboard?category=${category}`),
+  weekly:    () => api.get<{ week: string; challenges: any[] }>('/progression/weekly'),
   achievements: () => api.get<{ achievements: any[] }>('/progression/achievements'),
 };
 

@@ -47,24 +47,60 @@ export default function createAdminRouter(io: Server) {
   // ── Player Intelligence & Audit System ─────────────────────────────────────
   router.use('/player-intel', requireAdmin, createPlayerIntelRouter());
 
+  // ── Admin 2FA setup — GET /api/admin/2fa/setup ──────────────────────────────
+  // Returns a QR code URI so the admin can scan it with Google Authenticator.
+  // Only callable once: if ADMIN_TOTP_SECRET env var is already set, it returns 409.
+  router.get('/2fa/setup', (req: Request, res: Response) => {
+    if (process.env.ADMIN_TOTP_SECRET) {
+      return res.status(409).json({ error: '2FA is already configured. To reset, clear ADMIN_TOTP_SECRET from env.' });
+    }
+    const speakeasy = require('speakeasy');
+    const qrcode    = require('qrcode');
+    const generated = speakeasy.generateSecret({ name: 'Arena of Sevens Admin', length: 20 });
+    qrcode.toDataURL(generated.otpauth_url, (err: any, dataUrl: string) => {
+      if (err) return res.status(500).json({ error: 'Failed to generate QR code' });
+      res.json({
+        secret: generated.base32,
+        qrCodeDataUrl: dataUrl,
+        instructions: 'Scan this QR code with Google Authenticator or Authy. Then add ADMIN_TOTP_SECRET=<secret> to your server .env and restart.',
+      });
+    });
+  });
+
   // ── Admin login ─────────────────────────────────────────────────────────────
   router.post("/login", (req: Request, res: Response) => {
-    const password = (req.body as { password: string }).password?.trim();
+    const { password, totpCode } = req.body as { password: string; totpCode?: string };
     const secret = process.env.ADMIN_SECRET;
+    const totpSecret = process.env.ADMIN_TOTP_SECRET;
 
     if (!secret) {
-      return res
-        .status(503)
-        .json({ error: "Admin access not configured on this server" });
+      return res.status(503).json({ error: "Admin access not configured on this server" });
     }
     if (!password || password !== secret) {
       return res.status(401).json({ error: "Invalid admin password" });
     }
 
+    // If TOTP is configured, verify the 6-digit code before issuing token
+    if (totpSecret) {
+      if (!totpCode) {
+        return res.status(401).json({ error: "2FA code required", requires2FA: true });
+      }
+      const speakeasy = require('speakeasy');
+      const valid = speakeasy.totp.verify({
+        secret: totpSecret,
+        encoding: 'base32',
+        token: totpCode.replace(/\s/g, ''),
+        window: 1, // allow 30s clock drift
+      });
+      if (!valid) {
+        return res.status(401).json({ error: "Invalid 2FA code. Check your authenticator app." });
+      }
+    }
+
     const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET!, {
-      expiresIn: "30d",
+      expiresIn: "12h",  // shortened from 30d — use 2FA for fresh login each session
     });
-    res.json({ token });
+    res.json({ token, requires2FA: !!totpSecret });
   });
 
   // ── Public config (no auth) ─────────────────────────────────────────────────

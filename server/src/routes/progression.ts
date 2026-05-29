@@ -9,6 +9,7 @@ import {
   DAILY_REWARDS, spinLucky, ACHIEVEMENTS, getAchievement,
   isSameDayIST, isDayBeforeIST, RANK_CONFIG,
 } from '../utils/progression';
+import { incrementChallenge, resetIfNewWeek, challengesForWeek, currentWeekIST } from '../utils/weeklyChallenges';
 import { computeAndCacheBadge } from '../utils/badgeCache';
 
 const router = Router();
@@ -144,6 +145,20 @@ router.post('/daily', requireAuth, async (req: Request, res: Response) => {
     p.lastLoginDate  = now;
     p.lastDailyReward = now;
     p.dailyRewardDay  = newDay;
+
+    // Weekly challenge: daily_login_3
+    const week = currentWeekIST();
+    const activeChallenges = challengesForWeek(week);
+    resetIfNewWeek(p);
+    if (activeChallenges.find(c => c.id === 'daily_login_3')) {
+      const completed = incrementChallenge(p, 'daily_login_3', 1);
+      if (completed) {
+        await User.findByIdAndUpdate(req.user!.id, { $inc: { aiPoints: completed.pointsReward } });
+        p.xp = (p.xp ?? 0) + completed.xpReward;
+        newAchievements.push('weekly_consistent'); // informational, not a real achievement id
+      }
+    }
+
     await p.save();
 
     res.json({
@@ -251,6 +266,28 @@ router.get('/leaderboard', async (req: Request, res: Response) => {
 // GET /api/progression/achievements — all achievement definitions
 router.get('/achievements', async (_req: Request, res: Response) => {
   res.json({ achievements: ACHIEVEMENTS });
+});
+
+// ── Weekly Challenges ──────────────────────────────────────────────────────
+
+// GET /api/progression/weekly — current week's challenges + progress
+router.get('/weekly', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const p = await getOrCreateProgress(req.user!.id);
+    const week       = currentWeekIST();
+    const challenges = challengesForWeek(week);
+    resetIfNewWeek(p); // reset if new week, save happens lazily
+
+    const result = challenges.map(c => ({
+      ...c,
+      progress:  (p.weeklyProgress as any)?.get?.(c.id) ?? (p as any).weeklyProgress?.[c.id] ?? 0,
+      completed: (p.weeklyCompleted ?? []).includes(c.id),
+    }));
+
+    res.json({ week, challenges: result });
+  } catch {
+    res.status(500).json({ error: 'Failed to load weekly challenges' });
+  }
 });
 
 export default router;

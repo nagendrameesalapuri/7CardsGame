@@ -84,7 +84,7 @@ describe('Survival Bot Personality Assignment', () => {
   it('each stage has progressively harder personality', () => {
     // Hardness order: safe < smart < aggressive < bluff < boss
     const hardness: Record<BotPersonality, number> = {
-      safe: 1, smart: 2, aggressive: 3, bluff: 4, boss: 5,
+      safe: 1, smart: 2, aggressive: 3, bluff: 4, boss: 5, care: 1,
     };
     for (let i = 1; i < STAGES.length; i++) {
       const prev = hardness[STAGES[i - 1].botPersonality];

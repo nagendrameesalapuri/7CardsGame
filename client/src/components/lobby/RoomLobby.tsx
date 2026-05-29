@@ -187,20 +187,26 @@ export function RoomLobby() {
           )}
         </div>
 
-        {entryFee > 0 && (
-          <div className="mx-5 mt-4 rounded-2xl px-4 py-3 flex items-center justify-between"
-            style={{ background: 'linear-gradient(135deg,rgba(251,191,36,0.1),rgba(251,191,36,0.04))', border: '1px solid rgba(251,191,36,0.2)' }}>
-            <div>
-              <p className="text-[10px] uppercase tracking-widest font-bold text-yellow-400/60">Entry Fee</p>
-              <p className="text-sm text-yellow-200 font-bold mt-0.5">₹{entryFee} per player</p>
+        {entryFee > 0 && (() => {
+          const gross = entryFee * room.config.maxPlayers;
+          const rake  = Math.floor(gross * 0.05);
+          const net   = gross - rake;
+          return (
+            <div className="mx-5 mt-4 rounded-2xl px-4 py-3 flex items-center justify-between"
+              style={{ background: 'linear-gradient(135deg,rgba(251,191,36,0.1),rgba(251,191,36,0.04))', border: '1px solid rgba(251,191,36,0.2)' }}>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-bold text-yellow-400/60">Entry Fee</p>
+                <p className="text-sm text-yellow-200 font-bold mt-0.5">₹{entryFee} per player</p>
+                <p className="text-[9px] text-yellow-400/40 mt-0.5">5% platform fee applies</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-yellow-400/60">Prize Pool</p>
+                <p className="text-2xl font-black text-yellow-300">₹{net}</p>
+                <p className="text-[9px] text-yellow-400/50">Winner takes all</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest font-bold text-yellow-400/60">Prize Pool</p>
-              <p className="text-2xl font-black text-yellow-300">₹{entryFee * room.config.maxPlayers}</p>
-              <p className="text-[9px] text-yellow-400/50">Winner takes all</p>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Player list */}
         <div className="px-5 py-4 flex-1">

@@ -22,6 +22,11 @@ export interface IPlayerProgress extends Document {
   totalWins: number;
   totalGames: number;
   survivalWins: number;
+  // Weekly challenges
+  weeklyChallengeWeek: string;          // ISO week string e.g. "2026-W22"
+  weeklyProgress: Record<string, number>; // { challenge_id: count }
+  weeklyCompleted: string[];             // challenge IDs completed this week
+  highestSurvivalStageCleared: number;  // 0–5, persists across weeks
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +59,10 @@ const PlayerProgressSchema = new Schema<IPlayerProgress>(
     totalWins: { type: Number, default: 0 },
     totalGames: { type: Number, default: 0 },
     survivalWins: { type: Number, default: 0 },
+    weeklyChallengeWeek: { type: String, default: '' },
+    weeklyProgress:      { type: Map, of: Number, default: {} },
+    weeklyCompleted:     { type: [String], default: [] },
+    highestSurvivalStageCleared: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

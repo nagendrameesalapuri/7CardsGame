@@ -100,6 +100,19 @@ async function bootstrap() {
       legacyHeaders: false,
       message: { error: 'Too many login attempts, please wait a few minutes and try again.' },
     }));
+
+    // Financial endpoints — strict limits (5 mutations per minute per IP)
+    const financialLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests on this financial endpoint. Please wait a minute.' },
+    });
+    app.use('/api/wallet/transfer', financialLimiter);
+    app.use('/api/wallet/redeem',   financialLimiter);
+    app.use('/api/wallet/deposit',  financialLimiter);
+    app.use('/api/wallet/spin',     financialLimiter);
   }
 
   // ── Routes ──────────────────────────────────────────────────────────────────
