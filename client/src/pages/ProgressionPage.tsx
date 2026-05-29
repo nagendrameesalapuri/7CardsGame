@@ -409,6 +409,84 @@ function LuckySpinSection({ progress, onSpun }: { progress: any; onSpun: (result
   );
 }
 
+function WeeklyChallengesSection() {
+  const [data, setData] = useState<{ week: string; challenges: any[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    progressionApi.weekly()
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const completedCount = data.challenges.filter(c => c.completed).length;
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3"
+      style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)' }}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-white">Weekly Challenges</p>
+        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+          style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+          {completedCount}/{data.challenges.length} done · {data.week}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {data.challenges.map((c, i) => {
+          const pct = c.goal > 0 ? Math.min(100, Math.round((c.progress / c.goal) * 100)) : 0;
+          return (
+            <motion.div key={c.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.07 }}
+              className="rounded-xl p-3"
+              style={{
+                background: c.completed ? 'rgba(34,197,94,0.07)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${c.completed ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.07)'}`,
+              }}>
+              <div className="flex items-start gap-3">
+                <span className="text-xl mt-0.5">{c.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold" style={{ color: c.completed ? '#4ade80' : '#fff' }}>{c.title}</p>
+                    {c.completed
+                      ? <span className="text-[9px] font-bold text-green-400 shrink-0">✓ Done</span>
+                      : <span className="text-[9px] text-dark-muted shrink-0">{c.progress}/{c.goal}</span>}
+                  </div>
+                  <p className="text-[10px] text-dark-muted mt-0.5">{c.description}</p>
+                  {!c.completed && (
+                    <div className="mt-1.5 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.6, ease: 'easeOut' }}
+                        className="h-full rounded-full"
+                        style={{ background: 'linear-gradient(90deg,#6366f1,#a855f7)' }} />
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-1.5">
+                    {c.pointsReward > 0 && <span className="text-[9px] text-yellow-400">+{c.pointsReward} pts</span>}
+                    {c.xpReward > 0 && <span className="text-[9px] text-blue-400">+{c.xpReward} XP</span>}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <p className="text-[9px] text-center text-dark-muted">Resets every Monday 00:00 IST</p>
+    </div>
+  );
+}
+
 function DailyRewardSection({ progress }: { progress: any }) {
   const days = [
     { day: 1, pts: 50,  emoji: '👋' },
@@ -534,6 +612,7 @@ export function ProgressionPage() {
               <>
                 <StatsGrid progress={progress} />
                 <DailyRewardSection progress={progress} />
+                <WeeklyChallengesSection />
                 <LuckySpinSection progress={progress} onSpun={() => load()} />
               </>
             )}

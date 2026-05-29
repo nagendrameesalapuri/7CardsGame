@@ -104,7 +104,11 @@ router.get('/me', async (req: Request, res: Response) => {
       const inactiveCutoff = new Date(now.getTime() - COMEBACK_INACTIVE_DAYS * 24 * 60 * 60 * 1000);
       const cooldownCutoff = new Date(now.getTime() - COMEBACK_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
 
-      const wasInactive  = !user.lastSeenAt || user.lastSeenAt <= inactiveCutoff;
+      // New accounts (never seen OR created less than 7 days ago) must not get a comeback bonus —
+      // they never left. Require that lastSeenAt exists AND the account is old enough.
+      const accountAgeDays = (now.getTime() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      const isReturningUser = !!user.lastSeenAt && accountAgeDays >= COMEBACK_INACTIVE_DAYS;
+      const wasInactive   = isReturningUser && user.lastSeenAt! <= inactiveCutoff;
       const notOnCooldown = !user.lastComebackBonusAt || user.lastComebackBonusAt <= cooldownCutoff;
 
       if (wasInactive && notOnCooldown) {

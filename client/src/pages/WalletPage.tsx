@@ -984,8 +984,6 @@ export function WalletPage() {
                 </div>
               </div>
 
-              <p className="text-xs text-dark-muted uppercase tracking-wider mb-1">Tournament Wallet</p>
-
               {/* Primary: Available Balance */}
               <p className="text-5xl font-black leading-none mb-0.5" style={{
                 background: "linear-gradient(135deg,#ffffff,#c7d2fe,#a78bfa)",

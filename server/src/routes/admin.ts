@@ -52,18 +52,83 @@ export default function createAdminRouter(io: Server) {
   // Only callable once: if ADMIN_TOTP_SECRET env var is already set, it returns 409.
   router.get('/2fa/setup', (req: Request, res: Response) => {
     if (process.env.ADMIN_TOTP_SECRET) {
-      return res.status(409).json({ error: '2FA is already configured. To reset, clear ADMIN_TOTP_SECRET from env.' });
+      return res.send(`<!DOCTYPE html><html><body style="background:#0a0a14;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+        <div style="text-align:center;padding:32px;background:#12101e;border-radius:16px;border:1px solid #6366f1">
+          <div style="font-size:48px">✅</div>
+          <h2 style="color:#a5b4fc">2FA Already Configured</h2>
+          <p style="color:#64748b">ADMIN_TOTP_SECRET is already set in your server .env.<br>Use your authenticator app to log in.</p>
+          <p style="color:#374151;font-size:12px;margin-top:16px">To reset: remove ADMIN_TOTP_SECRET from .env and restart the server.</p>
+        </div>
+      </body></html>`);
     }
     const speakeasy = require('speakeasy');
     const qrcode    = require('qrcode');
     const generated = speakeasy.generateSecret({ name: 'Arena of Sevens Admin', length: 20 });
     qrcode.toDataURL(generated.otpauth_url, (err: any, dataUrl: string) => {
-      if (err) return res.status(500).json({ error: 'Failed to generate QR code' });
-      res.json({
-        secret: generated.base32,
-        qrCodeDataUrl: dataUrl,
-        instructions: 'Scan this QR code with Google Authenticator or Authy. Then add ADMIN_TOTP_SECRET=<secret> to your server .env and restart.',
-      });
+      if (err) return res.status(500).send('Failed to generate QR code');
+      res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin 2FA Setup — Arena of Sevens</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #09071a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
+           min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #12101e; border: 1px solid rgba(99,102,241,0.4); border-radius: 20px;
+            padding: 40px; max-width: 480px; width: 100%; text-align: center; }
+    h1 { font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 6px; }
+    .sub { color: #64748b; font-size: 14px; margin-bottom: 28px; }
+    .qr { background: #fff; border-radius: 12px; padding: 12px; display: inline-block; margin-bottom: 24px; }
+    .qr img { display: block; width: 220px; height: 220px; }
+    .secret-box { background: #06040f; border: 1px solid rgba(99,102,241,0.3); border-radius: 12px;
+                  padding: 16px; margin-bottom: 24px; }
+    .secret-label { font-size: 11px; color: #6366f1; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: 1.5px; margin-bottom: 8px; }
+    .secret { font-family: 'Courier New', monospace; font-size: 15px; color: #a5b4fc;
+              word-break: break-all; letter-spacing: 1px; }
+    .steps { text-align: left; background: #06040f; border-radius: 12px; padding: 20px;
+             border: 1px solid rgba(255,255,255,0.06); margin-bottom: 20px; }
+    .step { display: flex; gap: 12px; margin-bottom: 12px; font-size: 13px; color: #94a3b8; line-height: 1.5; }
+    .step:last-child { margin-bottom: 0; }
+    .num { background: #6366f1; color: #fff; width: 22px; height: 22px; border-radius: 50%;
+           display: flex; align-items: center; justify-content: center; font-size: 11px;
+           font-weight: 900; flex-shrink: 0; margin-top: 1px; }
+    .env { background: #06040f; border: 1px solid rgba(99,102,241,0.3); border-radius: 8px;
+           padding: 10px 14px; font-family: monospace; font-size: 13px; color: #4ade80;
+           word-break: break-all; margin: 6px 0; }
+    .warn { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+            border-radius: 10px; padding: 12px 16px; font-size: 12px; color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:48px;margin-bottom:12px">🔐</div>
+    <h1>Admin 2FA Setup</h1>
+    <p class="sub">Scan with Google Authenticator or Authy</p>
+
+    <div class="qr">
+      <img src="${dataUrl}" alt="QR Code" />
+    </div>
+
+    <div class="secret-box">
+      <div class="secret-label">Manual entry key (if QR doesn't scan)</div>
+      <div class="secret">${generated.base32}</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div>Open <strong style="color:#fff">Google Authenticator</strong> or <strong style="color:#fff">Authy</strong> on your phone</div></div>
+      <div class="step"><div class="num">2</div><div>Tap <strong style="color:#fff">+</strong> → <strong style="color:#fff">Scan QR code</strong> and point your camera at the code above</div></div>
+      <div class="step"><div class="num">3</div><div>Add this line to your server <strong style="color:#fff">.env</strong> file:
+        <div class="env">ADMIN_TOTP_SECRET=${generated.base32}</div>
+      </div></div>
+      <div class="step"><div class="num">4</div><div>Restart the server — 2FA will be active on next login</div></div>
+    </div>
+
+    <div class="warn">⚠️ Save this key somewhere safe. If you lose it and the server restarts, you'll be locked out. To disable: remove ADMIN_TOTP_SECRET from .env.</div>
+  </div>
+</body>
+</html>`);
     });
   });
 
