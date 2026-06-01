@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { usersApi, survivalApi, progressionApi, gamesApi, referralApi } from '../services/api';
 import { Layout } from '../components/layout/Layout';
@@ -151,7 +151,8 @@ function EmptyState({ emoji, text }: { emoji: string; text: string }) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 export function ProfilePage() {
-  const { user, loadMe } = useAuthStore();
+  const { user, loadMe, logout } = useAuthStore();
+  const navigate = useNavigate();
   const { progress, highestBadge, load: loadProgression } = useProgressionStore();
   const [editMode, setEditMode] = useState(false);
   const [username, setUsername] = useState('');
@@ -415,11 +416,19 @@ export function ProfilePage() {
                   <Button size="sm" onClick={handleSave} loading={isSaving}>Save Changes</Button>
                 </>
               ) : (
-                <button onClick={() => setEditMode(true)}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                  ✏️ Edit Profile
-                </button>
+                <>
+                  <button onClick={() => setEditMode(true)}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    ✏️ Edit Profile
+                  </button>
+                  <button
+                    onClick={() => { logout(); navigate('/'); }}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                    style={{ background: 'rgba(255,80,80,0.10)', color: '#ff6b6b', border: '1px solid rgba(255,80,80,0.25)' }}>
+                    🚪 Logout
+                  </button>
+                </>
               )}
             </div>
           </div>
